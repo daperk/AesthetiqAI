@@ -1,0 +1,227 @@
+Super Admin Dashboard (Aesthiq HQ)
+
+Your control center for running and scaling the SaaS.
+
+🔹 Plan Management
+
+Full CRUD on subscription plans (monthly/annual) without code changes.
+
+Dynamic limits: adjust booking caps, storage, AI features, and processing fees by plan.
+
+Configure trial settings (days, credit card required, grace periods).
+
+Launch add-ons marketplace items (extra storage, SMS bundles, advanced analytics).
+
+Manage annual discounts logic with customizable % (default: 20%).
+
+🔹 Business Management
+
+Master list of all organizations with filters (status, plan, location count, growth).
+
+Health metrics: active vs canceled vs trial, revenue contribution.
+
+Top-earning businesses & most used features (heatmaps for feature adoption).
+
+Manual override: suspend, reactivate, upgrade/downgrade instantly.
+
+Customer notes: attach internal notes for support/sales.
+
+🔹 Billing & Stripe Integration
+
+Real-time view of each org’s subscription, invoices, overdue payments.
+
+Auto-trigger dunning emails for failed payments.
+
+Stripe Connect payouts (for Business+ clinics).
+
+Revenue share breakdown: SaaS revenue vs. processing fee take-rate.
+
+🔹 Analytics
+
+SaaS metrics: ARR, MRR, churn, retention, CAC vs LTV.
+
+Growth charts by plan type, industry, or region.
+
+Usage monitoring: which orgs are nearing booking/storage caps (auto upsell).
+
+AI-powered forecasting: project next 6 months of revenue and churn.
+
+🏥 Clinic / Business Dashboard (Multi-Tenant)
+
+Each clinic’s “mission control” to manage staff, clients, services, and growth.
+
+🔹 Overview Home Screen
+
+Daily/weekly/monthly revenue snapshot.
+
+Upcoming appointments timeline.
+
+Membership summary (active count, new signups, cancellations).
+
+Rewards issued vs redeemed this week.
+
+AI widget: “Quick win” growth suggestion.
+
+🔹 Appointments
+
+Interactive calendar (day/week/month).
+
+Drag-and-drop rescheduling with smart conflict detection.
+
+Deposit vs full payment toggle with auto-reminders.
+
+Cancellation/no-show tracking + automated fees.
+
+Waitlist management (auto-fill canceled slots).
+
+🔹 Memberships
+
+Build membership tiers (Silver, Gold, VIP).
+
+Stripe-powered recurring billing.
+
+Perks engine: discounts, freebies, double points, early access.
+
+Auto-flag delinquent memberships (retry or downgrade flow).
+
+AI upsell prompts: “Client X books monthly facials — suggest VIP plan.”
+
+🔹 Rewards / Points
+
+Configurable rules: earn per $1, referral bonus, birthday points.
+
+Redemption options: free service, % discount, product credit.
+
+Gamification: loyalty tiers (Bronze, Silver, Gold, Platinum).
+
+Expiry system + automated “use before you lose” reminders.
+
+🔹 Staff Management
+
+Role-based accounts: Admin, Receptionist, Provider.
+
+Commission tracking + performance dashboards.
+
+Calendar sync (Google/Outlook).
+
+Access logs for accountability.
+
+🔹 Multi-Location Support
+
+Location switcher in top nav.
+
+Aggregate vs per-location reports.
+
+Staff allocation across locations.
+
+🔹 Reports & Analytics
+
+Revenue by service type & provider.
+
+Membership growth & cancellations.
+
+Retention rate, client lifetime value.
+
+No-show & cancellation statistics.
+
+Export to CSV/PDF.
+
+👩‍💻 Patient Portal / Client App
+
+For end-users booking and managing memberships seamlessly.
+
+🔹 Booking Flow
+
+Guided steps: location → service → provider → date/time.
+
+Deposit or full payment option.
+
+Instant confirmations + SMS/email/push reminders.
+
+Reschedule/cancel within rules.
+
+🔹 Membership Management
+
+Dashboard of active membership(s).
+
+One-click upgrade/downgrade.
+
+Billing portal for cards and invoices.
+
+🔹 Rewards
+
+Live rewards balance + recent activity.
+
+Badges for milestones (first booking, loyalty streaks).
+
+Redeem seamlessly at checkout.
+
+🔹 Wallet & Credits
+
+Track store credits, refunds, deposits.
+
+Apply credits automatically at checkout.
+
+🔹 AI Concierge (Premium Clinics)
+
+Patient-facing AI chatbot for FAQs and booking help.
+
+Personalized recommendations (“Add Dermaplaning to today’s facial for 20% off”).
+
+💳 Pricing Model (Improved)
+
+Starter ($79/mo) – Solo practitioners, 1 location.
+
+Professional ($149/mo) – Growing practices, advanced reports.
+
+Business ($299/mo) – Multi-location (up to 3), staff management.
+
+Enterprise ($599/mo) – 10 locations, white-labeling, API.
+
+Medical Chain ($1,299/mo) – Unlimited, custom integrations, priority AI.
+
+Upsell Levers
+
+Add-ons marketplace (SMS credits, storage, staff seats).
+
+Usage-based billing triggers (auto upsell at 80–100% booking cap).
+
+AI features gated to Professional+ tiers.
+
+🌟 Premium Touches
+
+Onboarding Wizard (guided setup for services, staff, memberships).
+
+White-label branding (Enterprise+ clinics can apply logos/colors).
+
+Dark/Light mode toggle.
+
+AI insights baked into dashboards.
+
+Notification Center: in-app + SMS/email integration.
+
+Mobile-friendly design + offline-ready (PWA for clinics on iPads).
+
+⚙️ Backend (Xano Setup)
+
+Core Tables: Users, Organizations, Locations, Staff, Clients, Services, Appointments, Memberships, Plans, Subscriptions, Rewards, Transactions, Wallet, Add-ons, UsageLogs, AI Insights, Notifications, Audit Logs.
+
+API Groups:
+
+Auth (signup/login/staff invites)
+
+Org (settings, locations, staff, services)
+
+Booking (availability, appointments, reschedules)
+
+Memberships (tiers, subscriptions)
+
+Rewards (earn/redeem/history)
+
+Billing (Stripe subs, webhooks, dunning)
+
+Admin (plans, usage, org controls)
+
+AI (marketing copy, churn prediction, upsell suggestions)
+
+👉 This structure makes Aesthiq not just a booking tool but a growth engine: you (HQ) run plans and revenue from the Super Admin dashboard, clinics get all-in-one operations + AI sales tools, and patients enjoy a seamless app experience.

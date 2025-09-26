@@ -1,0 +1,41 @@
+Premium marketing site with beige/gold luxury design and tiered pricing display (Starter $79 to Medical Chain $1,299)
+
+Super Admin Dashboard (Aesthiq HQ) with organization management, plan CRUD, billing overview, trial settings, add-ons marketplace, dunning controls, usage caps, analytics (ARR/MRR, churn, retention, growth forecasting), and manual upgrade/downgrade/suspension
+
+Multi-tenant clinic dashboard with appointment calendar, client management, membership tiers, rewards, staff roles, and multi-location switcher
+
+Patient portal with booking flow, membership dashboard, rewards tracking, wallet/credits, and client-facing AI concierge/chatbot
+
+Stripe integration for subscription billing, payment processing, Connect payouts, and platform fee collection
+
+AI-powered features using OpenAI for client insights, upsell suggestions, churn prediction, marketing copy generation, dynamic pricing, and growth recommendations
+
+Role-based authentication system (Super Admin, Clinic Admin, Staff, Patients) with secure access control
+
+Appointment scheduling with calendar view, drag-and-drop rescheduling, waitlist, cancellation/no-show tracking, deposit vs full payment logic, and reminders
+
+Membership management with configurable tiers, perks engine, Stripe recurring billing, delinquent flagging, and upsell prompts
+
+Rewards/points system with earning rules, redemption options, loyalty tiers, expiry reminders, and gamification badges
+
+Multi-location support with location switcher, aggregate vs per-location reporting, and staff allocation across clinics
+
+Staff management with roles (Admin, Receptionist, Provider), commission tracking, calendar sync, and secure access logs
+
+Reports and analytics with revenue by service type/provider, best performing memberships, retention rate, lifetime value, and no-show statistics
+
+Admin-only add-ons marketplace (SMS credits, storage upgrades, staff seats, analytics modules) with usage-based billing triggers
+
+Notifications center with in-app alerts, SMS, email, and push integrations for confirmations, reminders, rewards expiry, and churn campaigns
+
+White-label branding for Enterprise+ plans with custom logos and theme colors
+
+Onboarding wizard for clinics (setup staff, services, memberships, and branding)
+
+Basic analytics dashboard with revenue tracking, booking usage monitoring, and exportable reports (CSV/PDF)
+
+Audit logs for all admin and billing actions to maintain compliance and accountability
+
+File management for consent forms, images, and marketing assets
+
+Environment configuration for feature flags (AI, SMS, email, add-ons) and Stripe/Twilio/SendGrid integrations
