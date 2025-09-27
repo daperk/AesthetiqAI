@@ -46,6 +46,40 @@ export default function PaymentSetup() {
     staleTime: 30000, // 30 seconds
   });
 
+  const generateLinkMutation = useMutation({
+    mutationFn: async () => {
+      console.log(`🔗 [FRONTEND] Generating fresh onboarding link...`);
+      const response = await apiRequest("POST", "/api/stripe-connect/refresh-onboarding", {});
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error(`💥 [FRONTEND] Link generation failed:`, errorData);
+        throw new Error(errorData.message || "Failed to generate onboarding link");
+      }
+      
+      const data = await response.json();
+      console.log(`✅ [FRONTEND] Fresh onboarding link generated:`, data.onboardingUrl);
+      return data;
+    },
+    onSuccess: (data) => {
+      console.log(`🎉 [FRONTEND] Opening fresh onboarding link:`, data.onboardingUrl);
+      window.open(data.onboardingUrl, '_blank', 'noopener,noreferrer');
+      toast({
+        title: "Onboarding Link Generated",
+        description: "Continue your Stripe setup in the new tab."
+      });
+      refetch(); // Refresh status
+    },
+    onError: (error) => {
+      console.error(`❌ [FRONTEND] Link generation error:`, error);
+      toast({
+        title: "Failed to Generate Link", 
+        description: error.message,
+        variant: "destructive"
+      });
+    }
+  });
+
   const createAccountMutation = useMutation({
     mutationFn: async () => {
       console.log(`🔄 [FRONTEND] Starting Stripe Connect account creation...`);
@@ -279,6 +313,33 @@ export default function PaymentSetup() {
                       </div>
                     </div>
                   </div>
+
+                  {/* Continue Onboarding Button for incomplete accounts */}
+                  {!accountStatus.businessFeaturesEnabled && (
+                    <div className="text-center py-4">
+                      <Button 
+                        onClick={() => generateLinkMutation.mutate()}
+                        disabled={generateLinkMutation.isPending}
+                        className="w-full"
+                        data-testid="button-continue-onboarding"
+                      >
+                        {generateLinkMutation.isPending ? (
+                          <>
+                            <LoadingSpinner size="sm" className="mr-2" />
+                            Generating Link...
+                          </>
+                        ) : (
+                          <>
+                            <ExternalLink className="w-4 h-4 mr-2" />
+                            Continue Stripe Onboarding
+                          </>
+                        )}
+                      </Button>
+                      <p className="text-xs text-muted-foreground mt-2">
+                        Complete terms and verification to enable business features
+                      </p>
+                    </div>
+                  )}
 
                   <div className="grid grid-cols-2 gap-4">
                     <div className="p-3 bg-muted/30 rounded-lg">
