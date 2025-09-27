@@ -134,7 +134,7 @@ export async function checkAccountStatus(accountId: string): Promise<{
   
   const payoutsEnabled = account.payouts_enabled || false;
   const transfersActive = account.capabilities?.transfers === 'active';
-  const hasExternalAccount = account.external_accounts?.data?.length > 0 || false;
+  const hasExternalAccount = (account.external_accounts?.data?.length ?? 0) > 0;
   const requirements = account.requirements?.currently_due || [];
   
   return {
