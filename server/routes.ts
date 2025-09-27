@@ -451,20 +451,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/appointments", requireAuth, async (req, res) => {
     try {
       let organizationId = req.query.organizationId as string;
-      const startDate = req.query.startDate ? new Date(req.query.startDate as string) : undefined;
-      const endDate = req.query.endDate ? new Date(req.query.endDate as string) : undefined;
+      
+      // Normalize date range to start/end of day
+      let startDate: Date | undefined;
+      let endDate: Date | undefined;
+      
+      if (req.query.startDate) {
+        startDate = new Date(req.query.startDate as string);
+        startDate.setHours(0, 0, 0, 0); // Start of day
+      }
+      
+      if (req.query.endDate) {
+        endDate = new Date(req.query.endDate as string);
+        endDate.setHours(23, 59, 59, 999); // End of day
+      }
       
       if (req.user?.role === "super_admin") {
         if (!organizationId) {
           return res.status(400).json({ message: "Organization ID required for super admin" });
         }
       } else {
-        organizationId = req.user?.organizationId;
+        organizationId = await getUserOrganizationId(req.user!);
+      }
+
+      if (!organizationId) {
+        return res.status(403).json({ message: "No organization access" });
       }
 
       const appointments = await storage.getAppointmentsByOrganization(organizationId, startDate, endDate);
       res.json(appointments);
     } catch (error) {
+      console.error("Get appointments error:", error);
       res.status(500).json({ message: "Failed to fetch appointments" });
     }
   });
@@ -472,6 +489,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/appointments", requireAuth, async (req, res) => {
     try {
       const appointmentData = insertAppointmentSchema.parse(req.body);
+      
+      // Check for appointment conflicts
+      const conflicts = await storage.getAppointmentsByStaff(
+        appointmentData.staffId, 
+        new Date(appointmentData.startTime)
+      );
+      
+      const hasConflict = conflicts.some(apt => {
+        const aptStart = new Date(apt.startTime);
+        const aptEnd = new Date(apt.endTime);
+        const newStart = new Date(appointmentData.startTime);
+        const newEnd = new Date(appointmentData.endTime);
+        
+        return (newStart < aptEnd && newEnd > aptStart);
+      });
+      
+      if (hasConflict) {
+        return res.status(409).json({ message: "Appointment time conflicts with existing booking" });
+      }
+      
       const appointment = await storage.createAppointment(appointmentData);
       
       await auditLog(req, "create", "appointment", appointment.id, appointmentData);
@@ -481,6 +518,72 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Invalid data", errors: error.errors });
       }
       res.status(500).json({ message: "Failed to create appointment" });
+    }
+  });
+
+  // Check availability for staff on specific date  
+  app.get("/api/availability/:staffId", requireAuth, async (req, res) => {
+    try {
+      const { staffId } = req.params;
+      const date = req.query.date as string;
+      
+      // Verify staff belongs to user's organization
+      const userOrgId = await getUserOrganizationId(req.user!);
+      if (!userOrgId && req.user?.role !== "super_admin") {
+        return res.status(403).json({ message: "No organization access" });
+      }
+      
+      if (req.user?.role !== "super_admin") {
+        const staff = await storage.getStaff(staffId);
+        if (!staff || staff.organizationId !== userOrgId) {
+          return res.status(403).json({ message: "Staff not accessible" });
+        }
+      }
+      
+      if (!date) {
+        return res.status(400).json({ message: "Date parameter required" });
+      }
+
+      const selectedDate = new Date(date);
+      
+      // Get existing appointments for this staff member on this date
+      const existingAppointments = await storage.getAppointmentsByStaff(staffId, selectedDate);
+      
+      // Generate time slots (9 AM to 6 PM, 30-minute intervals)
+      const slots = [];
+      const startHour = 9;
+      const endHour = 18;
+      const intervalMinutes = 30;
+      
+      for (let hour = startHour; hour < endHour; hour++) {
+        for (let minute = 0; minute < 60; minute += intervalMinutes) {
+          const slotTime = new Date(selectedDate);
+          slotTime.setHours(hour, minute, 0, 0);
+          
+          const timeString = slotTime.toTimeString().slice(0, 5); // HH:MM format
+          
+          // Check if this slot conflicts with existing appointments
+          const isAvailable = !existingAppointments.some(apt => {
+            const aptStart = new Date(apt.startTime);
+            const aptEnd = new Date(apt.endTime);
+            return slotTime >= aptStart && slotTime < aptEnd;
+          });
+          
+          slots.push({
+            time: timeString,
+            available: isAvailable,
+            staffId: staffId
+          });
+        }
+      }
+
+      res.json({
+        date: selectedDate.toISOString().split('T')[0],
+        slots
+      });
+    } catch (error) {
+      console.error("Availability check error:", error);
+      res.status(500).json({ message: "Failed to check availability" });
     }
   });
 

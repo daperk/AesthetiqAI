@@ -42,7 +42,20 @@ export default function Appointments() {
   });
 
   const { data: appointments, isLoading: appointmentsLoading } = useQuery<Appointment[]>({
-    queryKey: ["/api/appointments", organization?.id, selectedDate.toISOString().split('T')[0]],
+    queryKey: ["appointments", organization?.id, selectedDate.toISOString().split('T')[0]],
+    queryFn: async () => {
+      const dateStr = selectedDate.toISOString().split('T')[0];
+      const url = `/api/appointments?organizationId=${organization?.id}&startDate=${dateStr}&endDate=${dateStr}`;
+      const response = await fetch(url, {
+        credentials: 'include'
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch appointments');
+      }
+      
+      return response.json();
+    },
     enabled: !!organization?.id,
     staleTime: 30000,
   });
@@ -70,14 +83,14 @@ export default function Appointments() {
       const response = await apiRequest("POST", "/api/appointments", {
         ...appointmentData,
         organizationId: organization?.id,
-        locationId: organization?.locations?.[0]?.id, // Use first location for now
+        locationId: "temp-location-id", // TODO: Fix location management
         startTime: new Date(appointmentData.startTime),
         endTime: new Date(appointmentData.endTime),
       });
       return response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/appointments"] });
+      queryClient.invalidateQueries({ queryKey: ["appointments", organization?.id] });
       setIsCreateDialogOpen(false);
       setNewAppointment({
         clientId: "",
@@ -149,6 +162,7 @@ export default function Appointments() {
     // This would normally search through client names, services, etc.
     return appointment.notes?.toLowerCase().includes(searchTerm.toLowerCase());
   }) || [];
+
 
   if (appointmentsLoading) {
     return (

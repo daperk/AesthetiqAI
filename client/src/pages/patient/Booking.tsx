@@ -411,7 +411,7 @@ export default function Booking() {
                   </div>
                   {paymentType === "deposit" && (
                     <div className="text-sm text-muted-foreground mt-1">
-                      Remaining ${(selectedService?.price || 0) - (selectedService?.depositAmount || 0)} due at appointment
+                      Remaining ${(Number(selectedService?.price) || 0) - (Number(selectedService?.depositAmount) || 0)} due at appointment
                     </div>
                   )}
                 </div>
