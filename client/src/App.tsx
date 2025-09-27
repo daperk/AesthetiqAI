@@ -27,6 +27,7 @@ import Services from "@/pages/clinic/Services";
 import Memberships from "@/pages/clinic/Memberships";
 import Staff from "@/pages/clinic/Staff";
 import Reports from "@/pages/clinic/Reports";
+import PaymentSetup from "@/pages/clinic/PaymentSetup";
 
 // Patient Pages
 import PatientDashboard from "@/pages/patient/Dashboard";
@@ -79,6 +80,7 @@ function Router() {
               <Route path="/clinic/memberships" component={Memberships} />
               <Route path="/clinic/staff" component={Staff} />
               <Route path="/clinic/reports" component={Reports} />
+              <Route path="/clinic/payment-setup" component={PaymentSetup} />
             </>
           )}
           
