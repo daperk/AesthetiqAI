@@ -8,6 +8,47 @@ import bcrypt from "bcryptjs";
 import { storage } from "./storage";
 import { pool } from "./db";
 import * as stripeService from "./services/stripe";
+
+// Helper function to calculate reward points based on membership tier and spend
+async function calculateRewardPoints(clientId: string, organizationId: string, amountSpent: number): Promise<number> {
+  try {
+    // Get client's current membership to determine earning rate
+    const memberships = await storage.getMembershipsByClient(clientId);
+    const activeMembership = memberships.find(m => m.status === 'active');
+    
+    // Get current points balance to determine tier
+    const currentBalance = await storage.getClientRewardBalance(clientId);
+    
+    // Determine earning multiplier based on tier and membership
+    let multiplier = 1.0; // Base rate: 1 point per $1
+    
+    // Tier-based earning rates
+    if (currentBalance >= 5000) {
+      multiplier = 2.5; // Platinum: 2.5x
+    } else if (currentBalance >= 2500) {
+      multiplier = 2.0; // Gold: 2x  
+    } else if (currentBalance >= 1000) {
+      multiplier = 1.5; // Silver: 1.5x
+    } else {
+      multiplier = 1.0; // Bronze: 1x
+    }
+    
+    // Membership bonus (additional 0.5x for active members)
+    if (activeMembership) {
+      multiplier += 0.5;
+    }
+    
+    // Calculate points (rounded down to whole numbers)
+    const pointsEarned = Math.floor(amountSpent * multiplier);
+    
+    console.log(`Reward calculation: $${amountSpent} × ${multiplier} = ${pointsEarned} points (tier balance: ${currentBalance}, membership: ${activeMembership ? 'active' : 'none'})`);
+    
+    return pointsEarned;
+  } catch (error) {
+    console.error('Error calculating reward points:', error);
+    return 0;
+  }
+}
 import * as openaiService from "./services/openai";
 import { 
   insertUserSchema, insertOrganizationSchema, insertStaffSchema, insertClientSchema,
@@ -845,6 +886,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
         status: "completed"
       });
 
+      // Award reward points for service payment (with idempotency check)
+      if (appointment.clientId && paymentIntent.amount) {
+        // Check if reward already exists for this appointment
+        const existingRewards = await storage.getRewardsByClient(appointment.clientId);
+        const alreadyAwarded = existingRewards.some(r => 
+          r.referenceType === 'appointment' && r.referenceId === appointmentId
+        );
+        
+        if (!alreadyAwarded) {
+          const pointsEarned = await calculateRewardPoints(
+            appointment.clientId, 
+            appointment.organizationId, 
+            paymentIntent.amount / 100 // Convert cents to dollars
+          );
+          
+          if (pointsEarned > 0) {
+            await storage.createReward({
+              organizationId: appointment.organizationId,
+              clientId: appointment.clientId,
+              points: pointsEarned,
+              reason: `Service payment: ${appointment.notes || 'Appointment'}`,
+              referenceId: appointmentId,
+              referenceType: 'appointment'
+            });
+          }
+        }
+      }
+
       res.json({
         success: true,
         appointment: await storage.getAppointment(appointmentId)
@@ -1116,6 +1185,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
         organizationId: client.organizationId,
         monthlyFee: "100.00" // Default membership fee
       });
+
+      // Award reward points for membership purchase (with idempotency check and real pricing)
+      const existingRewards = await storage.getRewardsByClient(client.id);
+      const alreadyAwarded = existingRewards.some(r => 
+        r.referenceType === 'membership' && r.referenceId === membership.id
+      );
+      
+      if (!alreadyAwarded) {
+        // Get actual membership tier pricing
+        const tier = await storage.getMembershipTier(tierId);
+        const membershipAmount = tier ? parseFloat(tier.monthlyPrice) : parseFloat("100.00");
+        
+        const pointsEarned = await calculateRewardPoints(
+          client.id, 
+          client.organizationId, 
+          membershipAmount
+        );
+        
+        if (pointsEarned > 0) {
+          await storage.createReward({
+            organizationId: client.organizationId,
+            clientId: client.id,
+            points: pointsEarned,
+            reason: `Membership purchase: ${tierId} ($${membershipAmount})`,
+            referenceId: membership.id,
+            referenceType: 'membership'
+          });
+        }
+      }
 
       await auditLog(req, "upgrade", "membership", membership.id, { tierId, billingCycle });
       res.json(membership);

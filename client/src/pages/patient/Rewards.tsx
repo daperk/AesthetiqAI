@@ -55,7 +55,7 @@ export default function Rewards() {
       maxPoints: 999,
       color: "bg-orange-100 text-orange-800",
       icon: <Star className="w-5 h-5" />,
-      benefits: ["Earn 1 point per $1 spent", "Birthday bonus"]
+      benefits: ["Earn 1 point per $1 spent (+0.5x with membership)", "Birthday bonus"]
     },
     {
       name: "Silver", 
@@ -63,7 +63,7 @@ export default function Rewards() {
       maxPoints: 2499,
       color: "bg-gray-100 text-gray-800",
       icon: <Award className="w-5 h-5" />,
-      benefits: ["Earn 1.5 points per $1 spent", "Priority booking", "Quarterly bonus"]
+      benefits: ["Earn 1.5 points per $1 spent (+0.5x with membership)", "Priority booking", "Quarterly bonus"]
     },
     {
       name: "Gold",
@@ -71,7 +71,7 @@ export default function Rewards() {
       maxPoints: 4999,
       color: "bg-yellow-100 text-yellow-800",
       icon: <Trophy className="w-5 h-5" />,
-      benefits: ["Earn 2 points per $1 spent", "Exclusive events", "Monthly bonus"]
+      benefits: ["Earn 2 points per $1 spent (+0.5x with membership)", "Exclusive events", "Monthly bonus"]
     },
     {
       name: "Platinum",
@@ -79,7 +79,7 @@ export default function Rewards() {
       maxPoints: Infinity,
       color: "bg-purple-100 text-purple-800",
       icon: <Crown className="w-5 h-5" />,
-      benefits: ["Earn 2.5 points per $1 spent", "VIP concierge", "Weekly perks"]
+      benefits: ["Earn 2.5 points per $1 spent (+0.5x with membership)", "VIP concierge", "Weekly perks"]
     }
   ];
 
@@ -358,7 +358,7 @@ export default function Rewards() {
                           <div>
                             <div className="font-medium text-foreground">{reward.reason}</div>
                             <div className="text-sm text-muted-foreground">
-                              {new Date(reward.createdAt).toLocaleDateString()}
+                              {reward.createdAt ? new Date(reward.createdAt).toLocaleDateString() : 'Unknown date'}
                             </div>
                           </div>
                         </div>
