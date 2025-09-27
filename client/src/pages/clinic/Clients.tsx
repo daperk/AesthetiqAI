@@ -14,6 +14,7 @@ import LoadingSpinner from "@/components/ui/loading-spinner";
 import Navigation from "@/components/Navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { useOrganization } from "@/hooks/useOrganization";
+import { usePaymentRequired } from "@/hooks/usePaymentRequired";
 import { apiRequest } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { 
@@ -27,6 +28,9 @@ export default function Clients() {
   const { organization } = useOrganization();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  
+  // Enforce payment setup requirement
+  const { isLoading: paymentLoading, hasAccess } = usePaymentRequired();
   
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
@@ -118,12 +122,18 @@ export default function Clients() {
     return `${client.firstName[0] || ''}${client.lastName[0] || ''}`.toUpperCase();
   };
 
-  if (clientsLoading) {
+  // Show loading while checking payment status or loading clients
+  if (clientsLoading || paymentLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <LoadingSpinner size="lg" />
       </div>
     );
+  }
+
+  // Block access if payment setup is not complete (will redirect to payment setup)
+  if (!hasAccess) {
+    return null;
   }
 
   return (

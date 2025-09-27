@@ -11,6 +11,7 @@ import LoadingSpinner from "@/components/ui/loading-spinner";
 import Navigation from "@/components/Navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { useOrganization } from "@/hooks/useOrganization";
+import { usePaymentRequired } from "@/hooks/usePaymentRequired";
 import { 
   TrendingUp, DollarSign, Users, Calendar as CalendarIcon,
   Download, Filter, BarChart3, PieChart, LineChart,
@@ -21,6 +22,9 @@ import type { DashboardStats } from "@/types";
 export default function Reports() {
   const { user } = useAuth();
   const { organization } = useOrganization();
+  
+  // Enforce payment setup requirement
+  const { isLoading: paymentLoading, hasAccess } = usePaymentRequired();
   
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
     from: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
@@ -65,12 +69,18 @@ export default function Reports() {
     });
   };
 
-  if (analyticsLoading) {
+  // Show loading while checking payment status or loading analytics
+  if (analyticsLoading || paymentLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <LoadingSpinner size="lg" />
       </div>
     );
+  }
+
+  // Block access if payment setup is not complete (will redirect to payment setup)
+  if (!hasAccess) {
+    return null;
   }
 
   return (

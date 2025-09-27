@@ -14,6 +14,7 @@ import LoadingSpinner from "@/components/ui/loading-spinner";
 import Navigation from "@/components/Navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { useOrganization } from "@/hooks/useOrganization";
+import { usePaymentRequired } from "@/hooks/usePaymentRequired";
 import { apiRequest } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { 
@@ -37,6 +38,9 @@ export default function Memberships() {
   const { organization } = useOrganization();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  
+  // Enforce payment setup requirement
+  const { isLoading: paymentLoading, hasAccess } = usePaymentRequired();
   
   const [activeTab, setActiveTab] = useState("tiers");
   const [searchTerm, setSearchTerm] = useState("");
@@ -167,12 +171,18 @@ export default function Memberships() {
     return { totalMembers, activeMembers, totalMRR };
   };
 
-  if (membershipsLoading) {
+  // Show loading while checking payment status or loading memberships
+  if (membershipsLoading || paymentLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <LoadingSpinner size="lg" />
       </div>
     );
+  }
+
+  // Block access if payment setup is not complete (will redirect to payment setup)
+  if (!hasAccess) {
+    return null;
   }
 
   const stats = getMembershipStats();

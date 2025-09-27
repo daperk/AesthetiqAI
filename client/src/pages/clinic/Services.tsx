@@ -12,6 +12,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { useOrganization } from "@/hooks/useOrganization";
+import { usePaymentRequired } from "@/hooks/usePaymentRequired";
 import Navigation from "@/components/Navigation";
 import LoadingSpinner from "@/components/ui/loading-spinner";
 import { Plus, MoreHorizontal, Edit, Trash2, Clock, DollarSign, Users } from "lucide-react";
@@ -34,6 +35,10 @@ export default function Services() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { organization } = useOrganization();
+  
+  // Enforce payment setup requirement
+  const { isLoading: paymentLoading, hasAccess } = usePaymentRequired();
+  
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [editingService, setEditingService] = useState<Service | null>(null);
   const [formData, setFormData] = useState<ServiceFormData>({
@@ -205,12 +210,18 @@ export default function Services() {
     return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}m` : `${hours}h`;
   };
 
-  if (isLoading) {
+  // Show loading while checking payment status or loading services
+  if (isLoading || paymentLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <LoadingSpinner size="lg" />
       </div>
     );
+  }
+
+  // Block access if payment setup is not complete (will redirect to payment setup)
+  if (!hasAccess) {
+    return null;
   }
 
   return (
