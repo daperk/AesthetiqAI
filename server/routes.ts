@@ -212,6 +212,92 @@ export async function registerRoutes(app: Express): Promise<Server> {
           password: hashedPassword
         });
 
+        // For clinic_admin, create organization with subscription and link them
+        if (user.role === "clinic_admin") {
+          // Get enterprise plan for testing (all features enabled)
+          const plans = await storage.getSubscriptionPlans();
+          const enterprisePlan = plans.find(p => p.tier === 'enterprise') || plans[0];
+          
+          if (!enterprisePlan) {
+            throw new Error("No subscription plans available");
+          }
+          
+          // Create organization for the business
+          const organizationData = {
+            name: userData.businessName || `${user.firstName || ''} ${user.lastName || ''} Clinic`.trim(),
+            slug: (userData.businessName || user.email).toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, ''),
+            subscriptionPlanId: enterprisePlan.id,
+            whiteLabelSettings: {},
+            isActive: true
+          };
+          
+          const organization = await storage.createOrganization(organizationData);
+          
+          // Create Stripe customer and subscription with 30-day trial
+          if (userData.paymentMethod) {
+            try {
+              // Create Stripe customer
+              const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+              const customer = await stripe.customers.create({
+                email: user.email,
+                name: `${user.firstName || ''} ${user.lastName || ''}`.trim(),
+                metadata: {
+                  organizationId: organization.id,
+                  userId: user.id
+                }
+              });
+              
+              // Attach payment method to customer
+              await stripe.paymentMethods.attach(userData.paymentMethod.id, {
+                customer: customer.id,
+              });
+              
+              // Set as default payment method
+              await stripe.customers.update(customer.id, {
+                invoice_settings: {
+                  default_payment_method: userData.paymentMethod.id,
+                },
+              });
+              
+              // Create subscription with 30-day trial
+              const priceId = userData.billingCycle === 'yearly' ? 
+                enterprisePlan.stripePriceIdYearly : enterprisePlan.stripePriceIdMonthly;
+              
+              const subscription = await stripe.subscriptions.create({
+                customer: customer.id,
+                items: [{ price: priceId }],
+                trial_period_days: 30,
+                metadata: {
+                  organizationId: organization.id,
+                  planTier: enterprisePlan.tier
+                }
+              });
+              
+              // Store Stripe IDs in organization
+              await storage.updateOrganization(organization.id, {
+                stripeCustomerId: customer.id,
+                stripeSubscriptionId: subscription.id
+              });
+              
+              console.log(`Created Stripe subscription ${subscription.id} with 30-day trial for organization ${organization.id}`);
+            } catch (stripeError) {
+              console.error("Stripe setup error:", stripeError);
+              // Continue without subscription setup - user can add payment later
+            }
+          }
+          
+          // Create staff record linking admin to organization
+          await storage.createStaff({
+            userId: user.id,
+            organizationId: organization.id,
+            role: "admin",
+            title: "Clinic Administrator",
+            isActive: true
+          });
+          
+          console.log(`Created organization ${organization.id} for clinic admin ${user.id} with ${enterprisePlan.name} plan`);
+        }
+
         // Log them in
         req.logIn(user, (err) => {
           if (err) {
@@ -570,9 +656,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Enhanced appointment booking with payment
-  app.post("/api/appointments/book-with-payment", requireAuth, async (req, res) => {
+  // Public booking with payment endpoint 
+  app.post("/api/appointments/book-with-payment", async (req, res) => {
     try {
-      const { serviceId, locationId, staffId, startTime, endTime, paymentMethodId } = req.body;
+      const { 
+        serviceId, 
+        locationId, 
+        staffId, 
+        startTime, 
+        endTime, 
+        paymentType = 'full',
+        clientInfo 
+      } = req.body;
 
       // Get service details to determine payment type
       const service = await storage.getService(serviceId);
@@ -580,47 +675,75 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Service not found" });
       }
 
-      // Get or create client record
-      let client = await storage.getClientByUser(req.user?.id);
-      if (!client) {
-        // Create client record for patient
-        client = await storage.createClient({
-          userId: req.user?.id,
+      // Validate location belongs to service organization
+      const location = await storage.getLocation(locationId);
+      if (!location || location.organizationId !== service.organizationId) {
+        return res.status(400).json({ message: "Invalid location for this service" });
+      }
+
+      // For public bookings, create temporary client record
+      let client;
+      if (req.isAuthenticated()) {
+        // Authenticated user booking
+        client = await storage.getClientByUser(req.user?.id);
+        if (!client) {
+          client = await storage.createClient({
+            userId: req.user?.id,
+            organizationId: service.organizationId,
+            firstName: req.user?.firstName || "",
+            lastName: req.user?.lastName || "",
+            email: req.user?.email,
+            phone: req.user?.phone
+          });
+        }
+      } else {
+        // Public booking - create client with provided info
+        if (!clientInfo?.email || !clientInfo?.firstName || !clientInfo?.lastName) {
+          return res.status(400).json({ message: "Client information required for public booking" });
+        }
+        
+        // Check if client already exists by email
+        const existingClient = await storage.getClientByEmail(clientInfo.email);
+        if (existingClient) {
+          client = existingClient;
+        } else {
+          client = await storage.createClient({
+            organizationId: service.organizationId,
+            firstName: clientInfo.firstName,
+            lastName: clientInfo.lastName,
+            email: clientInfo.email,
+            phone: clientInfo.phone || null
+          });
+        }
+      }
+
+      // Determine payment amount based on user selection and service config
+      const isDepositPayment = paymentType === 'deposit' && service.depositRequired;
+      const paymentAmount = isDepositPayment ? Number(service.depositAmount) : Number(service.price);
+      
+      // Create Stripe customer for payment
+      const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+      const customer = await stripe.customers.create({
+        email: client.email,
+        name: `${client.firstName} ${client.lastName}`,
+        metadata: {
           organizationId: service.organizationId,
-          firstName: req.user?.firstName || "",
-          lastName: req.user?.lastName || "",
-          email: req.user?.email,
-          phone: req.user?.phone
-        });
-      }
-
-      // Ensure user has a Stripe customer ID
-      if (!req.user?.stripeCustomerId) {
-        const stripeCustomer = await stripeService.createCustomer(
-          req.user?.email!,
-          `${req.user?.firstName} ${req.user?.lastName}`,
-          service.organizationId
-        );
-        await storage.updateUser(req.user?.id!, { stripeCustomerId: stripeCustomer.id });
-        req.user.stripeCustomerId = stripeCustomer.id;
-      }
-
-      // Determine payment amount
-      const isDepositOnly = service.depositRequired;
-      const paymentAmount = isDepositOnly ? Number(service.depositAmount) : Number(service.price);
+          clientId: client.id
+        }
+      });
       
       // Create Stripe PaymentIntent
-      const paymentIntent = await stripeService.createPaymentIntent(
-        Math.round(paymentAmount * 100), // Convert to cents
-        "usd",
-        req.user.stripeCustomerId,
-        {
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: Math.round(paymentAmount * 100), // Convert to cents
+        currency: 'usd',
+        customer: customer.id,
+        metadata: {
           serviceId: service.id,
           organizationId: service.organizationId,
           clientId: client.id,
-          paymentType: isDepositOnly ? "deposit" : "full_payment"
+          paymentType: isDepositPayment ? "deposit" : "full_payment"
         }
-      );
+      });
 
       // Create appointment
       const appointment = await storage.createAppointment({
@@ -632,8 +755,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         startTime: new Date(startTime),
         endTime: new Date(endTime),
         totalAmount: service.price,
-        depositPaid: isDepositOnly ? service.depositAmount : service.price,
-        status: "scheduled"
+        depositPaid: isDepositPayment ? service.depositAmount : service.price,
+        status: "pending_payment"
       });
 
       // Create transaction record
@@ -642,27 +765,65 @@ export async function registerRoutes(app: Express): Promise<Server> {
         clientId: client.id,
         appointmentId: appointment.id,
         amount: paymentAmount,
-        type: isDepositOnly ? "appointment_deposit" : "appointment_full",
+        type: isDepositPayment ? "appointment_deposit" : "appointment_full",
         status: "pending",
-        stripePaymentIntentId: paymentIntent.paymentIntentId,
-        description: `${isDepositOnly ? "Deposit for" : "Full payment for"} ${service.name}`
+        paymentIntentId: paymentIntent.id
       });
-
-      await auditLog(req, "create", "appointment", appointment.id, { serviceId, paymentType: isDepositOnly ? "deposit" : "full" });
 
       res.json({
-        appointment,
-        paymentIntent: {
-          clientSecret: paymentIntent.clientSecret,
-          amount: paymentAmount,
-          type: isDepositOnly ? "deposit" : "full_payment",
-          requiresConfirmation: true
-        }
+        appointmentId: appointment.id,
+        clientSecret: paymentIntent.client_secret,
+        paymentAmount: paymentAmount,
+        paymentType: isDepositPayment ? "deposit" : "full"
+      });
+      
+    } catch (error) {
+      console.error("Book with payment error:", error);
+      res.status(500).json({ message: "Failed to create appointment with payment" });
+    }
+  });
+
+  // Finalize payment after Stripe confirmation
+  app.post("/api/appointments/finalize-payment", async (req, res) => {
+    try {
+      const { appointmentId, paymentIntentId } = req.body;
+
+      if (!appointmentId || !paymentIntentId) {
+        return res.status(400).json({ message: "Appointment ID and Payment Intent ID required" });
+      }
+
+      // Get appointment
+      const appointment = await storage.getAppointment(appointmentId);
+      if (!appointment) {
+        return res.status(404).json({ message: "Appointment not found" });
+      }
+
+      // Verify payment with Stripe
+      const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+      const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+      
+      if (paymentIntent.status !== 'succeeded') {
+        return res.status(400).json({ message: "Payment not confirmed" });
+      }
+
+      // Update appointment to confirmed
+      await storage.updateAppointment(appointmentId, {
+        status: "scheduled"
       });
 
+      // Update transaction to succeeded
+      await storage.updateTransactionByPaymentIntent(paymentIntentId, {
+        status: "succeeded"
+      });
+
+      res.json({
+        success: true,
+        appointment: await storage.getAppointment(appointmentId)
+      });
+      
     } catch (error) {
-      console.error("Booking with payment error:", error);
-      res.status(500).json({ message: "Failed to create appointment with payment" });
+      console.error("Payment finalization error:", error);
+      res.status(500).json({ message: "Failed to finalize payment" });
     }
   });
 
@@ -1165,6 +1326,159 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+
+  // Subscription routes  
+  app.post("/api/subscriptions/create", requireAuth, async (req, res) => {
+    try {
+      const { planId, billingCycle = 'monthly' } = req.body;
+      const userId = req.user!.id;
+      
+      // Get user's organization
+      const organizationId = await getUserOrganizationId(req.user!);
+      if (!organizationId) {
+        return res.status(400).json({ message: "No organization found for user" });
+      }
+      
+      const organization = await storage.getOrganization(organizationId);
+      if (!organization) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+      
+      // Get subscription plan
+      const plan = await storage.getSubscriptionPlan(planId);
+      if (!plan) {
+        return res.status(404).json({ message: "Subscription plan not found" });
+      }
+      
+      // Initialize Stripe
+      const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+      
+      let customerId = organization.stripeCustomerId;
+      
+      // Create Stripe customer if doesn't exist
+      if (!customerId) {
+        const customer = await stripe.customers.create({
+          email: req.user!.email,
+          name: `${req.user!.firstName || ''} ${req.user!.lastName || ''}`.trim(),
+          metadata: {
+            organizationId: organization.id,
+            userId: userId
+          }
+        });
+        customerId = customer.id;
+        
+        // Update organization with customer ID
+        await storage.updateOrganization(organization.id, {
+          stripeCustomerId: customerId
+        });
+      }
+      
+      // Create setup intent for payment method collection
+      const setupIntent = await stripe.setupIntents.create({
+        customer: customerId,
+        usage: 'off_session',
+        metadata: {
+          organizationId: organization.id,
+          planId: plan.id,
+          billingCycle: billingCycle
+        }
+      });
+      
+      res.json({
+        setupIntent,
+        planDetails: {
+          name: plan.name,
+          price: billingCycle === 'yearly' ? plan.yearlyPrice : plan.monthlyPrice,
+          billingCycle: billingCycle
+        }
+      });
+      
+    } catch (error) {
+      console.error("Subscription creation error:", error);
+      res.status(500).json({ message: "Failed to create subscription" });
+    }
+  });
+  
+  app.post("/api/subscriptions/confirm", requireAuth, async (req, res) => {
+    try {
+      const { setupIntentId, planId, billingCycle = 'monthly' } = req.body;
+      
+      // Get user's organization
+      const organizationId = await getUserOrganizationId(req.user!);
+      if (!organizationId) {
+        return res.status(400).json({ message: "No organization found for user" });
+      }
+      
+      const organization = await storage.getOrganization(organizationId);
+      if (!organization) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+      
+      // Get subscription plan
+      const plan = await storage.getSubscriptionPlan(planId);
+      if (!plan) {
+        return res.status(404).json({ message: "Subscription plan not found" });
+      }
+      
+      // Initialize Stripe
+      const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+      
+      // Retrieve the setup intent
+      const setupIntent = await stripe.setupIntents.retrieve(setupIntentId);
+      
+      if (setupIntent.status !== 'succeeded') {
+        return res.status(400).json({ message: "Payment method not confirmed" });
+      }
+      
+      // Create subscription with 30-day trial
+      const priceId = billingCycle === 'yearly' ? 
+        plan.stripePriceIdYearly : plan.stripePriceIdMonthly;
+      
+      if (!priceId) {
+        // For testing, create without Stripe price ID
+        console.log(`No Stripe price ID for plan ${plan.name}, creating without Stripe subscription`);
+        
+        // Update organization with plan info
+        await storage.updateOrganization(organization.id, {
+          subscriptionPlanId: plan.id,
+          stripeCustomerId: organization.stripeCustomerId
+        });
+        
+        return res.json({
+          success: true,
+          message: "Subscription activated with trial period",
+          organization: await storage.getOrganization(organization.id)
+        });
+      }
+      
+      const subscription = await stripe.subscriptions.create({
+        customer: setupIntent.customer,
+        items: [{ price: priceId }],
+        default_payment_method: setupIntent.payment_method,
+        trial_period_days: 30,
+        metadata: {
+          organizationId: organization.id,
+          planTier: plan.tier
+        }
+      });
+      
+      // Update organization with subscription info
+      await storage.updateOrganization(organization.id, {
+        subscriptionPlanId: plan.id,
+        stripeSubscriptionId: subscription.id
+      });
+      
+      res.json({
+        success: true,
+        subscription,
+        organization: await storage.getOrganization(organization.id)
+      });
+      
+    } catch (error) {
+      console.error("Subscription confirmation error:", error);
+      res.status(500).json({ message: "Failed to confirm subscription" });
+    }
+  });
 
   // Stripe payment routes
   app.post("/api/payments/create-payment-intent", requireAuth, async (req, res) => {

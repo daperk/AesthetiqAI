@@ -89,6 +89,7 @@ export interface IStorage {
   getTransactionsByAppointment(appointmentId: string): Promise<Transaction[]>;
   createTransaction(transaction: InsertTransaction): Promise<Transaction>;
   updateTransaction(id: string, updates: Partial<InsertTransaction>): Promise<Transaction>;
+  updateTransactionByPaymentIntent(paymentIntentId: string, updates: Partial<InsertTransaction>): Promise<void>;
 
   // AI Insights
   getAiInsightsByOrganization(organizationId: string): Promise<AiInsight[]>;
@@ -257,7 +258,7 @@ export class DatabaseStorage implements IStorage {
     
     let staffMembers = await db.select().from(staff)
       .where(and(eq(staff.organizationId, location.organizationId), eq(staff.isActive, true)))
-      .orderBy(asc(staff.firstName), asc(staff.lastName));
+      .orderBy(asc(staff.title));
     
     // If service has specific staff assigned, filter by those
     if (service.availableStaffIds && service.availableStaffIds.length > 0) {
@@ -481,6 +482,10 @@ export class DatabaseStorage implements IStorage {
   async updateTransaction(id: string, updates: Partial<InsertTransaction>): Promise<Transaction> {
     const [transaction] = await db.update(transactions).set(updates).where(eq(transactions.id, id)).returning();
     return transaction;
+  }
+
+  async updateTransactionByPaymentIntent(paymentIntentId: string, updates: Partial<InsertTransaction>): Promise<void> {
+    await db.update(transactions).set(updates).where(eq(transactions.paymentIntentId, paymentIntentId));
   }
 
   // AI Insights

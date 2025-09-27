@@ -23,6 +23,7 @@ interface BookingData {
   locationId: string;
   startTime: string;
   endTime: string;
+  paymentType: "full" | "deposit";
   notes?: string;
 }
 
@@ -49,8 +50,9 @@ export function BookingWithPayment({
   const { toast } = useToast();
   const { organization } = useOrganization();
 
-  const isDepositOnly = Boolean(service.depositRequired);
-  const paymentAmount = isDepositOnly ? Number(service.depositAmount) : Number(service.price);
+  // Determine payment amount based on user selection and service config
+  const isDepositPayment = bookingData.paymentType === 'deposit' && service.depositRequired;
+  const paymentAmount = isDepositPayment ? Number(service.depositAmount) : Number(service.price);
 
   useEffect(() => {
     createPaymentIntent();
@@ -86,8 +88,22 @@ export function BookingWithPayment({
     }
   };
 
-  const handlePaymentSuccess = (paymentIntentId: string) => {
-    onSuccess(appointmentId);
+  const handlePaymentSuccess = async (paymentIntentId: string) => {
+    try {
+      // Finalize appointment after successful payment
+      await apiRequest("POST", "/api/appointments/finalize-payment", {
+        appointmentId,
+        paymentIntentId
+      });
+      
+      onSuccess(appointmentId);
+    } catch (error: any) {
+      toast({
+        title: "Payment Confirmation Error",
+        description: "Payment was successful but there was an issue confirming your appointment. Please contact support.",
+        variant: "destructive",
+      });
+    }
   };
 
   const formatDateTime = (dateTimeStr: string) => {
@@ -209,7 +225,7 @@ export function BookingWithPayment({
       >
         <PaymentForm
           amount={Number(service.price)}
-          isDepositOnly={isDepositOnly}
+          isDepositOnly={isDepositPayment}
           depositAmount={Number(service.depositAmount)}
           serviceName={service.name}
           onSuccess={handlePaymentSuccess}
