@@ -29,6 +29,23 @@ export function useAuth() {
     queryKey: ["/api/auth/me"],
     retry: false,
     staleTime: 5 * 60 * 1000, // 5 minutes
+    queryFn: async () => {
+      try {
+        const response = await apiRequest("GET", "/api/auth/me");
+        if (response.ok) {
+          const data = await response.json();
+          return data.user;
+        } else if (response.status === 401) {
+          // User is not authenticated, return null instead of throwing
+          return null;
+        } else {
+          throw new Error("Failed to fetch user data");
+        }
+      } catch (error) {
+        // Handle network errors by returning null (not authenticated)
+        return null;
+      }
+    },
   });
 
   const loginMutation = useMutation({
