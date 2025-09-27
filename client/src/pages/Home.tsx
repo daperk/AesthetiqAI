@@ -4,7 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import Navigation from "@/components/Navigation";
 import { 
-  Gem, Calendar, Crown, Brain, Settings, WavesLadder, Smartphone, 
+  Gem, Calendar, Crown, Brain, Settings, Waves, Smartphone, 
   ArrowUp, ArrowDown, Rocket, Headset, Shield, Twitter, 
   Linkedin, Instagram, Check 
 } from "lucide-react";
@@ -174,7 +174,7 @@ export default function Home() {
             <Card className="bg-background rounded-xl shadow-sm border border-border">
               <CardContent className="p-6">
                 <div className="flex items-center space-x-3 mb-4">
-                  <WavesLadder className="text-primary text-lg" />
+                  <Waves className="text-primary text-lg" />
                   <h4 className="text-lg font-semibold text-foreground" data-testid="text-clinic-dashboard-title">Clinic Dashboard</h4>
                 </div>
                 <p className="text-muted-foreground text-sm mb-4">Complete practice management for beauty professionals</p>

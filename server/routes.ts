@@ -224,12 +224,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       let organizationId = req.query.organizationId as string;
       
-      if (req.user.role === "super_admin") {
+      if (req.user?.role === "super_admin") {
         if (!organizationId) {
           return res.status(400).json({ message: "Organization ID required for super admin" });
         }
       } else {
-        organizationId = req.user.organizationId;
+        organizationId = req.user?.organizationId;
       }
 
       const staff = await storage.getStaffByOrganization(organizationId);
@@ -259,12 +259,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       let organizationId = req.query.organizationId as string;
       
-      if (req.user.role === "super_admin") {
+      if (req.user?.role === "super_admin") {
         if (!organizationId) {
           return res.status(400).json({ message: "Organization ID required for super admin" });
         }
       } else {
-        organizationId = req.user.organizationId;
+        organizationId = req.user?.organizationId;
       }
 
       const clients = await storage.getClientsByOrganization(organizationId);
@@ -296,12 +296,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const startDate = req.query.startDate ? new Date(req.query.startDate as string) : undefined;
       const endDate = req.query.endDate ? new Date(req.query.endDate as string) : undefined;
       
-      if (req.user.role === "super_admin") {
+      if (req.user?.role === "super_admin") {
         if (!organizationId) {
           return res.status(400).json({ message: "Organization ID required for super admin" });
         }
       } else {
-        organizationId = req.user.organizationId;
+        organizationId = req.user?.organizationId;
       }
 
       const appointments = await storage.getAppointmentsByOrganization(organizationId, startDate, endDate);
@@ -331,12 +331,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       let organizationId = req.query.organizationId as string;
       
-      if (req.user.role === "super_admin") {
+      if (req.user?.role === "super_admin") {
         if (!organizationId) {
           return res.status(400).json({ message: "Organization ID required for super admin" });
         }
       } else {
-        organizationId = req.user.organizationId;
+        organizationId = req.user?.organizationId;
       }
 
       const services = await storage.getServicesByOrganization(organizationId);
@@ -372,18 +372,66 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json(memberships);
       }
 
-      if (req.user.role === "super_admin") {
+      if (req.user?.role === "super_admin") {
         if (!organizationId) {
           return res.status(400).json({ message: "Organization ID required for super admin" });
         }
       } else {
-        organizationId = req.user.organizationId;
+        organizationId = req.user?.organizationId;
       }
 
       const memberships = await storage.getMembershipsByOrganization(organizationId);
       res.json(memberships);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch memberships" });
+    }
+  });
+
+  // Get current user's membership
+  app.get("/api/memberships/my-membership", requireAuth, async (req, res) => {
+    try {
+      // Get client record for current user
+      const client = await storage.getClientByUser(req.user?.id);
+      if (!client) {
+        return res.status(404).json({ message: "Client profile not found" });
+      }
+
+      const memberships = await storage.getMembershipsByClient(client.id);
+      // Return the active membership or null
+      const activeMembership = memberships.find(m => m.status === 'active') || null;
+      res.json({ membership: activeMembership });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch membership" });
+    }
+  });
+
+  // Upgrade membership endpoint
+  app.post("/api/memberships/upgrade", requireAuth, async (req, res) => {
+    try {
+      const { tierId, billingCycle } = req.body;
+      
+      // Get client record for current user
+      const client = await storage.getClientByUser(req.user?.id);
+      if (!client) {
+        return res.status(404).json({ message: "Client profile not found" });
+      }
+
+      // For now, create a simple membership record
+      // In production, this would integrate with Stripe for billing
+      const membership = await storage.createMembership({
+        clientId: client.id,
+        tierName: tierId,
+        startDate: new Date(),
+        status: 'active',
+        billingCycle: billingCycle,
+        nextBillingDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) // 30 days from now
+      });
+
+      await auditLog(req, "upgrade", "membership", membership.id, { tierId, billingCycle });
+      res.json(membership);
+    } catch (error) {
+      console.error("Membership upgrade error:", error);
+      res.status(500).json({ message: "Failed to upgrade membership" });
     }
   });
 
@@ -395,6 +443,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ rewards, balance });
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch rewards" });
+    }
+  });
+
+  // Get current user's rewards
+  app.get("/api/rewards/my-rewards", requireAuth, async (req, res) => {
+    try {
+      // Get client record for current user
+      const client = await storage.getClientByUser(req.user?.id);
+      if (!client) {
+        return res.status(404).json({ message: "Client profile not found" });
+      }
+
+      const rewards = await storage.getRewardsByClient(client.id);
+      const balance = await storage.getClientRewardBalance(client.id);
+      res.json({ rewards, balance: balance || 0 });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch rewards" });
+    }
+  });
+
+  // Redeem points endpoint
+  app.post("/api/rewards/redeem", requireAuth, async (req, res) => {
+    try {
+      const { optionId, pointsCost } = req.body;
+      
+      // Get client record for current user
+      const client = await storage.getClientByUser(req.user?.id);
+      if (!client) {
+        return res.status(404).json({ message: "Client profile not found" });
+      }
+
+      // Check if client has enough points
+      const currentBalance = await storage.getClientRewardBalance(client.id);
+      if (currentBalance < pointsCost) {
+        return res.status(400).json({ message: "Insufficient points balance" });
+      }
+
+      // Create reward redemption record
+      const reward = await storage.createReward({
+        clientId: client.id,
+        pointsEarned: -pointsCost, // Negative for redemption
+        description: `Redeemed: ${optionId}`,
+        earnedDate: new Date()
+      });
+
+      await auditLog(req, "redeem", "reward", reward.id, { optionId, pointsCost });
+      res.json({ message: "Points redeemed successfully", reward });
+    } catch (error) {
+      console.error("Reward redemption error:", error);
+      res.status(500).json({ message: "Failed to redeem points" });
     }
   });
 
@@ -418,12 +516,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       let organizationId = req.query.organizationId as string;
       
-      if (req.user.role === "super_admin") {
+      if (req.user?.role === "super_admin") {
         if (!organizationId) {
           return res.status(400).json({ message: "Organization ID required for super admin" });
         }
       } else {
-        organizationId = req.user.organizationId;
+        organizationId = req.user?.organizationId;
       }
 
       const insights = await storage.getAiInsightsByOrganization(organizationId);
@@ -531,41 +629,108 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       let organizationId = req.query.organizationId as string;
       
-      if (req.user.role === "super_admin") {
+      if (req.user?.role === "super_admin") {
         if (!organizationId) {
           return res.status(400).json({ message: "Organization ID required for super admin" });
         }
       } else {
-        organizationId = req.user.organizationId;
+        organizationId = req.user?.organizationId;
       }
 
-      // This would typically involve complex aggregation queries
-      // For now, return basic analytics structure
+      // Real analytics data aggregation
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      const thisYear = new Date(now.getFullYear(), 0, 1);
+      const thisWeek = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+      // Get revenue from completed appointments
+      const completedAppointments = await storage.getAppointmentsByOrganization(organizationId);
+      const todayRevenue = completedAppointments
+        .filter(apt => apt.status === 'completed' && new Date(apt.createdAt!) >= today)
+        .reduce((sum, apt) => sum + Number(apt.totalAmount || 0), 0);
+      
+      const monthRevenue = completedAppointments
+        .filter(apt => apt.status === 'completed' && new Date(apt.createdAt!) >= thisMonth)
+        .reduce((sum, apt) => sum + Number(apt.totalAmount || 0), 0);
+        
+      const yearRevenue = completedAppointments
+        .filter(apt => apt.status === 'completed' && new Date(apt.createdAt!) >= thisYear)
+        .reduce((sum, apt) => sum + Number(apt.totalAmount || 0), 0);
+
+      // Get appointment counts
+      const allAppointments = await storage.getAppointmentsByOrganization(organizationId);
+      const todayAppointments = allAppointments.filter(apt => new Date(apt.startTime) >= today).length;
+      const weekAppointments = allAppointments.filter(apt => new Date(apt.startTime) >= thisWeek).length;
+      const monthAppointments = allAppointments.filter(apt => new Date(apt.startTime) >= thisMonth).length;
+
+      // Get client counts
+      const allClients = await storage.getClientsByOrganization(organizationId);
+      const newClients = allClients.filter(client => new Date(client.createdAt!) >= thisMonth).length;
+      const activeClients = allClients.filter(client => client.isActive !== false).length;
+
+      // Get staff counts
+      const allStaff = await storage.getStaffByOrganization(organizationId);
+      const activeStaff = allStaff.filter(staff => staff.isActive !== false).length;
+
       const analytics = {
         revenue: {
-          today: 0,
-          month: 0,
-          year: 0
+          today: todayRevenue,
+          month: monthRevenue,
+          year: yearRevenue
         },
         appointments: {
-          today: 0,
-          week: 0,
-          month: 0
+          today: todayAppointments,
+          week: weekAppointments,
+          month: monthAppointments
         },
         clients: {
-          total: 0,
-          new: 0,
-          active: 0
+          total: allClients.length,
+          new: newClients,
+          active: activeClients
         },
         staff: {
-          total: 0,
-          active: 0
+          total: allStaff.length,
+          active: activeStaff
         }
       };
 
       res.json(analytics);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch analytics" });
+    }
+  });
+
+  // AI Chat endpoint for patient concierge
+  app.post("/api/chat", requireAuth, async (req, res) => {
+    try {
+      const { message, context } = req.body;
+      
+      if (!message) {
+        return res.status(400).json({ message: "Message is required" });
+      }
+
+      // Get available services and slots for context
+      const organizationId = req.user?.organizationId;
+      const availableServices = organizationId ? await storage.getServicesByOrganization(organizationId) : [];
+      
+      // For now, we'll provide empty slots - this would typically query a calendar system
+      const availableSlots: any[] = [];
+
+      const responseText = await openaiService.generateBookingChatResponse(message, {
+        clientName: context?.clientName || req.user?.firstName,
+        availableServices,
+        availableSlots,
+        membershipStatus: context?.membershipStatus
+      });
+
+      res.json({ 
+        message: responseText,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error("Chat endpoint error:", error);
+      res.status(500).json({ message: "Failed to process chat message" });
     }
   });
 
