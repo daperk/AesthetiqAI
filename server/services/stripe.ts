@@ -89,6 +89,10 @@ export async function createConnectAccount(organization: {
       support_email: organization.email,
       url: process.env.FRONTEND_URL || 'https://your-domain.com'
     },
+    capabilities: {
+      card_payments: { requested: true },
+      transfers: { requested: true }
+    },
     metadata: {
       organizationId: organization.organizationId
     }
