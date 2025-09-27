@@ -203,6 +203,12 @@ export class DatabaseStorage implements IStorage {
       .orderBy(asc(locations.name));
   }
 
+  async getAllLocations(): Promise<Location[]> {
+    return await db.select().from(locations)
+      .where(eq(locations.isActive, true))
+      .orderBy(asc(locations.name));
+  }
+
   async getLocation(id: string): Promise<Location | undefined> {
     const [location] = await db.select().from(locations).where(eq(locations.id, id));
     return location || undefined;
@@ -222,6 +228,43 @@ export class DatabaseStorage implements IStorage {
   async getStaffByOrganization(organizationId: string): Promise<Staff[]> {
     return await db.select().from(staff)
       .where(and(eq(staff.organizationId, organizationId), eq(staff.isActive, true)));
+  }
+
+  async getStaffByLocation(locationId: string): Promise<Staff[]> {
+    // Get the organization for this location first
+    const location = await this.getLocation(locationId);
+    if (!location) {
+      return [];
+    }
+    
+    return await db.select().from(staff)
+      .where(and(eq(staff.organizationId, location.organizationId), eq(staff.isActive, true)))
+      .orderBy(asc(staff.title));
+  }
+
+  async getStaffByLocationAndService(locationId: string, serviceId: string): Promise<Staff[]> {
+    // Get the organization for this location first
+    const location = await this.getLocation(locationId);
+    if (!location) {
+      return [];
+    }
+    
+    // Get the service to check if it has specific staff assigned
+    const service = await this.getService(serviceId);
+    if (!service) {
+      return [];
+    }
+    
+    let staffMembers = await db.select().from(staff)
+      .where(and(eq(staff.organizationId, location.organizationId), eq(staff.isActive, true)))
+      .orderBy(asc(staff.firstName), asc(staff.lastName));
+    
+    // If service has specific staff assigned, filter by those
+    if (service.availableStaffIds && service.availableStaffIds.length > 0) {
+      staffMembers = staffMembers.filter(s => service.availableStaffIds!.includes(s.id));
+    }
+    
+    return staffMembers;
   }
 
   async getStaff(id: string): Promise<Staff | undefined> {
@@ -275,6 +318,18 @@ export class DatabaseStorage implements IStorage {
   async getServicesByOrganization(organizationId: string): Promise<Service[]> {
     return await db.select().from(services)
       .where(and(eq(services.organizationId, organizationId), eq(services.isActive, true)))
+      .orderBy(asc(services.category), asc(services.name));
+  }
+
+  async getServicesByLocation(locationId: string): Promise<Service[]> {
+    // Get the organization for this location first
+    const location = await this.getLocation(locationId);
+    if (!location) {
+      return [];
+    }
+    
+    return await db.select().from(services)
+      .where(and(eq(services.organizationId, location.organizationId), eq(services.isActive, true)))
       .orderBy(asc(services.category), asc(services.name));
   }
 

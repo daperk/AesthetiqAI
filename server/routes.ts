@@ -363,24 +363,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Staff routes
-  app.get("/api/staff", requireAuth, async (req, res) => {
-    try {
-      let organizationId = req.query.organizationId as string;
-      
-      if (req.user?.role === "super_admin") {
-        if (!organizationId) {
-          return res.status(400).json({ message: "Organization ID required for super admin" });
-        }
-      } else {
-        organizationId = req.user?.organizationId;
-      }
-
-      const staff = await storage.getStaffByOrganization(organizationId);
-      res.json(staff);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch staff" });
-    }
-  });
 
   app.post("/api/staff", requireRole("clinic_admin", "super_admin"), async (req, res) => {
     try {
@@ -812,28 +794,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Service routes
-  app.get("/api/services", requireAuth, async (req, res) => {
-    try {
-      let organizationId = req.query.organizationId as string;
-      
-      if (req.user?.role === "super_admin") {
-        if (!organizationId) {
-          return res.status(400).json({ message: "Organization ID required for super admin" });
-        }
-      } else {
-        organizationId = await getUserOrganizationId(req.user!) || '';
-        if (!organizationId) {
-          return res.status(400).json({ message: "User organization not found" });
-        }
-      }
-
-      const services = await storage.getServicesByOrganization(organizationId);
-      res.json(services);
-    } catch (error) {
-      console.error("Services fetch error:", error);
-      res.status(500).json({ message: "Failed to fetch services" });
-    }
-  });
 
   app.post("/api/services", requireRole("clinic_admin", "super_admin"), async (req, res) => {
     try {
@@ -1109,6 +1069,102 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Failed to process chat message" });
     }
   });
+
+  // Public API endpoints for booking (before auth middleware)
+  app.get("/api/locations", async (req, res) => {
+    try {
+      // For public booking, we'll get all active locations
+      const locations = await storage.getAllLocations();
+      res.json(locations);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch locations" });
+    }
+  });
+
+  app.get("/api/services", async (req, res) => {
+    try {
+      const { locationId } = req.query;
+      
+      // Public access only with valid locationId - no organization enumeration
+      if (locationId) {
+        // Validate location exists and is active
+        const location = await storage.getLocation(locationId as string);
+        if (!location || !location.isActive) {
+          return res.status(404).json({ message: "Location not found" });
+        }
+        
+        const services = await storage.getServicesByLocation(locationId as string);
+        return res.json(services);
+      }
+      
+      // Require authentication for organization-wide access
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+
+      // Only authenticated users can access by organization
+      const orgId = await getUserOrganizationId(req.user!);
+      if (!orgId) {
+        return res.status(400).json({ message: "User organization not found" });
+      }
+
+      const services = await storage.getServicesByOrganization(orgId);
+      res.json(services);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch services" });
+    }
+  });
+
+  app.get("/api/staff", async (req, res) => {
+    try {
+      const { locationId, serviceId } = req.query;
+      console.log("Staff endpoint called with:", { locationId, serviceId });
+      
+      // Public access with location/service filters for booking
+      if (locationId || serviceId) {
+        // Validate location if provided
+        if (locationId) {
+          const location = await storage.getLocation(locationId as string);
+          if (!location || !location.isActive) {
+            return res.status(404).json({ message: "Location not found" });
+          }
+        }
+        
+        let staff;
+        if (locationId && serviceId) {
+          console.log("Fetching staff by location and service");
+          staff = await storage.getStaffByLocationAndService(locationId as string, serviceId as string);
+        } else if (locationId) {
+          console.log("Fetching staff by location only");
+          staff = await storage.getStaffByLocation(locationId as string);
+        } else {
+          // For public booking, require at least locationId to prevent enumeration
+          return res.status(400).json({ message: "Location ID required for public access" });
+        }
+        
+        console.log("Staff fetched:", staff);
+        return res.json(staff);
+      }
+      
+      // Require authentication for organization-wide access
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+
+      // Only authenticated users can access by organization
+      const orgId = await getUserOrganizationId(req.user!);
+      if (!orgId) {
+        return res.status(400).json({ message: "User organization not found" });
+      }
+
+      const staff = await storage.getStaffByOrganization(orgId);
+      res.json(staff);
+    } catch (error) {
+      console.error("Staff endpoint error:", error);
+      res.status(500).json({ message: "Failed to fetch staff" });
+    }
+  });
+
 
   // Stripe payment routes
   app.post("/api/payments/create-payment-intent", requireAuth, async (req, res) => {

@@ -55,6 +55,7 @@ function Router() {
       <Route path="/register" component={Register} />
       <Route path="/register/clinic/:slug" component={ClinicRegister} />
       <Route path="/subscribe" component={Subscribe} />
+      <Route path="/booking" component={Booking} />
       
       {/* Protected Routes */}
       {user && (

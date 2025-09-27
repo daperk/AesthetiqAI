@@ -13,6 +13,7 @@ import Navigation from "@/components/Navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { apiRequest } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
+import { BookingWithPayment } from "@/components/BookingWithPayment";
 import { 
   Calendar as CalendarIcon, Clock, User, MapPin, CreditCard,
   ChevronRight, Check, ArrowLeft, Star, DollarSign
@@ -38,14 +39,14 @@ export default function Booking() {
   const [selectedTime, setSelectedTime] = useState<string>("");
   const [paymentType, setPaymentType] = useState<"full" | "deposit">("full");
   const [notes, setNotes] = useState("");
+  const [showPaymentFlow, setShowPaymentFlow] = useState(false);
 
   const steps: BookingStep[] = [
     { id: "location", title: "Choose Location", completed: !!selectedLocation },
     { id: "service", title: "Select Service", completed: !!selectedService },
     { id: "provider", title: "Choose Provider", completed: !!selectedProvider },
     { id: "datetime", title: "Date & Time", completed: !!selectedDate && !!selectedTime },
-    { id: "payment", title: "Payment", completed: !!paymentType },
-    { id: "confirm", title: "Confirm", completed: false }
+    { id: "review", title: "Review & Pay", completed: false }
   ];
 
   const { data: locations } = useQuery<Location[]>({
@@ -55,12 +56,19 @@ export default function Booking() {
 
   const { data: services } = useQuery<Service[]>({
     queryKey: ["/api/services", selectedLocation],
+    queryFn: () => apiRequest("GET", `/api/services?locationId=${selectedLocation}`).then(res => res.json()),
     enabled: !!selectedLocation,
     staleTime: 5 * 60000,
   });
 
   const { data: staff } = useQuery<Staff[]>({
     queryKey: ["/api/staff", selectedLocation, selectedService?.id],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (selectedLocation) params.append('locationId', selectedLocation);
+      if (selectedService?.id) params.append('serviceId', selectedService.id);
+      return apiRequest("GET", `/api/staff?${params.toString()}`).then(res => res.json());
+    },
     enabled: !!selectedLocation && !!selectedService,
     staleTime: 5 * 60000,
   });
@@ -112,8 +120,8 @@ export default function Booking() {
     }
   };
 
-  const handleConfirmBooking = () => {
-    if (!selectedService || !selectedProvider || !selectedDate || !selectedTime) {
+  const handleStartPayment = () => {
+    if (!selectedService || !selectedProvider || !selectedDate || !selectedTime || !selectedLocation) {
       toast({
         title: "Incomplete booking",
         description: "Please fill in all required fields.",
@@ -121,23 +129,31 @@ export default function Booking() {
       });
       return;
     }
+    setShowPaymentFlow(true);
+  };
 
-    const [hours, minutes] = selectedTime.split(':');
-    const startTime = new Date(selectedDate);
-    startTime.setHours(parseInt(hours), parseInt(minutes));
-    
-    const endTime = new Date(startTime);
-    endTime.setMinutes(endTime.getMinutes() + selectedService.duration);
-
-    bookAppointmentMutation.mutate({
-      serviceId: selectedService.id,
-      staffId: selectedProvider.id,
-      locationId: selectedLocation,
-      startTime,
-      endTime,
-      notes,
-      paymentType
+  const handlePaymentSuccess = (appointmentId: string) => {
+    toast({
+      title: "Booking Confirmed!",
+      description: "Your appointment has been successfully booked and payment processed.",
     });
+    
+    // Reset form
+    setCurrentStep(0);
+    setSelectedLocation("");
+    setSelectedService(null);
+    setSelectedProvider(null);
+    setSelectedDate(undefined);
+    setSelectedTime("");
+    setNotes("");
+    setShowPaymentFlow(false);
+    
+    // Refresh appointments
+    queryClient.invalidateQueries({ queryKey: ["/api/appointments"] });
+  };
+
+  const handlePaymentCancel = () => {
+    setShowPaymentFlow(false);
   };
 
   const getCurrentStepContent = () => {
@@ -314,49 +330,116 @@ export default function Booking() {
           </div>
         );
 
-      case 4: // Payment
+      case 4: // Review & Pay
+        if (showPaymentFlow && selectedService && selectedProvider && selectedLocation) {
+          // Get location object for payment component
+          const selectedLocationObj = locations?.find(loc => loc.id === selectedLocation);
+          
+          if (!selectedLocationObj) {
+            return <div>Loading location data...</div>;
+          }
+
+          const [hours, minutes] = selectedTime.split(':');
+          const startTime = new Date(selectedDate!);
+          startTime.setHours(parseInt(hours), parseInt(minutes));
+          
+          const endTime = new Date(startTime);
+          endTime.setMinutes(endTime.getMinutes() + selectedService.duration);
+
+          const bookingData = {
+            serviceId: selectedService.id,
+            staffId: selectedProvider.id,
+            locationId: selectedLocation,
+            startTime: startTime.toISOString(),
+            endTime: endTime.toISOString(),
+            notes
+          };
+
+          return (
+            <BookingWithPayment
+              bookingData={bookingData}
+              service={selectedService}
+              staff={selectedProvider}
+              location={selectedLocationObj}
+              onSuccess={handlePaymentSuccess}
+              onCancel={handlePaymentCancel}
+            />
+          );
+        }
+
+        // Show review before payment
         return (
           <div className="space-y-6">
-            <h3 className="text-lg font-semibold" data-testid="text-payment-step-title">Payment Options</h3>
+            <h3 className="text-lg font-semibold" data-testid="text-review-step-title">Review Your Booking</h3>
             
-            <RadioGroup value={paymentType} onValueChange={(value: "full" | "deposit") => setPaymentType(value)}>
-              <Card className={`cursor-pointer ${paymentType === "full" ? "ring-2 ring-primary" : ""}`}>
-                <CardContent className="p-4">
-                  <div className="flex items-center space-x-3">
-                    <RadioGroupItem value="full" id="full" />
-                    <Label htmlFor="full" className="flex-1 cursor-pointer">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className="font-medium">Pay Full Amount</div>
-                          <div className="text-sm text-muted-foreground">Complete payment now</div>
-                        </div>
-                        <div className="text-lg font-bold">${selectedService?.price || 0}</div>
-                      </div>
-                    </Label>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {selectedService?.depositRequired && (
-                <Card className={`cursor-pointer ${paymentType === "deposit" ? "ring-2 ring-primary" : ""}`}>
-                  <CardContent className="p-4">
-                    <div className="flex items-center space-x-3">
-                      <RadioGroupItem value="deposit" id="deposit" />
-                      <Label htmlFor="deposit" className="flex-1 cursor-pointer">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <div className="font-medium">Pay Deposit</div>
-                            <div className="text-sm text-muted-foreground">Remaining balance due at appointment</div>
-                          </div>
-                          <div className="text-lg font-bold">${selectedService?.depositAmount || 0}</div>
-                        </div>
-                      </Label>
+            {/* Booking Summary */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Appointment Summary</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <DollarSign className="h-4 w-4 text-muted-foreground" />
+                      <span className="font-medium">{selectedService?.name}</span>
+                      <Badge variant="outline">${selectedService?.price}</Badge>
                     </div>
-                  </CardContent>
-                </Card>
-              )}
-            </RadioGroup>
+                    
+                    <div className="flex items-center gap-2">
+                      <User className="h-4 w-4 text-muted-foreground" />
+                      <span>Provider: {selectedProvider?.title || 'Staff Member'}</span>
+                    </div>
+                    
+                    <div className="flex items-center gap-2">
+                      <MapPin className="h-4 w-4 text-muted-foreground" />
+                      <span>{locations?.find(l => l.id === selectedLocation)?.name}</span>
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <CalendarIcon className="h-4 w-4 text-muted-foreground" />
+                      <span>{selectedDate?.toLocaleDateString('en-US', {
+                        weekday: 'long',
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric'
+                      })}</span>
+                    </div>
+                    
+                    <div className="flex items-center gap-2">
+                      <Clock className="h-4 w-4 text-muted-foreground" />
+                      <span>{selectedTime} ({selectedService?.duration} minutes)</span>
+                    </div>
+                  </div>
+                </div>
 
+                {selectedService?.depositRequired && (
+                  <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                    <p className="text-sm font-medium text-blue-800 dark:text-blue-200">
+                      Deposit Required: ${selectedService.depositAmount}
+                    </p>
+                    <p className="text-xs text-blue-600 dark:text-blue-300">
+                      Remaining balance of ${Number(selectedService.price) - Number(selectedService.depositAmount)} due at appointment
+                    </p>
+                  </div>
+                )}
+
+                <div className="border-t pt-4">
+                  <div className="flex justify-between text-lg font-bold">
+                    <span>Amount Due Today:</span>
+                    <span>
+                      ${selectedService?.depositRequired 
+                        ? selectedService?.depositAmount || 0
+                        : selectedService?.price || 0}
+                    </span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Notes */}
             <div className="space-y-2">
               <Label htmlFor="notes">Special Requests (Optional)</Label>
               <Textarea
@@ -367,67 +450,19 @@ export default function Booking() {
                 data-testid="input-booking-notes"
               />
             </div>
-          </div>
-        );
 
-      case 5: // Confirm
-        return (
-          <div className="space-y-6">
-            <h3 className="text-lg font-semibold" data-testid="text-confirm-step-title">Confirm Your Booking</h3>
-            
-            <Card>
-              <CardHeader>
-                <CardTitle>Appointment Summary</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Service:</span>
-                  <span className="font-medium">{selectedService?.name}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Provider:</span>
-                  <span className="font-medium">{selectedProvider?.title}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Date:</span>
-                  <span className="font-medium">{selectedDate?.toLocaleDateString()}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Time:</span>
-                  <span className="font-medium">{selectedTime}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Duration:</span>
-                  <span className="font-medium">{selectedService?.duration} minutes</span>
-                </div>
-                <div className="border-t pt-4">
-                  <div className="flex justify-between text-lg font-bold">
-                    <span>Total:</span>
-                    <span>
-                      ${paymentType === "deposit" 
-                        ? selectedService?.depositAmount || 0
-                        : selectedService?.price || 0}
-                    </span>
-                  </div>
-                  {paymentType === "deposit" && (
-                    <div className="text-sm text-muted-foreground mt-1">
-                      Remaining ${(Number(selectedService?.price) || 0) - (Number(selectedService?.depositAmount) || 0)} due at appointment
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-
-            {notes && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Special Requests</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-muted-foreground">{notes}</p>
-                </CardContent>
-              </Card>
-            )}
+            {/* Payment Button */}
+            <div className="pt-4">
+              <Button 
+                onClick={handleStartPayment}
+                className="w-full bg-primary text-primary-foreground"
+                size="lg"
+                data-testid="button-proceed-to-payment"
+              >
+                <CreditCard className="w-4 h-4 mr-2" />
+                Proceed to Payment
+              </Button>
+            </div>
           </div>
         );
 
@@ -502,26 +537,17 @@ export default function Booking() {
           </Button>
           
           <div className="flex items-center space-x-4">
-            {currentStep === steps.length - 1 ? (
+            {currentStep === steps.length - 1 && !showPaymentFlow ? (
               <Button 
-                onClick={handleConfirmBooking}
-                disabled={bookAppointmentMutation.isPending}
+                onClick={handleStartPayment}
+                disabled={!steps[currentStep].completed}
                 className="bg-primary text-primary-foreground"
-                data-testid="button-confirm-booking"
+                data-testid="button-start-payment"
               >
-                {bookAppointmentMutation.isPending ? (
-                  <div className="flex items-center space-x-2">
-                    <LoadingSpinner size="sm" />
-                    <span>Booking...</span>
-                  </div>
-                ) : (
-                  <>
-                    <CreditCard className="w-4 h-4 mr-2" />
-                    Confirm Booking
-                  </>
-                )}
+                <CreditCard className="w-4 h-4 mr-2" />
+                Review & Pay
               </Button>
-            ) : (
+            ) : showPaymentFlow ? null : (
               <Button 
                 onClick={handleNext}
                 disabled={!steps[currentStep].completed}
