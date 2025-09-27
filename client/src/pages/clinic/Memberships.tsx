@@ -1,0 +1,547 @@
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import LoadingSpinner from "@/components/ui/loading-spinner";
+import Navigation from "@/components/Navigation";
+import { useAuth } from "@/hooks/useAuth";
+import { useOrganization } from "@/hooks/useOrganization";
+import { apiRequest } from "@/lib/api";
+import { useToast } from "@/hooks/use-toast";
+import { 
+  Crown, Plus, Search, MoreHorizontal, Users, DollarSign,
+  Calendar, Gift, TrendingUp, Settings, CreditCard
+} from "lucide-react";
+import type { Membership, Client } from "@/types";
+
+interface MembershipTier {
+  id: string;
+  name: string;
+  monthlyFee: number;
+  benefits: string[];
+  discountPercentage: number;
+  monthlyCredits: number;
+  color: string;
+}
+
+export default function Memberships() {
+  const { user } = useAuth();
+  const { organization } = useOrganization();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  
+  const [activeTab, setActiveTab] = useState("tiers");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [isCreateTierDialogOpen, setIsCreateTierDialogOpen] = useState(false);
+  
+  const [newTier, setNewTier] = useState({
+    name: "",
+    monthlyFee: "",
+    discountPercentage: "",
+    monthlyCredits: "",
+    benefits: "",
+    color: "gold",
+    autoRenew: true,
+  });
+
+  // Mock membership tiers for display
+  const membershipTiers: MembershipTier[] = [
+    {
+      id: "1",
+      name: "Bronze",
+      monthlyFee: 59,
+      benefits: ["5% discount on services", "Priority booking", "Birthday gift"],
+      discountPercentage: 5,
+      monthlyCredits: 50,
+      color: "bg-orange-100 text-orange-800",
+    },
+    {
+      id: "2", 
+      name: "Silver",
+      monthlyFee: 99,
+      benefits: ["10% discount on services", "Complimentary consultation", "Member events"],
+      discountPercentage: 10,
+      monthlyCredits: 100,
+      color: "bg-gray-100 text-gray-800",
+    },
+    {
+      id: "3",
+      name: "Gold",
+      monthlyFee: 149,
+      benefits: ["15% discount on services", "Monthly free add-on", "VIP support"],
+      discountPercentage: 15,
+      monthlyCredits: 150,
+      color: "bg-yellow-100 text-yellow-800",
+    },
+    {
+      id: "4",
+      name: "Platinum",
+      monthlyFee: 199,
+      benefits: ["20% discount on services", "Quarterly spa day", "Exclusive products"],
+      discountPercentage: 20,
+      monthlyCredits: 200,
+      color: "bg-purple-100 text-purple-800",
+    },
+  ];
+
+  const { data: memberships, isLoading: membershipsLoading } = useQuery<Membership[]>({
+    queryKey: ["/api/memberships", organization?.id],
+    enabled: !!organization?.id,
+    staleTime: 30000,
+  });
+
+  const { data: clients } = useQuery<Client[]>({
+    queryKey: ["/api/clients", organization?.id],
+    enabled: !!organization?.id,
+    staleTime: 5 * 60000,
+  });
+
+  const createTierMutation = useMutation({
+    mutationFn: async (tierData: typeof newTier) => {
+      // This would create a new membership tier
+      const response = await apiRequest("POST", "/api/membership-tiers", {
+        ...tierData,
+        organizationId: organization?.id,
+        monthlyFee: parseFloat(tierData.monthlyFee),
+        discountPercentage: parseFloat(tierData.discountPercentage),
+        monthlyCredits: parseFloat(tierData.monthlyCredits),
+        benefits: tierData.benefits.split(',').map(b => b.trim()),
+      });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/membership-tiers"] });
+      setIsCreateTierDialogOpen(false);
+      setNewTier({
+        name: "",
+        monthlyFee: "",
+        discountPercentage: "",
+        monthlyCredits: "",
+        benefits: "",
+        color: "gold",
+        autoRenew: true,
+      });
+      toast({
+        title: "Membership tier created",
+        description: "New membership tier has been successfully created.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Failed to create tier",
+        description: "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    createTierMutation.mutate(newTier);
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    setNewTier(prev => ({ ...prev, [name]: value }));
+  };
+
+  const filteredMemberships = memberships?.filter(membership => {
+    if (!searchTerm) return true;
+    return membership.tierName.toLowerCase().includes(searchTerm.toLowerCase());
+  }) || [];
+
+  const getMembershipStats = () => {
+    const totalMembers = memberships?.length || 0;
+    const activeMembers = memberships?.filter(m => m.status === "active").length || 0;
+    const totalMRR = memberships?.reduce((sum, m) => 
+      m.status === "active" ? sum + parseFloat(m.monthlyFee.toString()) : sum, 0) || 0;
+    
+    return { totalMembers, activeMembers, totalMRR };
+  };
+
+  if (membershipsLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <LoadingSpinner size="lg" />
+      </div>
+    );
+  }
+
+  const stats = getMembershipStats();
+
+  return (
+    <div className="min-h-screen bg-background">
+      <Navigation />
+      
+      <div className="container mx-auto px-6 py-8">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h1 className="text-3xl font-serif font-bold text-foreground mb-2" data-testid="text-memberships-title">
+              Memberships
+            </h1>
+            <p className="text-muted-foreground">Manage membership tiers and subscriber relationships</p>
+          </div>
+        </div>
+
+        {/* Stats Cards */}
+        <div className="grid lg:grid-cols-4 gap-6 mb-8">
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm text-muted-foreground">Total Members</span>
+                <Users className="w-4 h-4 text-primary" />
+              </div>
+              <div className="text-2xl font-bold text-foreground" data-testid="text-total-members">
+                {stats.totalMembers}
+              </div>
+              <div className="text-sm text-muted-foreground">{stats.activeMembers} active</div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm text-muted-foreground">Monthly Revenue</span>
+                <DollarSign className="w-4 h-4 text-primary" />
+              </div>
+              <div className="text-2xl font-bold text-foreground" data-testid="text-membership-mrr">
+                ${stats.totalMRR.toLocaleString()}
+              </div>
+              <div className="text-sm text-green-500">+12% this month</div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm text-muted-foreground">Avg. Tier Value</span>
+                <TrendingUp className="w-4 h-4 text-primary" />
+              </div>
+              <div className="text-2xl font-bold text-foreground" data-testid="text-avg-tier-value">
+                ${stats.totalMembers > 0 ? Math.round(stats.totalMRR / stats.totalMembers) : 0}
+              </div>
+              <div className="text-sm text-muted-foreground">per member</div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm text-muted-foreground">Retention Rate</span>
+                <Crown className="w-4 h-4 text-primary" />
+              </div>
+              <div className="text-2xl font-bold text-foreground" data-testid="text-retention-rate">
+                94%
+              </div>
+              <div className="text-sm text-green-500">+2% improvement</div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Main Content */}
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+          <TabsList>
+            <TabsTrigger value="tiers" data-testid="tab-membership-tiers">Membership Tiers</TabsTrigger>
+            <TabsTrigger value="members" data-testid="tab-active-members">Active Members</TabsTrigger>
+            <TabsTrigger value="analytics" data-testid="tab-membership-analytics">Analytics</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="tiers">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-serif font-semibold" data-testid="text-membership-tiers-title">
+                Membership Tiers
+              </h2>
+              <Dialog open={isCreateTierDialogOpen} onOpenChange={setIsCreateTierDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button data-testid="button-create-tier">
+                    <Plus className="w-4 h-4 mr-2" />
+                    Create Tier
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-2xl">
+                  <DialogHeader>
+                    <DialogTitle>Create New Membership Tier</DialogTitle>
+                  </DialogHeader>
+                  <form onSubmit={handleSubmit} className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="name">Tier Name</Label>
+                        <Input
+                          id="name"
+                          name="name"
+                          value={newTier.name}
+                          onChange={handleInputChange}
+                          placeholder="e.g., VIP Gold"
+                          required
+                          data-testid="input-tier-name"
+                        />
+                      </div>
+                      
+                      <div className="space-y-2">
+                        <Label htmlFor="monthlyFee">Monthly Fee ($)</Label>
+                        <Input
+                          id="monthlyFee"
+                          name="monthlyFee"
+                          type="number"
+                          step="0.01"
+                          value={newTier.monthlyFee}
+                          onChange={handleInputChange}
+                          placeholder="99.00"
+                          required
+                          data-testid="input-monthly-fee"
+                        />
+                      </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="discountPercentage">Discount (%)</Label>
+                        <Input
+                          id="discountPercentage"
+                          name="discountPercentage"
+                          type="number"
+                          min="0"
+                          max="100"
+                          value={newTier.discountPercentage}
+                          onChange={handleInputChange}
+                          placeholder="10"
+                          data-testid="input-discount-percentage"
+                        />
+                      </div>
+                      
+                      <div className="space-y-2">
+                        <Label htmlFor="monthlyCredits">Monthly Credits ($)</Label>
+                        <Input
+                          id="monthlyCredits"
+                          name="monthlyCredits"
+                          type="number"
+                          step="0.01"
+                          value={newTier.monthlyCredits}
+                          onChange={handleInputChange}
+                          placeholder="100.00"
+                          data-testid="input-monthly-credits"
+                        />
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label htmlFor="benefits">Benefits (comma-separated)</Label>
+                      <Textarea
+                        id="benefits"
+                        name="benefits"
+                        value={newTier.benefits}
+                        onChange={handleInputChange}
+                        placeholder="10% discount, Priority booking, Monthly gift"
+                        data-testid="input-benefits"
+                      />
+                    </div>
+                    
+                    <div className="flex items-center space-x-2">
+                      <Switch
+                        id="autoRenew"
+                        checked={newTier.autoRenew}
+                        onCheckedChange={(checked) => setNewTier(prev => ({ ...prev, autoRenew: checked }))}
+                        data-testid="switch-auto-renew"
+                      />
+                      <Label htmlFor="autoRenew">Auto-renewal enabled by default</Label>
+                    </div>
+                    
+                    <div className="flex justify-end space-x-2">
+                      <Button type="button" variant="outline" onClick={() => setIsCreateTierDialogOpen(false)}>
+                        Cancel
+                      </Button>
+                      <Button type="submit" disabled={createTierMutation.isPending} data-testid="button-save-tier">
+                        {createTierMutation.isPending ? (
+                          <div className="flex items-center space-x-2">
+                            <LoadingSpinner size="sm" />
+                            <span>Creating...</span>
+                          </div>
+                        ) : (
+                          "Create Tier"
+                        )}
+                      </Button>
+                    </div>
+                  </form>
+                </DialogContent>
+              </Dialog>
+            </div>
+
+            <div className="grid lg:grid-cols-2 xl:grid-cols-4 gap-6">
+              {membershipTiers.map((tier) => (
+                <Card key={tier.id} className="relative" data-testid={`membership-tier-${tier.name.toLowerCase()}`}>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle className="text-lg">{tier.name}</CardTitle>
+                        <Badge className={tier.color}>
+                          {tier.discountPercentage}% discount
+                        </Badge>
+                      </div>
+                      <Button variant="ghost" size="sm" data-testid={`button-edit-tier-${tier.name.toLowerCase()}`}>
+                        <Settings className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      <div>
+                        <div className="text-2xl font-bold">${tier.monthlyFee}</div>
+                        <div className="text-sm text-muted-foreground">per month</div>
+                      </div>
+                      
+                      <div>
+                        <div className="text-sm font-medium mb-2">Benefits:</div>
+                        <ul className="text-xs text-muted-foreground space-y-1">
+                          {tier.benefits.map((benefit, index) => (
+                            <li key={index}>• {benefit}</li>
+                          ))}
+                        </ul>
+                      </div>
+                      
+                      <div className="pt-4 border-t">
+                        <div className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">Monthly Credits:</span>
+                          <span className="font-medium">${tier.monthlyCredits}</span>
+                        </div>
+                        <div className="flex justify-between text-sm mt-1">
+                          <span className="text-muted-foreground">Subscribers:</span>
+                          <span className="font-medium">
+                            {memberships?.filter(m => m.tierName === tier.name && m.status === "active").length || 0}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="members">
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle data-testid="text-active-members-title">Active Members</CardTitle>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+                    <Input
+                      placeholder="Search members..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="pl-10 w-64"
+                      data-testid="input-search-members"
+                    />
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {filteredMemberships.length === 0 ? (
+                  <div className="text-center py-8">
+                    <Crown className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                    <p className="text-muted-foreground" data-testid="text-no-members">
+                      {searchTerm ? "No members match your search" : "No active members found"}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {filteredMemberships.map((membership) => (
+                      <div 
+                        key={membership.id}
+                        className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors"
+                        data-testid={`member-item-${membership.id}`}
+                      >
+                        <div className="flex items-center space-x-4">
+                          <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
+                            <Crown className="w-5 h-5 text-primary" />
+                          </div>
+                          <div>
+                            <div className="font-medium text-foreground">Client Name</div>
+                            <div className="text-sm text-muted-foreground">
+                              {membership.tierName} • Joined {new Date(membership.startDate).toLocaleDateString()}
+                            </div>
+                          </div>
+                        </div>
+                        
+                        <div className="flex items-center space-x-4">
+                          <div className="text-right">
+                            <div className="text-sm font-medium">${membership.monthlyFee}/month</div>
+                            <div className="text-xs text-muted-foreground">
+                              ${membership.usedCredits || 0} of ${membership.monthlyCredits} used
+                            </div>
+                          </div>
+                          
+                          <Badge className={
+                            membership.status === "active" ? "bg-green-100 text-green-800" :
+                            membership.status === "expired" ? "bg-red-100 text-red-800" :
+                            "bg-yellow-100 text-yellow-800"
+                          }>
+                            {membership.status}
+                          </Badge>
+                          
+                          <Button variant="ghost" size="sm" data-testid={`button-member-menu-${membership.id}`}>
+                            <MoreHorizontal className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="analytics">
+            <div className="grid lg:grid-cols-2 gap-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle data-testid="text-revenue-breakdown-title">Revenue Breakdown</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {membershipTiers.map((tier) => {
+                      const tierMembers = memberships?.filter(m => m.tierName === tier.name && m.status === "active").length || 0;
+                      const tierRevenue = tierMembers * tier.monthlyFee;
+                      
+                      return (
+                        <div key={tier.id} className="flex items-center justify-between p-3 border rounded">
+                          <div className="flex items-center space-x-3">
+                            <Badge className={tier.color}>{tier.name}</Badge>
+                            <span className="text-sm text-muted-foreground">{tierMembers} members</span>
+                          </div>
+                          <div className="text-sm font-medium">${tierRevenue.toLocaleString()}/month</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle data-testid="text-membership-trends-title">Membership Trends</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-center py-8">
+                    <TrendingUp className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                    <p className="text-muted-foreground" data-testid="text-trends-placeholder">
+                      Membership trend charts would be displayed here
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+        </Tabs>
+      </div>
+    </div>
+  );
+}
