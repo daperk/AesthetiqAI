@@ -1511,47 +1511,136 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Stripe Connect Express account creation and onboarding
   app.post("/api/stripe-connect/create-account", requireRole("clinic_admin"), async (req, res) => {
+    const startTime = Date.now();
+    console.log(`🔄 [STRIPE-CONNECT] Starting account creation process - ${new Date().toISOString()}`);
+    
     try {
+      // Step 1: Get organization ID
+      console.log(`📋 [STRIPE-CONNECT] Step 1: Getting organization ID for user ${req.user!.id}`);
       const organizationId = await getUserOrganizationId(req.user!);
       if (!organizationId) {
-        return res.status(400).json({ message: "No organization found for user" });
+        console.log(`❌ [STRIPE-CONNECT] FAILED: No organization found for user ${req.user!.id}`);
+        return res.status(400).json({ 
+          message: "No organization found for user",
+          error_code: "NO_ORGANIZATION",
+          user_id: req.user!.id
+        });
       }
+      console.log(`✅ [STRIPE-CONNECT] Organization ID found: ${organizationId}`);
 
+      // Step 2: Get organization details
+      console.log(`📋 [STRIPE-CONNECT] Step 2: Fetching organization details for ${organizationId}`);
       const organization = await storage.getOrganization(organizationId);
       if (!organization) {
-        return res.status(404).json({ message: "Organization not found" });
+        console.log(`❌ [STRIPE-CONNECT] FAILED: Organization ${organizationId} not found in database`);
+        return res.status(404).json({ 
+          message: "Organization not found",
+          error_code: "ORG_NOT_FOUND",
+          organization_id: organizationId
+        });
       }
+      console.log(`✅ [STRIPE-CONNECT] Organization found: ${organization.name} (${organization.email})`);
 
-      // Check if organization already has a Stripe Connect account
+      // Step 3: Check for existing Stripe Connect account
+      console.log(`📋 [STRIPE-CONNECT] Step 3: Checking for existing Stripe Connect account`);
       if (organization.stripeConnectAccountId) {
-        return res.status(400).json({ message: "Organization already has a Stripe Connect account" });
+        console.log(`❌ [STRIPE-CONNECT] FAILED: Organization ${organizationId} already has Stripe Connect account: ${organization.stripeConnectAccountId}`);
+        return res.status(400).json({ 
+          message: "Organization already has a Stripe Connect account",
+          error_code: "ACCOUNT_EXISTS",
+          existing_account_id: organization.stripeConnectAccountId,
+          organization_id: organizationId
+        });
       }
+      console.log(`✅ [STRIPE-CONNECT] No existing account found, proceeding with creation`);
 
-      // Create Stripe Express account
+      // Step 4: Create Stripe Express account
+      console.log(`📋 [STRIPE-CONNECT] Step 4: Creating Stripe Express account`);
+      console.log(`🔧 [STRIPE-CONNECT] Account creation parameters:`, {
+        name: organization.name,
+        email: organization.email || req.user!.email,
+        organizationId: organization.id,
+        user_email: req.user!.email
+      });
+      
       const account = await stripeService.createConnectAccount({
         name: organization.name,
         email: organization.email || req.user!.email,
         organizationId: organization.id
       });
+      console.log(`✅ [STRIPE-CONNECT] Stripe account created successfully: ${account.id}`);
 
-      // Update organization with Stripe Connect account ID
+      // Step 5: Update database with Stripe Connect account ID
+      console.log(`📋 [STRIPE-CONNECT] Step 5: Updating database with Stripe account ID`);
       await storage.updateOrganizationStripeConnect(organization.id, {
         stripeConnectAccountId: account.id,
         stripeAccountStatus: 'pending'
       });
+      console.log(`✅ [STRIPE-CONNECT] Database updated with account ID: ${account.id}`);
 
-      // Create account link for onboarding
+      // Step 6: Create account link for onboarding
+      console.log(`📋 [STRIPE-CONNECT] Step 6: Creating onboarding link`);
       const accountLink = await stripeService.createAccountLink(account.id, organization.id);
+      console.log(`✅ [STRIPE-CONNECT] Onboarding link created: ${accountLink.url}`);
+
+      const duration = Date.now() - startTime;
+      console.log(`🎉 [STRIPE-CONNECT] Account creation completed successfully in ${duration}ms`);
+      console.log(`📊 [STRIPE-CONNECT] Final result:`, {
+        account_id: account.id,
+        onboarding_url: accountLink.url,
+        organization_id: organizationId,
+        duration_ms: duration
+      });
 
       res.json({
         accountId: account.id,
         onboardingUrl: accountLink.url,
-        message: "Stripe Connect account created. Please complete onboarding."
+        message: "Stripe Connect account created. Please complete onboarding.",
+        success: true,
+        organization_id: organizationId
       });
 
-    } catch (error) {
-      console.error("Stripe Connect account creation error:", error);
-      res.status(500).json({ message: "Failed to create Stripe Connect account" });
+    } catch (error: any) {
+      const duration = Date.now() - startTime;
+      console.log(`💥 [STRIPE-CONNECT] ERROR occurred after ${duration}ms`);
+      console.log(`🔍 [STRIPE-CONNECT] Error type: ${error.type || 'Unknown'}`);
+      console.log(`🔍 [STRIPE-CONNECT] Error code: ${error.code || 'No code'}`);
+      console.log(`🔍 [STRIPE-CONNECT] Error message: ${error.message}`);
+      console.log(`🔍 [STRIPE-CONNECT] Error stack:`, error.stack);
+      
+      if (error.type === 'StripeInvalidRequestError') {
+        console.log(`🔍 [STRIPE-CONNECT] Stripe-specific error details:`, {
+          statusCode: error.statusCode,
+          requestId: error.requestId,
+          param: error.param,
+          doc_url: error.doc_url,
+          detail: error.detail
+        });
+        
+        if (error.message.includes('platform-profile')) {
+          console.log(`🚨 [STRIPE-CONNECT] PLATFORM CONFIGURATION ERROR: This error means the Stripe Connect platform profile is not configured properly.`);
+          console.log(`🔧 [STRIPE-CONNECT] SOLUTION: Go to Stripe Dashboard → Settings → Connect → Platform Profile and complete the setup.`);
+          
+          res.status(400).json({ 
+            message: "Stripe Connect platform not configured. Please complete platform profile setup in Stripe Dashboard.",
+            error_code: "PLATFORM_NOT_CONFIGURED",
+            stripe_error: error.message,
+            solution: "Go to Stripe Dashboard → Settings → Connect → Platform Profile and complete the setup.",
+            doc_url: "https://dashboard.stripe.com/settings/connect/platform-profile",
+            requestId: error.requestId
+          });
+          return;
+        }
+      }
+      
+      console.error("🔍 [STRIPE-CONNECT] Full error object:", error);
+      res.status(500).json({ 
+        message: "Failed to create Stripe Connect account",
+        error_code: "CREATION_FAILED",
+        error_type: error.type || 'Unknown',
+        stripe_message: error.message,
+        duration_ms: duration
+      });
     }
   });
 

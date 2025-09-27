@@ -48,31 +48,84 @@ export default function PaymentSetup() {
 
   const createAccountMutation = useMutation({
     mutationFn: async () => {
-      if (!organization?.id) throw new Error("No organization found");
-      const response = await apiRequest("POST", "/api/stripe-connect/create-account", {
+      console.log(`🔄 [FRONTEND] Starting Stripe Connect account creation...`);
+      console.log(`📋 [FRONTEND] Organization details:`, {
+        organization_id: organization?.id,
+        organization_name: organization?.name,
+        user_email: user?.email
+      });
+      
+      if (!organization?.id) {
+        console.error(`❌ [FRONTEND] No organization found for account creation`);
+        throw new Error("No organization found");
+      }
+      
+      const requestData = {
         organizationId: organization.id,
         email: user?.email,
         businessName: organization.name,
         businessType: "company",
         country: "US"
-      });
-      return response.json();
+      };
+      console.log(`📤 [FRONTEND] Sending request with data:`, requestData);
+      
+      const response = await apiRequest("POST", "/api/stripe-connect/create-account", requestData);
+      console.log(`📥 [FRONTEND] Response status: ${response.status}`);
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error(`❌ [FRONTEND] API request failed:`, {
+          status: response.status,
+          statusText: response.statusText,
+          error_data: errorData
+        });
+        throw new Error(`API Error: ${errorData.message || 'Unknown error'}`);
+      }
+      
+      const data = await response.json();
+      console.log(`✅ [FRONTEND] Account creation successful:`, data);
+      return data;
     },
     onSuccess: (data: any) => {
+      console.log(`🎉 [FRONTEND] Account creation mutation succeeded:`, data);
       queryClient.invalidateQueries({ queryKey: ["/api/stripe-connect/status"] });
+      
       toast({
         title: "Account Created",
         description: "Your Stripe Express account has been created. Complete the onboarding to start accepting payments.",
       });
       // Redirect to onboarding
       if (data?.onboardingUrl) {
+        console.log(`🔗 [FRONTEND] Opening onboarding URL: ${data.onboardingUrl}`);
         window.open(data.onboardingUrl, "_blank");
+      } else {
+        console.log(`⚠️ [FRONTEND] No onboarding URL provided in response`);
       }
     },
-    onError: (error) => {
+    onError: (error: any) => {
+      console.error(`💥 [FRONTEND] Account creation failed:`, {
+        error_message: error.message,
+        error_type: typeof error,
+        error_object: error
+      });
+      
+      let errorMessage = "Failed to create Stripe account. Please try again.";
+      let errorTitle = "Error";
+      
+      // Check for specific error types
+      if (error.message.includes("platform-profile") || error.message.includes("PLATFORM_NOT_CONFIGURED")) {
+        errorTitle = "Platform Configuration Required";
+        errorMessage = "Stripe Connect platform profile needs to be configured. Please check Stripe Dashboard → Settings → Connect → Platform Profile.";
+        console.error(`🚨 [FRONTEND] Platform configuration error detected`);
+      } else if (error.message.includes("ACCOUNT_EXISTS")) {
+        errorTitle = "Account Already Exists";
+        errorMessage = "A Stripe Connect account already exists for this organization.";
+        console.error(`⚠️ [FRONTEND] Account already exists error`);
+      }
+      
       toast({
-        title: "Error",
-        description: "Failed to create Stripe account. Please try again.",
+        title: errorTitle,
+        description: errorMessage,
         variant: "destructive",
       });
     }
