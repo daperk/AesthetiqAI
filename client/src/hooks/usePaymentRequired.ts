@@ -26,7 +26,7 @@ export function usePaymentRequired(bypass: boolean = false) {
   const [, setLocation] = useLocation();
 
   const { data: accountStatus, isLoading } = useQuery<StripeAccountStatus>({
-    queryKey: ["/api/stripe/account/status", organization?.id],
+    queryKey: ["/api/stripe-connect/status", organization?.id],
     enabled: !!organization?.id,
     staleTime: 30000, // 30 seconds
     refetchOnWindowFocus: true,

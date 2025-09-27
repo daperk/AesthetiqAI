@@ -41,7 +41,7 @@ export default function PaymentSetup() {
   const [isCreatingAccount, setIsCreatingAccount] = useState(false);
 
   const { data: accountStatus, isLoading, refetch } = useQuery<StripeAccountStatus>({
-    queryKey: ["/api/stripe/account/status", organization?.id],
+    queryKey: ["/api/stripe-connect/status", organization?.id],
     enabled: !!organization?.id,
     staleTime: 30000, // 30 seconds
   });
@@ -49,20 +49,17 @@ export default function PaymentSetup() {
   const createAccountMutation = useMutation({
     mutationFn: async () => {
       if (!organization?.id) throw new Error("No organization found");
-      return apiRequest("/api/stripe/account/create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          organizationId: organization.id,
-          email: user?.email,
-          businessName: organization.name,
-          businessType: "company",
-          country: "US"
-        })
+      const response = await apiRequest("POST", "/api/stripe-connect/create-account", {
+        organizationId: organization.id,
+        email: user?.email,
+        businessName: organization.name,
+        businessType: "company",
+        country: "US"
       });
+      return response.json();
     },
     onSuccess: (data: any) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/stripe/account/status"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stripe-connect/status"] });
       toast({
         title: "Account Created",
         description: "Your Stripe Express account has been created. Complete the onboarding to start accepting payments.",
