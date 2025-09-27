@@ -46,6 +46,7 @@ export interface IStorage {
   updateSubscriptionPlan(id: string, updates: Partial<InsertSubscriptionPlan>): Promise<SubscriptionPlan>;
 
   // Locations
+  getAllLocations(): Promise<Location[]>;
   getLocationsByOrganization(organizationId: string): Promise<Location[]>;
   getLocation(id: string): Promise<Location | undefined>;
   createLocation(location: InsertLocation): Promise<Location>;
@@ -53,6 +54,8 @@ export interface IStorage {
 
   // Staff
   getStaffByOrganization(organizationId: string): Promise<Staff[]>;
+  getStaffByLocation(locationId: string): Promise<Staff[]>;
+  getStaffByLocationAndService(locationId: string, serviceId: string): Promise<Staff[]>;
   getStaff(id: string): Promise<Staff | undefined>;
   getStaffByUser(userId: string): Promise<Staff | undefined>;
   createStaff(staff: InsertStaff): Promise<Staff>;
@@ -62,11 +65,13 @@ export interface IStorage {
   getClientsByOrganization(organizationId: string): Promise<Client[]>;
   getClient(id: string): Promise<Client | undefined>;
   getClientByUser(userId: string): Promise<Client | undefined>;
+  getClientByEmail(email: string): Promise<Client | undefined>;
   createClient(client: InsertClient): Promise<Client>;
   updateClient(id: string, updates: Partial<InsertClient>): Promise<Client>;
 
   // Services
   getServicesByOrganization(organizationId: string): Promise<Service[]>;
+  getServicesByLocation(locationId: string): Promise<Service[]>;
   getService(id: string): Promise<Service | undefined>;
   createService(service: InsertService): Promise<Service>;
   updateService(id: string, updates: Partial<InsertService>): Promise<Service>;
@@ -570,6 +575,43 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(auditLogs)
       .where(eq(auditLogs.organizationId, organizationId))
       .orderBy(desc(auditLogs.createdAt));
+  }
+
+  // Additional missing method implementations
+  async getClientByEmail(email: string): Promise<Client | undefined> {
+    const [client] = await db.select().from(clients).where(eq(clients.email, email));
+    return client || undefined;
+  }
+
+  async getAllLocations(): Promise<Location[]> {
+    return await db.select().from(locations)
+      .where(eq(locations.isActive, true))
+      .orderBy(asc(locations.name));
+  }
+
+  async getServicesByLocation(locationId: string): Promise<Service[]> {
+    return await db.select().from(services)
+      .where(and(eq(services.organizationId, locationId), eq(services.isActive, true)))
+      .orderBy(asc(services.name));
+  }
+
+  async getStaffByLocation(locationId: string): Promise<Staff[]> {
+    return await db.select().from(staff)
+      .where(and(
+        eq(staff.isActive, true),
+        sql`${staff.locationIds}::jsonb ? ${locationId}`
+      ))
+      .orderBy(asc(staff.title));
+  }
+
+  async getStaffByLocationAndService(locationId: string, serviceId: string): Promise<Staff[]> {
+    return await db.select().from(staff)
+      .where(and(
+        eq(staff.isActive, true),
+        sql`${staff.locationIds}::jsonb ? ${locationId}`,
+        sql`${staff.specialties}::jsonb ? ${serviceId}`
+      ))
+      .orderBy(asc(staff.title));
   }
 }
 

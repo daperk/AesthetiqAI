@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import type { Express, Request } from "express";
 import { createServer, type Server } from "http";
 import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
@@ -16,6 +16,28 @@ import {
   type User
 } from "@shared/schema";
 import { z } from "zod";
+
+// Augment Express Request type to include our User type
+declare global {
+  namespace Express {
+    interface User {
+      id: string;
+      email: string;
+      username: string;
+      password: string;
+      firstName: string | null;
+      lastName: string | null;
+      phone: string | null;
+      role: "super_admin" | "clinic_admin" | "staff" | "patient";
+      stripeCustomerId: string | null;
+      stripeSubscriptionId: string | null;
+      emailVerified: boolean | null;
+      isActive: boolean | null;
+      createdAt: Date | null;
+      updatedAt: Date | null;
+    }
+  }
+}
 
 const pgSession = connectPgSimple(session);
 
@@ -79,14 +101,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use(passport.session());
 
   // Auth middleware
-  const requireAuth = (req: any, res: any, next: any) => {
+  const requireAuth = (req: Request, res: any, next: any) => {
     if (!req.isAuthenticated()) {
       return res.status(401).json({ message: "Authentication required" });
     }
     next();
   };
 
-  const requireRole = (...roles: string[]) => (req: any, res: any, next: any) => {
+  const requireRole = (...roles: string[]) => (req: Request, res: any, next: any) => {
     if (!req.user || !roles.includes(req.user.role)) {
       return res.status(403).json({ message: "Insufficient permissions" });
     }
@@ -115,7 +137,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     return null;
   };
 
-  const auditLog = async (req: any, action: string, resource: string, resourceId?: string, changes?: any) => {
+  const auditLog = async (req: Request, action: string, resource: string, resourceId?: string, changes?: any) => {
     if (req.user) {
       try {
         const organizationId = await getUserOrganizationId(req.user);
@@ -388,15 +410,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check permissions
       let hasAccess = false;
       
-      if (req.user.role === "super_admin") {
+      if (req.user!.role === "super_admin") {
         hasAccess = true;
-      } else if (req.user.organizationId === organization.id) {
-        hasAccess = true;
-      } else if (req.user.role === "patient") {
-        // For patients, check if they have a client record with this organization
-        const client = await storage.getClientByUser(req.user.id);
-        if (client && client.organizationId === organization.id) {
+      } else {
+        const userOrgId = await getUserOrganizationId(req.user!);
+        if (userOrgId === organization.id) {
           hasAccess = true;
+        } else if (req.user!.role === "patient") {
+          // For patients, check if they have a client record with this organization
+          const client = await storage.getClientByUser(req.user!.id);
+          if (client && client.organizationId === organization.id) {
+            hasAccess = true;
+          }
         }
       }
 
@@ -470,12 +495,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       let organizationId = req.query.organizationId as string;
       
-      if (req.user?.role === "super_admin") {
+      if (req.user!.role === "super_admin") {
         if (!organizationId) {
           return res.status(400).json({ message: "Organization ID required for super admin" });
         }
       } else {
-        organizationId = req.user?.organizationId;
+        const userOrgId = await getUserOrganizationId(req.user!);
+        if (!userOrgId) {
+          return res.status(403).json({ message: "No organization access" });
+        }
+        organizationId = userOrgId;
       }
 
       const clients = await storage.getClientsByOrganization(organizationId);
@@ -503,11 +532,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get current user's client record (for patients)
   app.get("/api/clients/me", requireAuth, async (req, res) => {
     try {
-      if (req.user?.role !== "patient") {
+      if (req.user!.role !== "patient") {
         return res.status(403).json({ message: "Only patients can access client records" });
       }
 
-      const client = await storage.getClientByUser(req.user.id);
+      const client = await storage.getClientByUser(req.user!.id);
       res.json(client);
     } catch (error) {
       console.error("Get client/me error:", error);
@@ -534,16 +563,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         endDate.setHours(23, 59, 59, 999); // End of day
       }
       
-      if (req.user?.role === "super_admin") {
+      if (req.user!.role === "super_admin") {
         if (!organizationId) {
           return res.status(400).json({ message: "Organization ID required for super admin" });
         }
       } else {
-        organizationId = await getUserOrganizationId(req.user!);
-      }
-
-      if (!organizationId) {
-        return res.status(403).json({ message: "No organization access" });
+        const userOrgId = await getUserOrganizationId(req.user!);
+        if (!userOrgId) {
+          return res.status(403).json({ message: "No organization access" });
+        }
+        organizationId = userOrgId;
       }
 
       const appointments = await storage.getAppointmentsByOrganization(organizationId, startDate, endDate);
@@ -597,11 +626,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Verify staff belongs to user's organization
       const userOrgId = await getUserOrganizationId(req.user!);
-      if (!userOrgId && req.user?.role !== "super_admin") {
+      if (!userOrgId && req.user!.role !== "super_admin") {
         return res.status(403).json({ message: "No organization access" });
       }
       
-      if (req.user?.role !== "super_admin") {
+      if (req.user!.role !== "super_admin") {
         const staff = await storage.getStaff(staffId);
         if (!staff || staff.organizationId !== userOrgId) {
           return res.status(403).json({ message: "Staff not accessible" });
@@ -685,15 +714,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let client;
       if (req.isAuthenticated()) {
         // Authenticated user booking
-        client = await storage.getClientByUser(req.user?.id);
+        client = await storage.getClientByUser(req.user!.id);
         if (!client) {
           client = await storage.createClient({
-            userId: req.user?.id,
+            userId: req.user!.id,
             organizationId: service.organizationId,
-            firstName: req.user?.firstName || "",
-            lastName: req.user?.lastName || "",
-            email: req.user?.email,
-            phone: req.user?.phone
+            firstName: req.user!.firstName || "",
+            lastName: req.user!.lastName || "",
+            email: req.user!.email,
+            phone: req.user!.phone
           });
         }
       } else {
@@ -754,9 +783,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         serviceId,
         startTime: new Date(startTime),
         endTime: new Date(endTime),
-        totalAmount: service.price,
-        depositPaid: isDepositPayment ? service.depositAmount : service.price,
-        status: "pending_payment"
+        totalAmount: service.price.toString(),
+        depositPaid: (isDepositPayment ? service.depositAmount : service.price).toString(),
+        status: "scheduled"
       });
 
       // Create transaction record
@@ -764,10 +793,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         organizationId: service.organizationId,
         clientId: client.id,
         appointmentId: appointment.id,
-        amount: paymentAmount,
+        amount: paymentAmount.toString(),
         type: isDepositPayment ? "appointment_deposit" : "appointment_full",
         status: "pending",
-        paymentIntentId: paymentIntent.id
+        stripePaymentIntentId: paymentIntent.id
       });
 
       res.json({
@@ -813,7 +842,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Update transaction to succeeded
       await storage.updateTransactionByPaymentIntent(paymentIntentId, {
-        status: "succeeded"
+        status: "completed"
       });
 
       res.json({
@@ -840,7 +869,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Check if user has access to this organization
-      if (req.user?.role !== "super_admin" && req.user?.organizationId !== appointment.organizationId) {
+      if (req.user!.role !== "super_admin" && await getUserOrganizationId(req.user!) !== appointment.organizationId) {
         return res.status(403).json({ message: "Access denied" });
       }
 
@@ -875,20 +904,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         {
           appointmentId: appointment.id,
           paymentType: "remaining_balance",
-          confirm: true,
-          off_session: true
+          confirm: "true",
+          off_session: "true"
         }
       );
 
       // Update appointment final total
-      await storage.updateAppointment(appointmentId, { totalAmount: finalTotal });
+      await storage.updateAppointment(appointmentId, { totalAmount: finalTotal.toString() });
 
       // Create transaction record
       await storage.createTransaction({
         organizationId: appointment.organizationId,
         clientId: appointment.clientId,
         appointmentId: appointment.id,
-        amount: remainingBalance,
+        amount: remainingBalance.toString(),
         type: "appointment_balance",
         status: "pending",
         stripePaymentIntentId: paymentIntent.paymentIntentId,
@@ -922,12 +951,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Check permissions
-      if (req.user?.role === "patient") {
-        const client = await storage.getClientByUser(req.user.id);
+      if (req.user!.role === "patient") {
+        const client = await storage.getClientByUser(req.user!.id);
         if (!client || client.id !== appointment.clientId) {
           return res.status(403).json({ message: "Access denied" });
         }
-      } else if (req.user?.role !== "super_admin" && req.user?.organizationId !== appointment.organizationId) {
+      } else if (req.user!.role !== "super_admin" && await getUserOrganizationId(req.user!) !== appointment.organizationId) {
         return res.status(403).json({ message: "Access denied" });
       }
 
@@ -983,7 +1012,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const userOrgId = await getUserOrganizationId(req.user!);
-      if (req.user?.role !== "super_admin" && existingService.organizationId !== userOrgId) {
+      if (req.user!.role !== "super_admin" && existingService.organizationId !== userOrgId) {
         return res.status(403).json({ message: "Access denied" });
       }
 
@@ -1009,7 +1038,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const userOrgId = await getUserOrganizationId(req.user!);
-      if (req.user?.role !== "super_admin" && existingService.organizationId !== userOrgId) {
+      if (req.user!.role !== "super_admin" && existingService.organizationId !== userOrgId) {
         return res.status(403).json({ message: "Access denied" });
       }
 
@@ -1033,12 +1062,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json(memberships);
       }
 
-      if (req.user?.role === "super_admin") {
+      if (req.user!.role === "super_admin") {
         if (!organizationId) {
           return res.status(400).json({ message: "Organization ID required for super admin" });
         }
       } else {
-        organizationId = req.user?.organizationId;
+        organizationId = await getUserOrganizationId(req.user!);
       }
 
       const memberships = await storage.getMembershipsByOrganization(organizationId);
@@ -1052,7 +1081,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/memberships/my-membership", requireAuth, async (req, res) => {
     try {
       // Get client record for current user
-      const client = await storage.getClientByUser(req.user?.id);
+      const client = await storage.getClientByUser(req.user!.id);
       if (!client) {
         return res.status(404).json({ message: "Client profile not found" });
       }
@@ -1072,7 +1101,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { tierId, billingCycle } = req.body;
       
       // Get client record for current user
-      const client = await storage.getClientByUser(req.user?.id);
+      const client = await storage.getClientByUser(req.user!.id);
       if (!client) {
         return res.status(404).json({ message: "Client profile not found" });
       }
@@ -1084,8 +1113,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         tierName: tierId,
         startDate: new Date(),
         status: 'active',
-        billingCycle: billingCycle,
-        nextBillingDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) // 30 days from now
+        organizationId: client.organizationId,
+        monthlyFee: "100.00" // Default membership fee
       });
 
       await auditLog(req, "upgrade", "membership", membership.id, { tierId, billingCycle });
@@ -1111,7 +1140,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/rewards/my-rewards", requireAuth, async (req, res) => {
     try {
       // Get client record for current user
-      const client = await storage.getClientByUser(req.user?.id);
+      const client = await storage.getClientByUser(req.user!.id);
       if (!client) {
         return res.status(404).json({ message: "Client profile not found" });
       }
@@ -1130,7 +1159,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { optionId, pointsCost } = req.body;
       
       // Get client record for current user
-      const client = await storage.getClientByUser(req.user?.id);
+      const client = await storage.getClientByUser(req.user!.id);
       if (!client) {
         return res.status(404).json({ message: "Client profile not found" });
       }
@@ -1143,10 +1172,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Create reward redemption record
       const reward = await storage.createReward({
+        organizationId: client.organizationId,
         clientId: client.id,
-        pointsEarned: -pointsCost, // Negative for redemption
-        description: `Redeemed: ${optionId}`,
-        earnedDate: new Date()
+        points: -pointsCost, // Negative for redemption
+        reason: `Redeemed: ${optionId}`
       });
 
       await auditLog(req, "redeem", "reward", reward.id, { optionId, pointsCost });
@@ -1177,12 +1206,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       let organizationId = req.query.organizationId as string;
       
-      if (req.user?.role === "super_admin") {
+      if (req.user!.role === "super_admin") {
         if (!organizationId) {
           return res.status(400).json({ message: "Organization ID required for super admin" });
         }
       } else {
-        organizationId = req.user?.organizationId;
+        organizationId = await getUserOrganizationId(req.user!);
       }
 
       const insights = await storage.getAiInsightsByOrganization(organizationId);
@@ -1741,12 +1770,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       let organizationId = req.query.organizationId as string;
       
-      if (req.user?.role === "super_admin") {
+      if (req.user!.role === "super_admin") {
         if (!organizationId) {
           return res.status(400).json({ message: "Organization ID required for super admin" });
         }
       } else {
-        organizationId = req.user?.organizationId;
+        organizationId = await getUserOrganizationId(req.user!);
       }
 
       // Real analytics data aggregation
@@ -1823,14 +1852,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Get available services and slots for context
-      const organizationId = req.user?.organizationId;
+      const organizationId = await getUserOrganizationId(req.user!);
       const availableServices = organizationId ? await storage.getServicesByOrganization(organizationId) : [];
       
       // For now, we'll provide empty slots - this would typically query a calendar system
       const availableSlots: any[] = [];
 
       const responseText = await openaiService.generateBookingChatResponse(message, {
-        clientName: context?.clientName || req.user?.firstName,
+        clientName: context?.clientName || req.user!.firstName,
         availableServices,
         availableSlots,
         membershipStatus: context?.membershipStatus
