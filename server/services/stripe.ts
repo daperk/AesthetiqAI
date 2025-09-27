@@ -1,7 +1,7 @@
 import Stripe from "stripe";
 
 const stripe = process.env.STRIPE_SECRET_KEY 
-  ? new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: "2025-08-27.basil" })
+  ? new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: "2023-10-16" })
   : null;
 
 export interface SubscriptionResult {
@@ -73,6 +73,70 @@ export async function cancelSubscription(subscriptionId: string): Promise<Stripe
   return await stripe.subscriptions.cancel(subscriptionId);
 }
 
+// Stripe Connect Express account functions
+export async function createConnectAccount(organization: { 
+  name: string; 
+  email: string; 
+  organizationId: string;
+}): Promise<Stripe.Account> {
+  if (!stripe) throw new Error("Stripe not configured");
+  return await stripe.accounts.create({
+    type: 'express',
+    country: 'US',
+    email: organization.email,
+    business_profile: {
+      name: organization.name,
+      support_email: organization.email,
+      url: process.env.FRONTEND_URL || 'https://your-domain.com'
+    },
+    metadata: {
+      organizationId: organization.organizationId
+    }
+  });
+}
+
+export async function createAccountLink(accountId: string, organizationId: string): Promise<Stripe.AccountLink> {
+  if (!stripe) throw new Error("Stripe not configured");
+  const refreshUrl = `${process.env.FRONTEND_URL || 'http://localhost:5000'}/clinic/payment-setup?refresh=true&org=${organizationId}`;
+  const returnUrl = `${process.env.FRONTEND_URL || 'http://localhost:5000'}/clinic/payment-setup?success=true&org=${organizationId}`;
+  
+  return await stripe.accountLinks.create({
+    account: accountId,
+    refresh_url: refreshUrl,
+    return_url: returnUrl,
+    type: 'account_onboarding',
+  });
+}
+
+export async function getConnectAccount(accountId: string): Promise<Stripe.Account> {
+  if (!stripe) throw new Error("Stripe not configured");
+  return await stripe.accounts.retrieve(accountId);
+}
+
+export async function checkAccountStatus(accountId: string): Promise<{
+  ready: boolean;
+  payoutsEnabled: boolean;
+  transfersActive: boolean;
+  hasExternalAccount: boolean;
+  requirements: string[];
+}> {
+  if (!stripe) throw new Error("Stripe not configured");
+  const account = await stripe.accounts.retrieve(accountId);
+  
+  const payoutsEnabled = account.payouts_enabled || false;
+  const transfersActive = account.capabilities?.transfers === 'active';
+  const hasExternalAccount = account.external_accounts?.data?.length > 0 || false;
+  const requirements = account.requirements?.currently_due || [];
+  
+  return {
+    ready: payoutsEnabled && transfersActive && hasExternalAccount && requirements.length === 0,
+    payoutsEnabled,
+    transfersActive,
+    hasExternalAccount,
+    requirements
+  };
+}
+
 export async function createPaymentIntent(
   amount: number,
   currency: string = "usd",
@@ -96,28 +160,6 @@ export async function createPaymentIntent(
   };
 }
 
-export async function createConnectAccount(organizationId: string, email: string): Promise<Stripe.Account> {
-  if (!stripe) throw new Error("Stripe not configured");
-  return await stripe.accounts.create({
-    type: "standard",
-    email,
-    metadata: {
-      organizationId
-    }
-  });
-}
-
-export async function createAccountLink(accountId: string, refreshUrl: string, returnUrl: string): Promise<string> {
-  if (!stripe) throw new Error("Stripe not configured");
-  const accountLink = await stripe.accountLinks.create({
-    account: accountId,
-    refresh_url: refreshUrl,
-    return_url: returnUrl,
-    type: "account_onboarding",
-  });
-
-  return accountLink.url;
-}
 
 export async function transferFunds(
   amount: number,

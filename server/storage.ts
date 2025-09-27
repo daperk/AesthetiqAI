@@ -30,6 +30,14 @@ export interface IStorage {
   getOrganizations(limit?: number, offset?: number): Promise<Organization[]>;
   createOrganization(organization: InsertOrganization): Promise<Organization>;
   updateOrganization(id: string, updates: Partial<InsertOrganization>): Promise<Organization>;
+  updateOrganizationStripeConnect(id: string, data: {
+    stripeConnectAccountId?: string;
+    stripeAccountStatus?: string;
+    payoutsEnabled?: boolean;
+    capabilitiesTransfers?: string;
+    hasExternalAccount?: boolean;
+    businessFeaturesEnabled?: boolean;
+  }): Promise<void>;
 
   // Subscription Plans
   getSubscriptionPlans(): Promise<SubscriptionPlan[]>;
@@ -175,6 +183,17 @@ export class DatabaseStorage implements IStorage {
       .where(eq(organizations.id, id))
       .returning();
     return organization;
+  }
+
+  async updateOrganizationStripeConnect(id: string, data: {
+    stripeConnectAccountId?: string;
+    stripeAccountStatus?: string;
+    payoutsEnabled?: boolean;
+    capabilitiesTransfers?: string;
+    hasExternalAccount?: boolean;
+    businessFeaturesEnabled?: boolean;
+  }): Promise<void> {
+    await db.update(organizations).set(data).where(eq(organizations.id, id));
   }
 
   // Subscription Plans

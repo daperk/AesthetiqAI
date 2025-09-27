@@ -1480,6 +1480,208 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Stripe Connect Express account creation and onboarding
+  app.post("/api/stripe-connect/create-account", requireRole("clinic_admin"), async (req, res) => {
+    try {
+      const organizationId = await getUserOrganizationId(req.user!);
+      if (!organizationId) {
+        return res.status(400).json({ message: "No organization found for user" });
+      }
+
+      const organization = await storage.getOrganization(organizationId);
+      if (!organization) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+
+      // Check if organization already has a Stripe Connect account
+      if (organization.stripeConnectAccountId) {
+        return res.status(400).json({ message: "Organization already has a Stripe Connect account" });
+      }
+
+      // Create Stripe Express account
+      const account = await stripeService.createConnectAccount({
+        name: organization.name,
+        email: organization.email || req.user!.email,
+        organizationId: organization.id
+      });
+
+      // Update organization with Stripe Connect account ID
+      await storage.updateOrganizationStripeConnect(organization.id, {
+        stripeConnectAccountId: account.id,
+        stripeAccountStatus: 'pending'
+      });
+
+      // Create account link for onboarding
+      const accountLink = await stripeService.createAccountLink(account.id, organization.id);
+
+      res.json({
+        accountId: account.id,
+        onboardingUrl: accountLink.url,
+        message: "Stripe Connect account created. Please complete onboarding."
+      });
+
+    } catch (error) {
+      console.error("Stripe Connect account creation error:", error);
+      res.status(500).json({ message: "Failed to create Stripe Connect account" });
+    }
+  });
+
+  app.get("/api/stripe-connect/status", requireRole("clinic_admin"), async (req, res) => {
+    try {
+      const organizationId = await getUserOrganizationId(req.user!);
+      if (!organizationId) {
+        return res.status(400).json({ message: "No organization found for user" });
+      }
+
+      const organization = await storage.getOrganization(organizationId);
+      if (!organization) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+
+      if (!organization.stripeConnectAccountId) {
+        return res.json({
+          hasAccount: false,
+          businessFeaturesEnabled: false,
+          message: "No Stripe Connect account found"
+        });
+      }
+
+      // Check account status with Stripe
+      const accountStatus = await stripeService.checkAccountStatus(organization.stripeConnectAccountId);
+
+      // Only update telemetry data - DO NOT enable business features
+      // Business features are ONLY enabled via webhook confirmation
+      await storage.updateOrganizationStripeConnect(organization.id, {
+        payoutsEnabled: accountStatus.payoutsEnabled,
+        capabilitiesTransfers: accountStatus.transfersActive ? 'active' : 'inactive',
+        hasExternalAccount: accountStatus.hasExternalAccount
+        // Note: stripeAccountStatus and businessFeaturesEnabled are ONLY updated by webhooks
+      });
+
+      res.json({
+        hasAccount: true,
+        accountId: organization.stripeConnectAccountId,
+        payoutsEnabled: accountStatus.payoutsEnabled,
+        transfersActive: accountStatus.transfersActive,
+        hasExternalAccount: accountStatus.hasExternalAccount,
+        businessFeaturesEnabled: accountStatus.ready,
+        requirements: accountStatus.requirements
+      });
+
+    } catch (error) {
+      console.error("Stripe Connect status check error:", error);
+      res.status(500).json({ message: "Failed to check Stripe Connect status" });
+    }
+  });
+
+  app.post("/api/stripe-connect/refresh-onboarding", requireRole("clinic_admin"), async (req, res) => {
+    try {
+      const organizationId = await getUserOrganizationId(req.user!);
+      if (!organizationId) {
+        return res.status(400).json({ message: "No organization found for user" });
+      }
+
+      const organization = await storage.getOrganization(organizationId);
+      if (!organization || !organization.stripeConnectAccountId) {
+        return res.status(400).json({ message: "No Stripe Connect account found" });
+      }
+
+      // Create new account link for onboarding
+      const accountLink = await stripeService.createAccountLink(organization.stripeConnectAccountId, organization.id);
+
+      res.json({
+        onboardingUrl: accountLink.url,
+        message: "New onboarding link created"
+      });
+
+    } catch (error) {
+      console.error("Stripe Connect onboarding refresh error:", error);
+      res.status(500).json({ message: "Failed to refresh onboarding link" });
+    }
+  });
+
+  // Stripe Connect webhook handler
+  app.post("/api/stripe/webhook", async (req, res) => {
+    const sig = req.headers['stripe-signature'] as string;
+    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+    if (!webhookSecret) {
+      console.error("Stripe webhook secret not configured");
+      return res.status(500).send("Webhook secret not configured");
+    }
+
+    let event: any;
+
+    try {
+      const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+      event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+    } catch (err: any) {
+      console.error("Webhook signature verification failed:", err.message);
+      return res.status(400).send(`Webhook Error: ${err.message}`);
+    }
+
+    try {
+      // Handle account verification events
+      if (event.type === 'account.updated') {
+        const account = event.data.object;
+        const organizationId = account.metadata?.organizationId;
+
+        if (organizationId) {
+          const payoutsEnabled = account.payouts_enabled || false;
+          const transfersActive = account.capabilities?.transfers === 'active';
+          const hasExternalAccount = account.external_accounts?.data?.length > 0 || false;
+          const requirements = account.requirements?.currently_due || [];
+          const accountReady = payoutsEnabled && transfersActive && hasExternalAccount && requirements.length === 0;
+
+          // Update organization with latest verification status
+          await storage.updateOrganizationStripeConnect(organizationId, {
+            stripeAccountStatus: accountReady ? 'active' : 'pending',
+            payoutsEnabled,
+            capabilitiesTransfers: transfersActive ? 'active' : 'inactive',
+            hasExternalAccount,
+            businessFeaturesEnabled: accountReady
+          });
+
+          console.log(`Stripe Connect account ${account.id} updated for organization ${organizationId}: ready=${accountReady}`);
+        }
+      }
+
+      // Handle capability updates
+      if (event.type === 'capability.updated') {
+        const capability = event.data.object;
+        const account = capability.account;
+        
+        // Get the full account to check all capabilities
+        const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+        const fullAccount = await stripe.accounts.retrieve(account);
+        const organizationId = fullAccount.metadata?.organizationId;
+
+        if (organizationId) {
+          const payoutsEnabled = fullAccount.payouts_enabled || false;
+          const transfersActive = fullAccount.capabilities?.transfers === 'active';
+          const hasExternalAccount = fullAccount.external_accounts?.data?.length > 0 || false;
+          const requirements = fullAccount.requirements?.currently_due || [];
+          const accountReady = payoutsEnabled && transfersActive && hasExternalAccount && requirements.length === 0;
+
+          await storage.updateOrganizationStripeConnect(organizationId, {
+            stripeAccountStatus: accountReady ? 'active' : 'pending',
+            payoutsEnabled,
+            capabilitiesTransfers: transfersActive ? 'active' : 'inactive',
+            hasExternalAccount,
+            businessFeaturesEnabled: accountReady
+          });
+
+          console.log(`Stripe Connect capability updated for organization ${organizationId}: transfers=${transfersActive}, ready=${accountReady}`);
+        }
+      }
+
+      res.json({ received: true });
+    } catch (error) {
+      console.error("Webhook processing error:", error);
+      res.status(500).json({ error: "Webhook processing failed" });
+    }
+  });
+
   // Stripe payment routes
   app.post("/api/payments/create-payment-intent", requireAuth, async (req, res) => {
     try {
