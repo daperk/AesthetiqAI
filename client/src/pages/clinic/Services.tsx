@@ -56,8 +56,17 @@ export default function Services() {
   // Fetch services
   const { data: services = [], isLoading } = useQuery<Service[]>({
     queryKey: ["/api/services", organization?.id],
+    queryFn: () => fetch("/api/services").then(res => res.json()),
     enabled: !!organization?.id,
     staleTime: 60000,
+  });
+
+  // Debug logging
+  console.log('🔍 Services debug:', { 
+    servicesCount: services.length, 
+    organizationId: organization?.id, 
+    isLoading,
+    services: services.map(s => ({ id: s.id, name: s.name }))
   });
 
   // Fetch staff for assignment dropdown
@@ -477,7 +486,7 @@ export default function Services() {
                         </div>
                         <div className="flex items-center text-sm font-medium text-foreground" data-testid={`service-price-${service.id}`}>
                           <DollarSign className="w-4 h-4 mr-1" />
-                          {formatPrice(service.price)}
+                          {formatPrice(Number(service.price))}
                         </div>
                       </div>
                       
@@ -485,7 +494,7 @@ export default function Services() {
                         <div className="flex items-center justify-between text-sm">
                           <span className="text-muted-foreground">Deposit required:</span>
                           <span className="font-medium text-primary" data-testid={`service-deposit-${service.id}`}>
-                            {formatPrice(service.depositAmount)}
+                            {formatPrice(Number(service.depositAmount))}
                           </span>
                         </div>
                       )}

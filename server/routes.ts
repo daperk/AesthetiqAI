@@ -1273,10 +1273,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/services", async (req, res) => {
     try {
+      console.log('🔍 [GET /api/services] Request received:', {
+        query: req.query,
+        isAuthenticated: req.isAuthenticated(),
+        userRole: req.user?.role,
+        headers: req.headers.accept
+      });
+
       const { locationId } = req.query;
       
       // Public access only with valid locationId - no organization enumeration
       if (locationId) {
+        console.log('🔍 [GET /api/services] Using locationId:', locationId);
         // Validate location exists and is active
         const location = await storage.getLocation(locationId as string);
         if (!location || !location.isActive) {
@@ -1284,23 +1292,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         
         const services = await storage.getServicesByLocation(locationId as string);
+        console.log('🔍 [GET /api/services] Found services by location:', services.length);
         return res.json(services);
       }
       
       // Require authentication for organization-wide access
       if (!req.isAuthenticated()) {
+        console.log('🔍 [GET /api/services] Authentication required - user not authenticated');
         return res.status(401).json({ message: "Authentication required" });
       }
 
       // Only authenticated users can access by organization
       const orgId = await getUserOrganizationId(req.user!);
+      console.log('🔍 [GET /api/services] User orgId:', orgId);
       if (!orgId) {
         return res.status(400).json({ message: "User organization not found" });
       }
 
       const services = await storage.getServicesByOrganization(orgId);
+      console.log('🔍 [GET /api/services] Found services by organization:', services.length, 'services');
       res.json(services);
     } catch (error) {
+      console.error('🔍 [GET /api/services] Error:', error);
       res.status(500).json({ message: "Failed to fetch services" });
     }
   });

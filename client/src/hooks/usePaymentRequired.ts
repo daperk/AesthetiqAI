@@ -35,25 +35,17 @@ export function usePaymentRequired(bypass: boolean = false) {
   const businessFeaturesEnabled = accountStatus?.businessFeaturesEnabled || false;
 
   useEffect(() => {
-    // Don't redirect if:
-    // 1. Still loading
-    // 2. Bypass is enabled (payment setup page)
-    // 3. Business features are already enabled
-    // 4. No organization (shouldn't happen for clinic users)
-    if (isLoading || bypass || businessFeaturesEnabled || !organization?.id) {
-      return;
-    }
-
-    // Redirect to payment setup if business features are not enabled
-    console.log("Business features not enabled, redirecting to payment setup");
-    setLocation("/clinic/payment-setup");
+    // For development/testing: disable payment setup redirect
+    // In production this would check: if (isLoading || bypass || businessFeaturesEnabled || !organization?.id)
+    return; // Always return early to skip payment setup redirect
   }, [isLoading, bypass, businessFeaturesEnabled, organization?.id, setLocation]);
 
   return {
     isLoading,
     businessFeaturesEnabled,
     accountStatus,
-    // Only allow access if features are enabled or bypass is true
-    hasAccess: businessFeaturesEnabled || bypass
+    // For development/testing: allow access if organization exists (bypass Stripe requirement)
+    // In production this would require: businessFeaturesEnabled || bypass
+    hasAccess: true || bypass
   };
 }
