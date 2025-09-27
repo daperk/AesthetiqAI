@@ -94,12 +94,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
   };
 
   // Audit logging middleware
+  // Helper to get user's organization ID
+  const getUserOrganizationId = async (user: User): Promise<string | null> => {
+    if (user.role === "super_admin") {
+      return null; // Super admins can access all organizations
+    }
+    
+    // For staff and clinic_admin, get organization through staff table
+    if (user.role === "clinic_admin" || user.role === "staff") {
+      const staff = await storage.getStaffByUser(user.id);
+      return staff?.organizationId || null;
+    }
+    
+    // For patients, get organization through client table
+    if (user.role === "patient") {
+      const client = await storage.getClientByUser(user.id);
+      return client?.organizationId || null;
+    }
+    
+    return null;
+  };
+
   const auditLog = async (req: any, action: string, resource: string, resourceId?: string, changes?: any) => {
     if (req.user) {
       try {
+        const organizationId = await getUserOrganizationId(req.user);
         await storage.createAuditLog({
           userId: req.user.id,
-          organizationId: req.user.organizationId,
+          organizationId,
           action,
           resource,
           resourceId,
@@ -326,6 +348,230 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Enhanced appointment booking with payment
+  app.post("/api/appointments/book-with-payment", requireAuth, async (req, res) => {
+    try {
+      const { serviceId, locationId, staffId, startTime, endTime, paymentMethodId } = req.body;
+
+      // Get service details to determine payment type
+      const service = await storage.getService(serviceId);
+      if (!service) {
+        return res.status(404).json({ message: "Service not found" });
+      }
+
+      // Get or create client record
+      let client = await storage.getClientByUser(req.user?.id);
+      if (!client) {
+        // Create client record for patient
+        client = await storage.createClient({
+          userId: req.user?.id,
+          organizationId: service.organizationId,
+          firstName: req.user?.firstName || "",
+          lastName: req.user?.lastName || "",
+          email: req.user?.email,
+          phone: req.user?.phone
+        });
+      }
+
+      // Ensure user has a Stripe customer ID
+      if (!req.user?.stripeCustomerId) {
+        const stripeCustomer = await stripeService.createCustomer(
+          req.user?.email!,
+          `${req.user?.firstName} ${req.user?.lastName}`,
+          service.organizationId
+        );
+        await storage.updateUser(req.user?.id!, { stripeCustomerId: stripeCustomer.id });
+        req.user.stripeCustomerId = stripeCustomer.id;
+      }
+
+      // Determine payment amount
+      const isDepositOnly = service.depositRequired;
+      const paymentAmount = isDepositOnly ? Number(service.depositAmount) : Number(service.price);
+      
+      // Create Stripe PaymentIntent
+      const paymentIntent = await stripeService.createPaymentIntent(
+        Math.round(paymentAmount * 100), // Convert to cents
+        "usd",
+        req.user.stripeCustomerId,
+        {
+          serviceId: service.id,
+          organizationId: service.organizationId,
+          clientId: client.id,
+          paymentType: isDepositOnly ? "deposit" : "full_payment"
+        }
+      );
+
+      // Create appointment
+      const appointment = await storage.createAppointment({
+        organizationId: service.organizationId,
+        locationId,
+        clientId: client.id,
+        staffId,
+        serviceId,
+        startTime: new Date(startTime),
+        endTime: new Date(endTime),
+        totalAmount: service.price,
+        depositPaid: isDepositOnly ? service.depositAmount : service.price,
+        status: "scheduled"
+      });
+
+      // Create transaction record
+      await storage.createTransaction({
+        organizationId: service.organizationId,
+        clientId: client.id,
+        appointmentId: appointment.id,
+        amount: paymentAmount,
+        type: isDepositOnly ? "appointment_deposit" : "appointment_full",
+        status: "pending",
+        stripePaymentIntentId: paymentIntent.paymentIntentId,
+        description: `${isDepositOnly ? "Deposit for" : "Full payment for"} ${service.name}`
+      });
+
+      await auditLog(req, "create", "appointment", appointment.id, { serviceId, paymentType: isDepositOnly ? "deposit" : "full" });
+
+      res.json({
+        appointment,
+        paymentIntent: {
+          clientSecret: paymentIntent.clientSecret,
+          amount: paymentAmount,
+          type: isDepositOnly ? "deposit" : "full_payment",
+          requiresConfirmation: true
+        }
+      });
+
+    } catch (error) {
+      console.error("Booking with payment error:", error);
+      res.status(500).json({ message: "Failed to create appointment with payment" });
+    }
+  });
+
+  // Admin: Finalize appointment payment (charge remaining balance)
+  app.post("/api/appointments/:id/finalize-payment", requireRole("clinic_admin", "staff"), async (req, res) => {
+    try {
+      const { finalTotal } = req.body;
+      const appointmentId = req.params.id;
+
+      // Get appointment and verify permissions
+      const appointment = await storage.getAppointment(appointmentId);
+      if (!appointment) {
+        return res.status(404).json({ message: "Appointment not found" });
+      }
+
+      // Check if user has access to this organization
+      if (req.user?.role !== "super_admin" && req.user?.organizationId !== appointment.organizationId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      // Get client's Stripe customer ID
+      const client = await storage.getClient(appointment.clientId);
+      if (!client?.userId) {
+        return res.status(400).json({ message: "Client user account not found" });
+      }
+      
+      const clientUser = await storage.getUser(client.userId);
+      if (!clientUser?.stripeCustomerId) {
+        return res.status(400).json({ message: "Client payment method not found" });
+      }
+
+      // Calculate remaining balance
+      const paidTransactions = await storage.getTransactionsByAppointment(appointmentId);
+      const totalPaid = paidTransactions
+        .filter(t => t.status === "completed")
+        .reduce((sum, t) => sum + Number(t.amount), 0);
+      
+      const remainingBalance = Number(finalTotal) - totalPaid;
+
+      if (remainingBalance <= 0) {
+        return res.status(400).json({ message: "No remaining balance to charge" });
+      }
+
+      // Create off-session payment for remaining balance
+      const paymentIntent = await stripeService.createPaymentIntent(
+        Math.round(remainingBalance * 100),
+        "usd",
+        clientUser.stripeCustomerId,
+        {
+          appointmentId: appointment.id,
+          paymentType: "remaining_balance",
+          confirm: true,
+          off_session: true
+        }
+      );
+
+      // Update appointment final total
+      await storage.updateAppointment(appointmentId, { totalAmount: finalTotal });
+
+      // Create transaction record
+      await storage.createTransaction({
+        organizationId: appointment.organizationId,
+        clientId: appointment.clientId,
+        appointmentId: appointment.id,
+        amount: remainingBalance,
+        type: "appointment_balance",
+        status: "pending",
+        stripePaymentIntentId: paymentIntent.paymentIntentId,
+        description: `Remaining balance for appointment`
+      });
+
+      await auditLog(req, "finalize_payment", "appointment", appointment.id, { finalTotal, remainingBalance });
+
+      res.json({
+        message: "Payment finalized successfully",
+        finalTotal,
+        remainingBalance,
+        paymentIntentId: paymentIntent.paymentIntentId
+      });
+
+    } catch (error) {
+      console.error("Finalize payment error:", error);
+      res.status(500).json({ message: "Failed to finalize payment" });
+    }
+  });
+
+  // Get appointment payment history
+  app.get("/api/appointments/:id/transactions", requireAuth, async (req, res) => {
+    try {
+      const appointmentId = req.params.id;
+      
+      // Get appointment and verify permissions
+      const appointment = await storage.getAppointment(appointmentId);
+      if (!appointment) {
+        return res.status(404).json({ message: "Appointment not found" });
+      }
+
+      // Check permissions
+      if (req.user?.role === "patient") {
+        const client = await storage.getClientByUser(req.user.id);
+        if (!client || client.id !== appointment.clientId) {
+          return res.status(403).json({ message: "Access denied" });
+        }
+      } else if (req.user?.role !== "super_admin" && req.user?.organizationId !== appointment.organizationId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const transactions = await storage.getTransactionsByAppointment(appointmentId);
+      const totalPaid = transactions
+        .filter(t => t.status === "completed")
+        .reduce((sum, t) => sum + Number(t.amount), 0);
+      
+      const remainingBalance = Number(appointment.totalAmount || 0) - totalPaid;
+
+      res.json({
+        transactions,
+        summary: {
+          totalAmount: appointment.totalAmount,
+          totalPaid,
+          remainingBalance,
+          depositPaid: appointment.depositPaid
+        }
+      });
+
+    } catch (error) {
+      console.error("Get transactions error:", error);
+      res.status(500).json({ message: "Failed to fetch transactions" });
+    }
+  });
+
   // Service routes
   app.get("/api/services", requireAuth, async (req, res) => {
     try {
@@ -336,12 +582,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(400).json({ message: "Organization ID required for super admin" });
         }
       } else {
-        organizationId = req.user?.organizationId;
+        organizationId = await getUserOrganizationId(req.user!) || '';
+        if (!organizationId) {
+          return res.status(400).json({ message: "User organization not found" });
+        }
       }
 
       const services = await storage.getServicesByOrganization(organizationId);
       res.json(services);
     } catch (error) {
+      console.error("Services fetch error:", error);
       res.status(500).json({ message: "Failed to fetch services" });
     }
   });

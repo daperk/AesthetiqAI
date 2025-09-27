@@ -86,6 +86,7 @@ export interface IStorage {
   // Transactions
   getTransactionsByOrganization(organizationId: string): Promise<Transaction[]>;
   getTransactionsByClient(clientId: string): Promise<Transaction[]>;
+  getTransactionsByAppointment(appointmentId: string): Promise<Transaction[]>;
   createTransaction(transaction: InsertTransaction): Promise<Transaction>;
   updateTransaction(id: string, updates: Partial<InsertTransaction>): Promise<Transaction>;
 
@@ -406,6 +407,12 @@ export class DatabaseStorage implements IStorage {
   async getTransactionsByClient(clientId: string): Promise<Transaction[]> {
     return await db.select().from(transactions)
       .where(eq(transactions.clientId, clientId))
+      .orderBy(desc(transactions.createdAt));
+  }
+
+  async getTransactionsByAppointment(appointmentId: string): Promise<Transaction[]> {
+    return await db.select().from(transactions)
+      .where(eq(transactions.appointmentId, appointmentId))
       .orderBy(desc(transactions.createdAt));
   }
 
