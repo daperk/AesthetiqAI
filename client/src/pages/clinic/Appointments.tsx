@@ -36,6 +36,7 @@ export default function Appointments() {
     clientId: "",
     staffId: "",
     serviceId: "",
+    locationId: "",
     startTime: "",
     endTime: "",
     notes: "",
@@ -78,12 +79,18 @@ export default function Appointments() {
     staleTime: 5 * 60000,
   });
 
+  const { data: locations } = useQuery<any[]>({
+    queryKey: ["/api/locations", organization?.id],
+    enabled: !!organization?.id,
+    staleTime: 5 * 60000,
+  });
+
   const createAppointmentMutation = useMutation({
     mutationFn: async (appointmentData: typeof newAppointment) => {
       const response = await apiRequest("POST", "/api/appointments", {
         ...appointmentData,
         organizationId: organization?.id,
-        locationId: "temp-location-id", // TODO: Fix location management
+        locationId: appointmentData.locationId,
         startTime: new Date(appointmentData.startTime),
         endTime: new Date(appointmentData.endTime),
       });
@@ -96,6 +103,7 @@ export default function Appointments() {
         clientId: "",
         staffId: "",
         serviceId: "",
+        locationId: "",
         startTime: "",
         endTime: "",
         notes: "",
@@ -105,10 +113,13 @@ export default function Appointments() {
         description: "New appointment has been successfully scheduled.",
       });
     },
-    onError: () => {
+    onError: (error: any) => {
+      const isConflict = error.message?.includes('409') || error.message?.includes('conflict');
       toast({
-        title: "Failed to create appointment",
-        description: "Please try again.",
+        title: isConflict ? "Time slot conflict" : "Failed to create appointment",
+        description: isConflict 
+          ? "This time slot is already booked. Please choose a different time."
+          : "Please try again.",
         variant: "destructive",
       });
     },
@@ -228,20 +239,36 @@ export default function Appointments() {
                     </div>
                     
                     <div className="space-y-2">
-                      <Label htmlFor="service">Service</Label>
-                      <Select value={newAppointment.serviceId} onValueChange={(value) => handleInputChange("serviceId", value)}>
-                        <SelectTrigger data-testid="select-service">
-                          <SelectValue placeholder="Select service" />
+                      <Label htmlFor="location">Location</Label>
+                      <Select value={newAppointment.locationId} onValueChange={(value) => handleInputChange("locationId", value)}>
+                        <SelectTrigger data-testid="select-location">
+                          <SelectValue placeholder="Select location" />
                         </SelectTrigger>
                         <SelectContent>
-                          {services?.map((service) => (
-                            <SelectItem key={service.id} value={service.id}>
-                              {service.name} - ${service.price}
+                          {locations?.map((location) => (
+                            <SelectItem key={location.id} value={location.id}>
+                              {location.name}
                             </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                     </div>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="service">Service</Label>
+                    <Select value={newAppointment.serviceId} onValueChange={(value) => handleInputChange("serviceId", value)}>
+                      <SelectTrigger data-testid="select-service">
+                        <SelectValue placeholder="Select service" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {services?.map((service) => (
+                          <SelectItem key={service.id} value={service.id}>
+                            {service.name} - ${service.price}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   
                   <div className="space-y-2">
