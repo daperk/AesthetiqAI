@@ -140,69 +140,92 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { organizationSlug, ...userData } = req.body;
       
-      // For white-label registration, organizationSlug is required and role must be patient
+      // SECURITY: Enforce proper registration flow separation
       if (organizationSlug) {
-        // Validate organization exists and is active
+        // Clinic-specific registration: ONLY patients allowed
         const organization = await storage.getOrganizationBySlug(organizationSlug);
         if (!organization || !organization.isActive) {
           return res.status(400).json({ message: "Invalid clinic" });
         }
 
-        // Enforce patient role only for clinic-specific registration
-        if (userData.role && userData.role !== "patient") {
-          return res.status(400).json({ message: "Only patient registration is allowed through clinic URLs" });
-        }
+        // Force patient role for clinic registration, ignore any client-provided role
         userData.role = "patient";
-      }
-
-      const validatedUserData = insertUserSchema.parse(userData);
-      
-      // Check if user exists
-      const existingUser = await storage.getUserByEmail(validatedUserData.email);
-      if (existingUser) {
-        return res.status(400).json({ message: "User already exists" });
-      }
-
-      // Hash password
-      const hashedPassword = await bcrypt.hash(validatedUserData.password, 12);
-      
-      // Create user
-      const user = await storage.createUser({
-        ...validatedUserData,
-        password: hashedPassword
-      });
-
-      // If registering through clinic slug, create client record to link patient to organization
-      if (organizationSlug && user.role === "patient") {
-        const organization = await storage.getOrganizationBySlug(organizationSlug);
-        if (organization) {
-          console.log(`Creating client record for user ${user.id} with organization ${organization.id}`);
-          const client = await storage.createClient({
-            userId: user.id,
-            organizationId: organization.id,
-            firstName: user.firstName || "",
-            lastName: user.lastName || "",
-            email: user.email,
-            phone: user.phone
-          });
-          console.log(`Client created successfully:`, client.id);
-        } else {
-          console.error(`Organization not found for slug: ${organizationSlug}`);
+        
+        const validatedUserData = insertUserSchema.parse(userData);
+        
+        // Check if user exists
+        const existingUser = await storage.getUserByEmail(validatedUserData.email);
+        if (existingUser) {
+          return res.status(400).json({ message: "User already exists" });
         }
-      }
 
-      // Log them in
-      req.logIn(user, (err) => {
-        if (err) {
-          return res.status(500).json({ message: "Login failed after registration" });
+        // Create patient user
+        const hashedPassword = await bcrypt.hash(validatedUserData.password, 12);
+        const user = await storage.createUser({
+          ...validatedUserData,
+          password: hashedPassword
+        });
+
+        // Create client record to link patient to organization
+        console.log(`Creating client record for user ${user.id} with organization ${organization.id}`);
+        const client = await storage.createClient({
+          userId: user.id,
+          organizationId: organization.id,
+          firstName: user.firstName || "",
+          lastName: user.lastName || "",
+          email: user.email,
+          phone: user.phone
+        });
+        console.log(`Client created successfully:`, client.id);
+
+        // Log them in
+        req.logIn(user, (err) => {
+          if (err) {
+            return res.status(500).json({ message: "Login failed after registration" });
+          }
+          res.json({ user: { ...user, password: undefined } });
+        });
+
+      } else {
+        // Main platform registration: ONLY business roles allowed
+        if (!userData.role || (userData.role !== "clinic_admin" && userData.role !== "staff")) {
+          return res.status(400).json({ message: "Invalid role for business registration" });
         }
-        res.json({ user: { ...user, password: undefined } });
-      });
+
+        // Staff registration requires additional validation (they need to be associated with an organization)
+        if (userData.role === "staff") {
+          return res.status(400).json({ message: "Staff members must be invited by clinic administrators" });
+        }
+
+        const validatedUserData = insertUserSchema.parse(userData);
+        
+        // Check if user exists
+        const existingUser = await storage.getUserByEmail(validatedUserData.email);
+        if (existingUser) {
+          return res.status(400).json({ message: "User already exists" });
+        }
+
+        // Create business user
+        const hashedPassword = await bcrypt.hash(validatedUserData.password, 12);
+        const user = await storage.createUser({
+          ...validatedUserData,
+          password: hashedPassword
+        });
+
+        // Log them in
+        req.logIn(user, (err) => {
+          if (err) {
+            return res.status(500).json({ message: "Login failed after registration" });
+          }
+          res.json({ user: { ...user, password: undefined } });
+        });
+      }
 
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: "Invalid data", errors: error.errors });
       }
+      console.error("Registration error:", error);
       res.status(500).json({ message: "Registration failed" });
     }
   });

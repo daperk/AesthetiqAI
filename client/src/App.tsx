@@ -51,9 +51,7 @@ function Router() {
       {/* Public Routes */}
       <Route path="/" component={Home} />
       <Route path="/login" component={Login} />
-      <Route path="/register">
-        <Redirect to="/register/clinic/luxe-beauty" />
-      </Route>
+      <Route path="/register" component={Register} />
       <Route path="/register/clinic/:slug" component={ClinicRegister} />
       <Route path="/subscribe" component={Subscribe} />
       

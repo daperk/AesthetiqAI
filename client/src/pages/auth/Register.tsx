@@ -18,7 +18,7 @@ export default function Register() {
     password: "",
     firstName: "",
     lastName: "",
-    role: "patient",
+    role: "clinic_admin",
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -56,9 +56,9 @@ export default function Register() {
             </div>
             <span className="text-2xl font-serif font-bold text-foreground">Aesthiq</span>
           </div>
-          <CardTitle className="text-2xl font-serif" data-testid="text-register-title">Create Account</CardTitle>
+          <CardTitle className="text-2xl font-serif" data-testid="text-register-title">Start Your Business</CardTitle>
           <CardDescription>
-            Join Aesthiq and transform your beauty practice today.
+            Join Aesthiq and transform your beauty practice with our professional platform.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -130,15 +130,13 @@ export default function Register() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="role">Account Type</Label>
+              <Label htmlFor="role">Business Role</Label>
               <Select value={formData.role} onValueChange={handleRoleChange}>
                 <SelectTrigger data-testid="select-role">
-                  <SelectValue placeholder="Select account type" />
+                  <SelectValue placeholder="Select your role" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="patient">Patient/Client</SelectItem>
                   <SelectItem value="clinic_admin">Clinic Owner/Admin</SelectItem>
-                  <SelectItem value="staff">Staff Member</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -155,7 +153,7 @@ export default function Register() {
                   <span>Creating Account...</span>
                 </div>
               ) : (
-                "Create Account"
+                "Start My Business"
               )}
             </Button>
           </form>
