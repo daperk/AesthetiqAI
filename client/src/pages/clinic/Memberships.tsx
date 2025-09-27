@@ -25,12 +25,21 @@ import type { Membership, Client } from "@/types";
 
 interface MembershipTier {
   id: string;
+  organizationId: string;
   name: string;
-  monthlyFee: number;
+  description?: string;
+  monthlyPrice: number;
+  yearlyPrice?: number;
   benefits: string[];
-  discountPercentage: number;
-  monthlyCredits: number;
+  discountPercentage?: number;
+  monthlyCredits?: number;
   color: string;
+  stripePriceIdMonthly?: string;
+  stripePriceIdYearly?: string;
+  isActive: boolean;
+  autoRenew: boolean;
+  sortOrder: number;
+  createdAt: Date;
 }
 
 export default function Memberships() {
@@ -48,7 +57,8 @@ export default function Memberships() {
   
   const [newTier, setNewTier] = useState({
     name: "",
-    monthlyFee: "",
+    monthlyPrice: "",
+    yearlyPrice: "",
     discountPercentage: "",
     monthlyCredits: "",
     benefits: "",
@@ -56,45 +66,13 @@ export default function Memberships() {
     autoRenew: true,
   });
 
-  // Mock membership tiers for display
-  const membershipTiers: MembershipTier[] = [
-    {
-      id: "1",
-      name: "Bronze",
-      monthlyFee: 59,
-      benefits: ["5% discount on services", "Priority booking", "Birthday gift"],
-      discountPercentage: 5,
-      monthlyCredits: 50,
-      color: "bg-orange-100 text-orange-800",
-    },
-    {
-      id: "2", 
-      name: "Silver",
-      monthlyFee: 99,
-      benefits: ["10% discount on services", "Complimentary consultation", "Member events"],
-      discountPercentage: 10,
-      monthlyCredits: 100,
-      color: "bg-gray-100 text-gray-800",
-    },
-    {
-      id: "3",
-      name: "Gold",
-      monthlyFee: 149,
-      benefits: ["15% discount on services", "Monthly free add-on", "VIP support"],
-      discountPercentage: 15,
-      monthlyCredits: 150,
-      color: "bg-yellow-100 text-yellow-800",
-    },
-    {
-      id: "4",
-      name: "Platinum",
-      monthlyFee: 199,
-      benefits: ["20% discount on services", "Quarterly spa day", "Exclusive products"],
-      discountPercentage: 20,
-      monthlyCredits: 200,
-      color: "bg-purple-100 text-purple-800",
-    },
-  ];
+  // Fetch membership tiers from API
+  const { data: membershipTiers = [], isLoading: tiersLoading } = useQuery({
+    queryKey: ["/api/membership-tiers", organization?.id],
+    queryFn: () => fetch("/api/membership-tiers").then(res => res.json()),
+    enabled: !!organization?.id,
+    staleTime: 60000,
+  });
 
   const { data: memberships, isLoading: membershipsLoading } = useQuery<Membership[]>({
     queryKey: ["/api/memberships", organization?.id],
@@ -114,9 +92,10 @@ export default function Memberships() {
       const response = await apiRequest("POST", "/api/membership-tiers", {
         ...tierData,
         organizationId: organization?.id,
-        monthlyFee: parseFloat(tierData.monthlyFee),
-        discountPercentage: parseFloat(tierData.discountPercentage),
-        monthlyCredits: parseFloat(tierData.monthlyCredits),
+        monthlyPrice: tierData.monthlyPrice,
+        yearlyPrice: tierData.yearlyPrice || null,
+        discountPercentage: tierData.discountPercentage,
+        monthlyCredits: tierData.monthlyCredits,
         benefits: tierData.benefits.split(',').map(b => b.trim()),
       });
       return response.json();
@@ -126,7 +105,8 @@ export default function Memberships() {
       setIsCreateTierDialogOpen(false);
       setNewTier({
         name: "",
-        monthlyFee: "",
+        monthlyPrice: "",
+        yearlyPrice: "",
         discountPercentage: "",
         monthlyCredits: "",
         benefits: "",
@@ -171,8 +151,8 @@ export default function Memberships() {
     return { totalMembers, activeMembers, totalMRR };
   };
 
-  // Show loading while checking payment status or loading memberships
-  if (membershipsLoading || paymentLoading) {
+  // Show loading while checking payment status or loading data
+  if (membershipsLoading || tiersLoading || paymentLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <LoadingSpinner size="lg" />
@@ -297,17 +277,31 @@ export default function Memberships() {
                       </div>
                       
                       <div className="space-y-2">
-                        <Label htmlFor="monthlyFee">Monthly Fee ($)</Label>
+                        <Label htmlFor="monthlyPrice">Monthly Price ($)</Label>
                         <Input
-                          id="monthlyFee"
-                          name="monthlyFee"
+                          id="monthlyPrice"
+                          name="monthlyPrice"
                           type="number"
                           step="0.01"
-                          value={newTier.monthlyFee}
+                          value={newTier.monthlyPrice}
                           onChange={handleInputChange}
                           placeholder="99.00"
                           required
-                          data-testid="input-monthly-fee"
+                          data-testid="input-monthly-price"
+                        />
+                      </div>
+                      
+                      <div className="space-y-2">
+                        <Label htmlFor="yearlyPrice">Yearly Price ($) - Optional</Label>
+                        <Input
+                          id="yearlyPrice"
+                          name="yearlyPrice"
+                          type="number"
+                          step="0.01"
+                          value={newTier.yearlyPrice}
+                          onChange={handleInputChange}
+                          placeholder="990.00"
+                          data-testid="input-yearly-price"
                         />
                       </div>
                     </div>
@@ -386,7 +380,7 @@ export default function Memberships() {
             </div>
 
             <div className="grid lg:grid-cols-2 xl:grid-cols-4 gap-6">
-              {membershipTiers.map((tier) => (
+              {membershipTiers.map((tier: MembershipTier) => (
                 <Card key={tier.id} className="relative" data-testid={`membership-tier-${tier.name.toLowerCase()}`}>
                   <CardHeader>
                     <div className="flex items-center justify-between">
@@ -404,14 +398,14 @@ export default function Memberships() {
                   <CardContent>
                     <div className="space-y-4">
                       <div>
-                        <div className="text-2xl font-bold">${tier.monthlyFee}</div>
+                        <div className="text-2xl font-bold">${tier.monthlyPrice}</div>
                         <div className="text-sm text-muted-foreground">per month</div>
                       </div>
                       
                       <div>
                         <div className="text-sm font-medium mb-2">Benefits:</div>
                         <ul className="text-xs text-muted-foreground space-y-1">
-                          {tier.benefits.map((benefit, index) => (
+                          {tier.benefits?.map((benefit: string, index: number) => (
                             <li key={index}>• {benefit}</li>
                           ))}
                         </ul>
@@ -517,9 +511,9 @@ export default function Memberships() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
-                    {membershipTiers.map((tier) => {
+                    {membershipTiers.map((tier: MembershipTier) => {
                       const tierMembers = memberships?.filter(m => m.tierName === tier.name && m.status === "active").length || 0;
-                      const tierRevenue = tierMembers * tier.monthlyFee;
+                      const tierRevenue = tierMembers * tier.monthlyPrice;
                       
                       return (
                         <div key={tier.id} className="flex items-center justify-between p-3 border rounded">

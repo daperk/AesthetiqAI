@@ -1,13 +1,13 @@
 import {
   users, organizations, subscriptionPlans, locations, staff, clients, services,
-  appointments, memberships, rewards, transactions, addOns, organizationAddOns,
+  appointments, memberships, membershipTiers, rewards, transactions, addOns, organizationAddOns,
   usageLogs, aiInsights, notifications, auditLogs, fileStorage, featureFlags,
   type User, type InsertUser, type Organization, type InsertOrganization,
   type SubscriptionPlan, type InsertSubscriptionPlan, type Location, type InsertLocation,
   type Staff, type InsertStaff, type Client, type InsertClient, type Service, type InsertService,
   type Appointment, type InsertAppointment, type Membership, type InsertMembership,
-  type Reward, type InsertReward, type Transaction, type InsertTransaction,
-  type AddOn, type InsertAddOn, type UsageLog, type InsertUsageLog,
+  type MembershipTier, type InsertMembershipTier, type Reward, type InsertReward, 
+  type Transaction, type InsertTransaction, type AddOn, type InsertAddOn, type UsageLog, type InsertUsageLog,
   type AiInsight, type InsertAiInsight, type Notification, type InsertNotification,
   type AuditLog, type InsertAuditLog, type FileStorage, type InsertFileStorage,
   type FeatureFlag, type InsertFeatureFlag
@@ -83,6 +83,13 @@ export interface IStorage {
   getAppointment(id: string): Promise<Appointment | undefined>;
   createAppointment(appointment: InsertAppointment): Promise<Appointment>;
   updateAppointment(id: string, updates: Partial<InsertAppointment>): Promise<Appointment>;
+
+  // Membership Tiers
+  getMembershipTiersByOrganization(organizationId: string): Promise<MembershipTier[]>;
+  getMembershipTier(id: string): Promise<MembershipTier | undefined>;
+  createMembershipTier(tier: InsertMembershipTier): Promise<MembershipTier>;
+  updateMembershipTier(id: string, updates: Partial<InsertMembershipTier>): Promise<MembershipTier>;
+  deleteMembershipTier(id: string): Promise<boolean>;
 
   // Memberships
   getMembershipsByOrganization(organizationId: string): Promise<Membership[]>;
@@ -455,6 +462,35 @@ export class DatabaseStorage implements IStorage {
   async updateMembership(id: string, updates: Partial<InsertMembership>): Promise<Membership> {
     const [membership] = await db.update(memberships).set(updates).where(eq(memberships.id, id)).returning();
     return membership;
+  }
+
+  // Membership Tiers
+  async getMembershipTiersByOrganization(organizationId: string): Promise<MembershipTier[]> {
+    return await db.select().from(membershipTiers)
+      .where(and(eq(membershipTiers.organizationId, organizationId), eq(membershipTiers.isActive, true)))
+      .orderBy(asc(membershipTiers.sortOrder), asc(membershipTiers.monthlyPrice));
+  }
+
+  async getMembershipTier(id: string): Promise<MembershipTier | undefined> {
+    const [tier] = await db.select().from(membershipTiers).where(eq(membershipTiers.id, id));
+    return tier || undefined;
+  }
+
+  async createMembershipTier(insertTier: InsertMembershipTier): Promise<MembershipTier> {
+    const [tier] = await db.insert(membershipTiers).values(insertTier).returning();
+    return tier;
+  }
+
+  async updateMembershipTier(id: string, updates: Partial<InsertMembershipTier>): Promise<MembershipTier> {
+    const [tier] = await db.update(membershipTiers).set(updates).where(eq(membershipTiers.id, id)).returning();
+    return tier;
+  }
+
+  async deleteMembershipTier(id: string): Promise<boolean> {
+    const result = await db.update(membershipTiers)
+      .set({ isActive: false })
+      .where(eq(membershipTiers.id, id));
+    return result.rowCount > 0;
   }
 
   // Rewards

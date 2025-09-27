@@ -162,11 +162,31 @@ export const appointments = pgTable("appointments", {
   createdAt: timestamp("created_at").default(sql`now()`)
 });
 
+export const membershipTiers = pgTable("membership_tiers", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: uuid("organization_id").notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  monthlyPrice: decimal("monthly_price", { precision: 10, scale: 2 }).notNull(),
+  yearlyPrice: decimal("yearly_price", { precision: 10, scale: 2 }),
+  benefits: jsonb("benefits"),
+  discountPercentage: decimal("discount_percentage", { precision: 5, scale: 2 }),
+  monthlyCredits: decimal("monthly_credits", { precision: 10, scale: 2 }),
+  color: text("color").default("gold"),
+  stripePriceIdMonthly: text("stripe_price_id_monthly"),
+  stripePriceIdYearly: text("stripe_price_id_yearly"),
+  isActive: boolean("is_active").default(true),
+  autoRenew: boolean("auto_renew").default(true),
+  sortOrder: integer("sort_order").default(0),
+  createdAt: timestamp("created_at").default(sql`now()`)
+});
+
 export const memberships = pgTable("memberships", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
   organizationId: uuid("organization_id").notNull(),
   clientId: uuid("client_id").notNull(),
-  tierName: text("tier_name").notNull(),
+  tierName: text("tier_name").notNull(), // Keep for backward compatibility during migration
+  tierId: uuid("tier_id"), // New foreign key to membershipTiers
   monthlyFee: decimal("monthly_fee", { precision: 10, scale: 2 }).notNull(),
   benefits: jsonb("benefits"),
   discountPercentage: decimal("discount_percentage", { precision: 5, scale: 2 }),
@@ -369,9 +389,15 @@ export const appointmentsRelations = relations(appointments, ({ one }) => ({
   service: one(services, { fields: [appointments.serviceId], references: [services.id] })
 }));
 
+export const membershipTiersRelations = relations(membershipTiers, ({ one, many }) => ({
+  organization: one(organizations, { fields: [membershipTiers.organizationId], references: [organizations.id] }),
+  memberships: many(memberships)
+}));
+
 export const membershipsRelations = relations(memberships, ({ one }) => ({
   organization: one(organizations, { fields: [memberships.organizationId], references: [organizations.id] }),
-  client: one(clients, { fields: [memberships.clientId], references: [clients.id] })
+  client: one(clients, { fields: [memberships.clientId], references: [clients.id] }),
+  tier: one(membershipTiers, { fields: [memberships.tierId], references: [membershipTiers.id] })
 }));
 
 export const rewardsRelations = relations(rewards, ({ one }) => ({
@@ -434,6 +460,11 @@ export const insertServiceSchema = createInsertSchema(services).omit({
 });
 
 export const insertAppointmentSchema = createInsertSchema(appointments).omit({
+  id: true,
+  createdAt: true
+});
+
+export const insertMembershipTierSchema = createInsertSchema(membershipTiers).omit({
   id: true,
   createdAt: true
 });
@@ -505,6 +536,8 @@ export type Service = typeof services.$inferSelect;
 export type InsertService = z.infer<typeof insertServiceSchema>;
 export type Appointment = typeof appointments.$inferSelect;
 export type InsertAppointment = z.infer<typeof insertAppointmentSchema>;
+export type MembershipTier = typeof membershipTiers.$inferSelect;
+export type InsertMembershipTier = z.infer<typeof insertMembershipTierSchema>;
 export type Membership = typeof memberships.$inferSelect;
 export type InsertMembership = z.infer<typeof insertMembershipSchema>;
 export type Reward = typeof rewards.$inferSelect;

@@ -73,6 +73,35 @@ export async function cancelSubscription(subscriptionId: string): Promise<Stripe
   return await stripe.subscriptions.cancel(subscriptionId);
 }
 
+export async function createProduct(params: {
+  name: string;
+  description?: string;
+}): Promise<Stripe.Product> {
+  if (!stripe) throw new Error("Stripe not configured");
+  return await stripe.products.create({
+    name: params.name,
+    description: params.description
+  });
+}
+
+export async function createPrice(params: {
+  productId: string;
+  amount: number; // in cents
+  interval: 'month' | 'year';
+  currency?: string;
+}): Promise<string> {
+  if (!stripe) throw new Error("Stripe not configured");
+  const price = await stripe.prices.create({
+    product: params.productId,
+    unit_amount: params.amount,
+    currency: params.currency || 'usd',
+    recurring: {
+      interval: params.interval
+    }
+  });
+  return price.id;
+}
+
 // Stripe Connect Express account functions
 export async function createConnectAccount(organization: { 
   name: string; 

@@ -11,9 +11,9 @@ import * as stripeService from "./services/stripe";
 import * as openaiService from "./services/openai";
 import { 
   insertUserSchema, insertOrganizationSchema, insertStaffSchema, insertClientSchema,
-  insertAppointmentSchema, insertServiceSchema, insertMembershipSchema, insertRewardSchema,
-  insertTransactionSchema, insertAuditLogSchema, insertUsageLogSchema, insertAiInsightSchema,
-  type User
+  insertAppointmentSchema, insertServiceSchema, insertMembershipSchema, insertMembershipTierSchema,
+  insertRewardSchema, insertTransactionSchema, insertAuditLogSchema, insertUsageLogSchema, 
+  insertAiInsightSchema, type User
 } from "@shared/schema";
 import { z } from "zod";
 
@@ -1257,6 +1257,130 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ response });
     } catch (error) {
       res.status(500).json({ message: "Failed to process chat message" });
+    }
+  });
+
+  // Membership Tiers API (authenticated)
+  app.get("/api/membership-tiers", requireAuth, async (req, res) => {
+    try {
+      console.log('🔍 [GET /api/membership-tiers] Request received');
+      const orgId = await getUserOrganizationId(req.user!);
+      if (!orgId) {
+        return res.status(400).json({ message: "User organization not found" });
+      }
+
+      const tiers = await storage.getMembershipTiersByOrganization(orgId);
+      console.log('🔍 [GET /api/membership-tiers] Found tiers:', tiers.length);
+      res.json(tiers);
+    } catch (error) {
+      console.error('🔍 [GET /api/membership-tiers] Error:', error);
+      res.status(500).json({ message: "Failed to fetch membership tiers" });
+    }
+  });
+
+  app.post("/api/membership-tiers", requireAuth, async (req, res) => {
+    try {
+      console.log('🔍 [POST /api/membership-tiers] Request received:', req.body);
+      const orgId = await getUserOrganizationId(req.user!);
+      if (!orgId) {
+        return res.status(400).json({ message: "User organization not found" });
+      }
+
+      // Validate request body using Zod schema
+      const tierData = insertMembershipTierSchema.parse({
+        ...req.body,
+        organizationId: orgId
+      });
+
+      // Create Stripe products/prices if needed
+      let stripePriceIdMonthly, stripePriceIdYearly;
+      if (tierData.monthlyPrice) {
+        try {
+          const product = await stripeService.createProduct({
+            name: `${tierData.name} Membership`,
+            description: tierData.description || `${tierData.name} membership tier`
+          });
+
+          stripePriceIdMonthly = await stripeService.createPrice({
+            productId: product.id,
+            amount: Math.round(parseFloat(tierData.monthlyPrice.toString()) * 100),
+            interval: 'month'
+          });
+
+          if (tierData.yearlyPrice) {
+            stripePriceIdYearly = await stripeService.createPrice({
+              productId: product.id,
+              amount: Math.round(parseFloat(tierData.yearlyPrice.toString()) * 100),
+              interval: 'year'
+            });
+          }
+        } catch (stripeError) {
+          console.error('Stripe integration error:', stripeError);
+          // Continue without Stripe prices for now
+        }
+      }
+
+      const newTier = await storage.createMembershipTier({
+        ...tierData,
+        stripePriceIdMonthly,
+        stripePriceIdYearly
+      });
+
+      console.log('🔍 [POST /api/membership-tiers] Created tier:', newTier.id);
+      res.status(201).json(newTier);
+    } catch (error) {
+      console.error('🔍 [POST /api/membership-tiers] Error:', error);
+      res.status(500).json({ message: "Failed to create membership tier" });
+    }
+  });
+
+  app.put("/api/membership-tiers/:id", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const orgId = await getUserOrganizationId(req.user!);
+      if (!orgId) {
+        return res.status(400).json({ message: "User organization not found" });
+      }
+
+      // Check if tier belongs to organization
+      const existingTier = await storage.getMembershipTier(id);
+      if (!existingTier || existingTier.organizationId !== orgId) {
+        return res.status(404).json({ message: "Membership tier not found" });
+      }
+
+      const updates = insertMembershipTierSchema.partial().parse(req.body);
+      const updatedTier = await storage.updateMembershipTier(id, updates);
+      
+      res.json(updatedTier);
+    } catch (error) {
+      console.error('🔍 [PUT /api/membership-tiers] Error:', error);
+      res.status(500).json({ message: "Failed to update membership tier" });
+    }
+  });
+
+  app.delete("/api/membership-tiers/:id", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const orgId = await getUserOrganizationId(req.user!);
+      if (!orgId) {
+        return res.status(400).json({ message: "User organization not found" });
+      }
+
+      // Check if tier belongs to organization
+      const existingTier = await storage.getMembershipTier(id);
+      if (!existingTier || existingTier.organizationId !== orgId) {
+        return res.status(404).json({ message: "Membership tier not found" });
+      }
+
+      const success = await storage.deleteMembershipTier(id);
+      if (success) {
+        res.json({ message: "Membership tier deleted successfully" });
+      } else {
+        res.status(500).json({ message: "Failed to delete membership tier" });
+      }
+    } catch (error) {
+      console.error('🔍 [DELETE /api/membership-tiers] Error:', error);
+      res.status(500).json({ message: "Failed to delete membership tier" });
     }
   });
 
