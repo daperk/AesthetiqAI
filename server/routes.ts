@@ -138,22 +138,58 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Authentication routes
   app.post("/api/auth/register", async (req, res) => {
     try {
-      const userData = insertUserSchema.parse(req.body);
+      const { organizationSlug, ...userData } = req.body;
+      
+      // For white-label registration, organizationSlug is required and role must be patient
+      if (organizationSlug) {
+        // Validate organization exists and is active
+        const organization = await storage.getOrganizationBySlug(organizationSlug);
+        if (!organization || !organization.isActive) {
+          return res.status(400).json({ message: "Invalid clinic" });
+        }
+
+        // Enforce patient role only for clinic-specific registration
+        if (userData.role && userData.role !== "patient") {
+          return res.status(400).json({ message: "Only patient registration is allowed through clinic URLs" });
+        }
+        userData.role = "patient";
+      }
+
+      const validatedUserData = insertUserSchema.parse(userData);
       
       // Check if user exists
-      const existingUser = await storage.getUserByEmail(userData.email);
+      const existingUser = await storage.getUserByEmail(validatedUserData.email);
       if (existingUser) {
         return res.status(400).json({ message: "User already exists" });
       }
 
       // Hash password
-      const hashedPassword = await bcrypt.hash(userData.password, 12);
+      const hashedPassword = await bcrypt.hash(validatedUserData.password, 12);
       
       // Create user
       const user = await storage.createUser({
-        ...userData,
+        ...validatedUserData,
         password: hashedPassword
       });
+
+      // If registering through clinic slug, create client record to link patient to organization
+      if (organizationSlug && user.role === "patient") {
+        const organization = await storage.getOrganizationBySlug(organizationSlug);
+        if (organization) {
+          console.log(`Creating client record for user ${user.id} with organization ${organization.id}`);
+          const client = await storage.createClient({
+            userId: user.id,
+            organizationId: organization.id,
+            firstName: user.firstName || "",
+            lastName: user.lastName || "",
+            email: user.email,
+            phone: user.phone
+          });
+          console.log(`Client created successfully:`, client.id);
+        } else {
+          console.error(`Organization not found for slug: ${organizationSlug}`);
+        }
+      }
 
       // Log them in
       req.logIn(user, (err) => {
@@ -221,11 +257,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Check permissions
-      if (req.user.role !== "super_admin" && req.user.organizationId !== organization.id) {
+      let hasAccess = false;
+      
+      if (req.user.role === "super_admin") {
+        hasAccess = true;
+      } else if (req.user.organizationId === organization.id) {
+        hasAccess = true;
+      } else if (req.user.role === "patient") {
+        // For patients, check if they have a client record with this organization
+        const client = await storage.getClientByUser(req.user.id);
+        if (client && client.organizationId === organization.id) {
+          hasAccess = true;
+        }
+      }
+
+      if (!hasAccess) {
         return res.status(403).json({ message: "Access denied" });
       }
 
       res.json(organization);
+    } catch (error) {
+      console.error("Get organization error:", error);
+      res.status(500).json({ message: "Failed to fetch organization" });
+    }
+  });
+
+  // Public endpoint to get organization by slug for white-label registration
+  app.get("/api/organizations/by-slug/:slug", async (req, res) => {
+    try {
+      const organization = await storage.getOrganizationBySlug(req.params.slug);
+      if (!organization) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+
+      if (!organization.isActive) {
+        return res.status(404).json({ message: "Organization not available" });
+      }
+
+      // Return only public information needed for white-label registration
+      const publicOrgData = {
+        id: organization.id,
+        name: organization.name,
+        slug: organization.slug,
+        whiteLabelSettings: organization.whiteLabelSettings,
+        isActive: organization.isActive
+      };
+
+      res.json(publicOrgData);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch organization" });
     }
@@ -308,6 +386,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Invalid data", errors: error.errors });
       }
       res.status(500).json({ message: "Failed to create client" });
+    }
+  });
+
+  // Get current user's client record (for patients)
+  app.get("/api/clients/me", requireAuth, async (req, res) => {
+    try {
+      if (req.user?.role !== "patient") {
+        return res.status(403).json({ message: "Only patients can access client records" });
+      }
+
+      const client = await storage.getClientByUser(req.user.id);
+      res.json(client);
+    } catch (error) {
+      console.error("Get client/me error:", error);
+      res.status(500).json({ message: "Failed to fetch client record" });
     }
   });
 

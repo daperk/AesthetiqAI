@@ -1,15 +1,17 @@
-import { Switch, Route } from "wouter";
+import { Switch, Route, Redirect } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/useAuth";
+import { PatientBrandingProvider } from "@/components/BrandingProvider";
 import NotFound from "@/pages/not-found";
 
 // Pages
 import Home from "@/pages/Home";
 import Login from "@/pages/auth/Login";
 import Register from "@/pages/auth/Register";
+import ClinicRegister from "@/pages/auth/ClinicRegister";
 import Subscribe from "@/pages/pricing/Subscribe";
 
 // Super Admin Pages
@@ -49,7 +51,10 @@ function Router() {
       {/* Public Routes */}
       <Route path="/" component={Home} />
       <Route path="/login" component={Login} />
-      <Route path="/register" component={Register} />
+      <Route path="/register">
+        <Redirect to="/register/clinic/luxe-beauty" />
+      </Route>
+      <Route path="/register/clinic/:slug" component={ClinicRegister} />
       <Route path="/subscribe" component={Subscribe} />
       
       {/* Protected Routes */}
@@ -78,12 +83,12 @@ function Router() {
           
           {/* Patient Routes */}
           {user.role === "patient" && (
-            <>
+            <PatientBrandingProvider>
               <Route path="/patient" component={PatientDashboard} />
               <Route path="/patient/booking" component={Booking} />
               <Route path="/patient/membership" component={PatientMembership} />
               <Route path="/patient/rewards" component={Rewards} />
-            </>
+            </PatientBrandingProvider>
           )}
         </>
       )}
