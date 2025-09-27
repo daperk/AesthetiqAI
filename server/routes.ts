@@ -1879,9 +1879,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/stripe-connect/status", requireRole("clinic_admin"), async (req, res) => {
+  app.get("/api/stripe-connect/status/:organizationId", requireRole("clinic_admin"), async (req, res) => {
     try {
-      const organizationId = await getUserOrganizationId(req.user!);
+      const organizationId = req.params.organizationId;
       if (!organizationId) {
         return res.status(400).json({ message: "No organization found for user" });
       }
