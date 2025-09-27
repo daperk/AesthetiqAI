@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { Link, useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -10,13 +11,14 @@ import { useAuth } from "@/hooks/useAuth";
 import { useOrganization } from "@/hooks/useOrganization";
 import { 
   DollarSign, Calendar, Users, Crown, TrendingUp, 
-  Plus, Bell, Brain, Gift, CalendarPlus, UserPlus
+  Plus, Bell, Brain, Gift, CalendarPlus, UserPlus, Scissors
 } from "lucide-react";
 import type { DashboardStats, Appointment, AiInsight } from "@/types";
 
 export default function ClinicDashboard() {
   const { user } = useAuth();
   const { organization } = useOrganization();
+  const [location] = useLocation();
 
   const { data: stats, isLoading: statsLoading } = useQuery<DashboardStats>({
     queryKey: ["/api/analytics/dashboard", organization?.id],
@@ -75,17 +77,87 @@ export default function ClinicDashboard() {
           </div>
 
           {/* Navigation Tabs */}
-          <Tabs defaultValue="overview" className="mt-6">
-            <TabsList>
-              <TabsTrigger value="overview" data-testid="tab-overview">Overview</TabsTrigger>
-              <TabsTrigger value="appointments" data-testid="tab-appointments">Appointments</TabsTrigger>
-              <TabsTrigger value="clients" data-testid="tab-clients">Clients</TabsTrigger>
-              <TabsTrigger value="memberships" data-testid="tab-memberships">Memberships</TabsTrigger>
-              <TabsTrigger value="staff" data-testid="tab-staff">Staff</TabsTrigger>
-              <TabsTrigger value="reports" data-testid="tab-reports">Reports</TabsTrigger>
-            </TabsList>
+          <div className="mt-6">
+            <div className="flex space-x-1 bg-muted p-1 rounded-lg w-fit">
+              <Link href="/clinic">
+                <Button
+                  variant={location === "/clinic" ? "default" : "ghost"}
+                  size="sm"
+                  className="relative"
+                  data-testid="tab-overview"
+                >
+                  Overview
+                </Button>
+              </Link>
+              <Link href="/clinic/appointments">
+                <Button
+                  variant={location === "/clinic/appointments" ? "default" : "ghost"}
+                  size="sm"
+                  className="relative"
+                  data-testid="tab-appointments"
+                >
+                  <Calendar className="w-4 h-4 mr-2" />
+                  Appointments
+                </Button>
+              </Link>
+              <Link href="/clinic/clients">
+                <Button
+                  variant={location === "/clinic/clients" ? "default" : "ghost"}
+                  size="sm"
+                  className="relative"
+                  data-testid="tab-clients"
+                >
+                  <Users className="w-4 h-4 mr-2" />
+                  Clients
+                </Button>
+              </Link>
+              <Link href="/clinic/services">
+                <Button
+                  variant={location === "/clinic/services" ? "default" : "ghost"}
+                  size="sm"
+                  className="relative"
+                  data-testid="tab-services"
+                >
+                  <Scissors className="w-4 h-4 mr-2" />
+                  Services
+                </Button>
+              </Link>
+              <Link href="/clinic/memberships">
+                <Button
+                  variant={location === "/clinic/memberships" ? "default" : "ghost"}
+                  size="sm"
+                  className="relative"
+                  data-testid="tab-memberships"
+                >
+                  <Crown className="w-4 h-4 mr-2" />
+                  Memberships
+                </Button>
+              </Link>
+              <Link href="/clinic/staff">
+                <Button
+                  variant={location === "/clinic/staff" ? "default" : "ghost"}
+                  size="sm"
+                  className="relative"
+                  data-testid="tab-staff"
+                >
+                  <UserPlus className="w-4 h-4 mr-2" />
+                  Staff
+                </Button>
+              </Link>
+              <Link href="/clinic/reports">
+                <Button
+                  variant={location === "/clinic/reports" ? "default" : "ghost"}
+                  size="sm"
+                  className="relative"
+                  data-testid="tab-reports"
+                >
+                  <TrendingUp className="w-4 h-4 mr-2" />
+                  Reports
+                </Button>
+              </Link>
+            </div>
 
-            <TabsContent value="overview" className="space-y-6">
+            <div className="mt-6 space-y-6">
               {/* Quick Stats */}
               <div className="grid lg:grid-cols-4 gap-6">
                 <Card>
@@ -315,74 +387,8 @@ export default function ClinicDashboard() {
                   </Card>
                 </div>
               </div>
-            </TabsContent>
-
-            {/* Other tab contents would go here */}
-            <TabsContent value="appointments">
-              <Card>
-                <CardContent className="p-6">
-                  <div className="text-center py-8">
-                    <Calendar className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-                    <p className="text-muted-foreground" data-testid="text-appointments-placeholder">
-                      Appointment management interface would be displayed here
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            <TabsContent value="clients">
-              <Card>
-                <CardContent className="p-6">
-                  <div className="text-center py-8">
-                    <Users className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-                    <p className="text-muted-foreground" data-testid="text-clients-placeholder">
-                      Client management interface would be displayed here
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            <TabsContent value="memberships">
-              <Card>
-                <CardContent className="p-6">
-                  <div className="text-center py-8">
-                    <Crown className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-                    <p className="text-muted-foreground" data-testid="text-memberships-placeholder">
-                      Membership management interface would be displayed here
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            <TabsContent value="staff">
-              <Card>
-                <CardContent className="p-6">
-                  <div className="text-center py-8">
-                    <Users className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-                    <p className="text-muted-foreground" data-testid="text-staff-placeholder">
-                      Staff management interface would be displayed here
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            <TabsContent value="reports">
-              <Card>
-                <CardContent className="p-6">
-                  <div className="text-center py-8">
-                    <TrendingUp className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-                    <p className="text-muted-foreground" data-testid="text-reports-placeholder">
-                      Reports and analytics interface would be displayed here
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
-          </Tabs>
+            </div>
+          </div>
         </div>
       </div>
     </div>

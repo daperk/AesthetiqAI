@@ -257,6 +257,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get current user's organization
+  app.get("/api/organizations/my-organization", requireAuth, async (req, res) => {
+    try {
+      const organizationId = await getUserOrganizationId(req.user!);
+      if (!organizationId) {
+        return res.status(404).json({ message: "No organization found for user" });
+      }
+
+      const organization = await storage.getOrganization(organizationId);
+      if (!organization) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+
+      res.json(organization);
+    } catch (error) {
+      console.error("My organization fetch error:", error);
+      res.status(500).json({ message: "Failed to fetch organization" });
+    }
+  });
+
   app.post("/api/organizations", requireRole("super_admin"), async (req, res) => {
     try {
       const orgData = insertOrganizationSchema.parse(req.body);
@@ -724,6 +744,57 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Invalid data", errors: error.errors });
       }
       res.status(500).json({ message: "Failed to create service" });
+    }
+  });
+
+  app.put("/api/services/:id", requireRole("clinic_admin", "super_admin"), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updates = insertServiceSchema.partial().parse(req.body);
+      
+      // Verify service exists and belongs to user's organization
+      const existingService = await storage.getService(id);
+      if (!existingService) {
+        return res.status(404).json({ message: "Service not found" });
+      }
+
+      const userOrgId = await getUserOrganizationId(req.user!);
+      if (req.user?.role !== "super_admin" && existingService.organizationId !== userOrgId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const service = await storage.updateService(id, updates);
+      await auditLog(req, "update", "service", service.id, updates);
+      res.json(service);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to update service" });
+    }
+  });
+
+  app.delete("/api/services/:id", requireRole("clinic_admin", "super_admin"), async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      // Verify service exists and belongs to user's organization
+      const existingService = await storage.getService(id);
+      if (!existingService) {
+        return res.status(404).json({ message: "Service not found" });
+      }
+
+      const userOrgId = await getUserOrganizationId(req.user!);
+      if (req.user?.role !== "super_admin" && existingService.organizationId !== userOrgId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      // Soft delete by setting isActive to false
+      const service = await storage.updateService(id, { isActive: false });
+      await auditLog(req, "delete", "service", service.id, { isActive: false });
+      res.json({ message: "Service deleted successfully" });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to delete service" });
     }
   });
 

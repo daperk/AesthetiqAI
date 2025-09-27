@@ -23,6 +23,7 @@ import Plans from "@/pages/super-admin/Plans";
 import ClinicDashboard from "@/pages/clinic/Dashboard";
 import Appointments from "@/pages/clinic/Appointments";
 import Clients from "@/pages/clinic/Clients";
+import Services from "@/pages/clinic/Services";
 import Memberships from "@/pages/clinic/Memberships";
 import Staff from "@/pages/clinic/Staff";
 import Reports from "@/pages/clinic/Reports";
@@ -73,6 +74,7 @@ function Router() {
               <Route path="/clinic" component={ClinicDashboard} />
               <Route path="/clinic/appointments" component={Appointments} />
               <Route path="/clinic/clients" component={Clients} />
+              <Route path="/clinic/services" component={Services} />
               <Route path="/clinic/memberships" component={Memberships} />
               <Route path="/clinic/staff" component={Staff} />
               <Route path="/clinic/reports" component={Reports} />

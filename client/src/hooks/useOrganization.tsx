@@ -5,13 +5,14 @@ import type { Organization } from "@/types";
 export function useOrganization() {
   const { user } = useAuth();
 
+  // For clinic_admin and staff, get organization through staff endpoint
   const {
     data: organization,
     isLoading,
     error
   } = useQuery<Organization | null>({
-    queryKey: ["/api/organizations", user?.organizationId],
-    enabled: !!user?.organizationId && user.role !== "super_admin",
+    queryKey: ["/api/organizations/my-organization"],
+    enabled: !!user && (user.role === "clinic_admin" || user.role === "staff"),
     retry: false,
     staleTime: 10 * 60 * 1000, // 10 minutes
   });
