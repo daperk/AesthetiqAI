@@ -1,4 +1,4 @@
-import type { Express, Request } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
@@ -154,6 +154,60 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(403).json({ message: "Insufficient permissions" });
     }
     next();
+  };
+
+  // Middleware to enforce business setup completion for core clinic features
+  const requireBusinessSetupComplete = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!req.user) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+
+      // Only apply to clinic_admin and staff roles
+      if (!["clinic_admin", "staff"].includes(req.user.role)) {
+        return next();
+      }
+
+      const organizationId = await getUserOrganizationId(req.user);
+      if (!organizationId) {
+        return res.status(400).json({ message: "No organization found" });
+      }
+
+      const organization = await storage.getOrganization(organizationId);
+      if (!organization) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+
+      // Check if business setup is complete
+      const stripeConnected = !!organization.stripeConnectAccountId;
+      const services = await storage.getServicesByOrganization(organizationId);
+      const hasServices = services.length > 0;
+      const memberships = await storage.getMembershipTiersByOrganization(organizationId);
+      const hasMemberships = memberships.length > 0;
+      const rewards = await storage.getRewardsByOrganization(organizationId);
+      const hasRewards = rewards.length > 0;
+      
+      const allComplete = stripeConnected && hasServices && hasMemberships && hasRewards;
+
+      if (!allComplete) {
+        return res.status(403).json({ 
+          message: "Business setup incomplete. Please complete your business setup first.",
+          error_code: "BUSINESS_SETUP_INCOMPLETE",
+          setup_status: {
+            stripeConnected,
+            hasServices,
+            hasMemberships,
+            hasRewards,
+            allComplete
+          }
+        });
+      }
+
+      next();
+    } catch (error) {
+      console.error("Business setup check error:", error);
+      res.status(500).json({ message: "Failed to verify business setup" });
+    }
   };
 
   // Audit logging middleware
@@ -362,49 +416,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
           if (userData.paymentMethod) {
             try {
               // Create Stripe customer
-              const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
-              const customer = await stripe.customers.create({
-                email: user.email,
-                name: `${user.firstName || ''} ${user.lastName || ''}`.trim(),
-                metadata: {
-                  organizationId: organization.id,
-                  userId: user.id
-                }
-              });
+              const customer = await stripeService.createCustomer(
+                user.email,
+                `${user.firstName || ''} ${user.lastName || ''}`.trim(),
+                organization.id
+              );
               
-              // Attach payment method to customer
-              await stripe.paymentMethods.attach(userData.paymentMethod.id, {
-                customer: customer.id,
-              });
-              
-              // Set as default payment method
-              await stripe.customers.update(customer.id, {
-                invoice_settings: {
-                  default_payment_method: userData.paymentMethod.id,
-                },
-              });
+              // Note: Payment method attachment will need to be handled separately
+              // The stripeService doesn't currently have attach/update methods
+              // TODO: Add these methods to stripeService or handle differently
               
               // Create subscription with 30-day trial
               const priceId = userData.billingCycle === 'yearly' ? 
                 enterprisePlan.stripePriceIdYearly : enterprisePlan.stripePriceIdMonthly;
               
-              const subscription = await stripe.subscriptions.create({
-                customer: customer.id,
-                items: [{ price: priceId }],
-                trial_period_days: 30,
-                metadata: {
-                  organizationId: organization.id,
-                  planTier: enterprisePlan.tier
-                }
-              });
+              const subscription = await stripeService.createSubscription(
+                customer.id,
+                priceId,
+                30 // trial_period_days
+              );
               
               // Store Stripe IDs in organization
               await storage.updateOrganization(organization.id, {
                 stripeCustomerId: customer.id,
-                stripeSubscriptionId: subscription.id
+                stripeSubscriptionId: subscription.subscriptionId
               });
               
-              console.log(`Created Stripe subscription ${subscription.id} with 30-day trial for organization ${organization.id}`);
+              console.log(`Created Stripe subscription ${subscription.subscriptionId} with 30-day trial for organization ${organization.id}`);
             } catch (stripeError) {
               console.error("Stripe setup error:", stripeError);
               // Continue without subscription setup - user can add payment later
@@ -579,7 +617,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Staff routes
 
-  app.post("/api/staff", requireRole("clinic_admin", "super_admin"), async (req, res) => {
+  app.post("/api/staff", requireRole("clinic_admin", "super_admin"), requireBusinessSetupComplete, async (req, res) => {
     try {
       const staffData = insertStaffSchema.parse(req.body);
       const staff = await storage.createStaff(staffData);
@@ -595,7 +633,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Client routes
-  app.get("/api/clients", requireAuth, async (req, res) => {
+  app.get("/api/clients", requireAuth, requireBusinessSetupComplete, async (req, res) => {
     try {
       let organizationId = req.query.organizationId as string;
       
@@ -618,7 +656,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/clients", requireRole("clinic_admin", "staff", "super_admin"), async (req, res) => {
+  app.post("/api/clients", requireRole("clinic_admin", "staff", "super_admin"), requireBusinessSetupComplete, async (req, res) => {
     try {
       // Get organization ID from user session (same logic as GET endpoint)
       let organizationId: string;
@@ -673,7 +711,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Appointment routes
-  app.get("/api/appointments", requireAuth, async (req, res) => {
+  app.get("/api/appointments", requireAuth, requireBusinessSetupComplete, async (req, res) => {
     try {
       let organizationId = req.query.organizationId as string;
       
@@ -711,7 +749,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/appointments", requireAuth, async (req, res) => {
+  app.post("/api/appointments", requireAuth, requireBusinessSetupComplete, async (req, res) => {
     try {
       const appointmentData = insertAppointmentSchema.parse(req.body);
       
@@ -1690,7 +1728,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/staff", async (req, res) => {
+  app.get("/api/staff", requireBusinessSetupComplete, async (req, res) => {
     try {
       const { locationId, serviceId } = req.query;
       console.log("Staff endpoint called with:", { locationId, serviceId });

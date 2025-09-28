@@ -1,9 +1,15 @@
 import Stripe from "stripe";
 
-// FIX: Environment variables are swapped - use VITE_STRIPE_PUBLIC_KEY as secret key (contains sk_test_...)
-const actualSecretKey = process.env.VITE_STRIPE_PUBLIC_KEY; // This actually contains the secret key
-const stripe = actualSecretKey 
-  ? new Stripe(actualSecretKey, { apiVersion: "2023-10-16" })
+// Use the correct secret key with fallback for swapped environment variables
+const secretKey = process.env.STRIPE_SECRET_KEY || process.env.VITE_STRIPE_PUBLIC_KEY;
+if (!secretKey) {
+  console.error("⚠️ [STRIPE] No secret key found in STRIPE_SECRET_KEY or VITE_STRIPE_PUBLIC_KEY");
+} else if (secretKey.startsWith('pk_')) {
+  console.warn("⚠️ [STRIPE] Warning: Using publishable key as secret key (environment variables may be swapped)");
+}
+
+const stripe = secretKey 
+  ? new Stripe(secretKey, { apiVersion: "2023-10-16" })
   : null;
 
 export interface SubscriptionResult {

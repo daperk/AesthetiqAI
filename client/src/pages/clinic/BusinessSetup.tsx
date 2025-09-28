@@ -116,13 +116,19 @@ export default function BusinessSetup() {
 
   // Stripe Connect mutations
   const createStripeAccount = useMutation({
-    mutationFn: () => apiRequest("/api/stripe-connect/create-account", "POST"),
+    mutationFn: async () => {
+      const response = await apiRequest("/api/stripe-connect/create-account", "POST");
+      return response.json();
+    },
     onSuccess: (data: any) => {
       toast({ title: "Stripe account created successfully!" });
       if (data.onboardingUrl) {
         window.open(data.onboardingUrl, '_blank');
       }
-      queryClient.invalidateQueries({ queryKey: ['/api/clinic/setup-status'] });
+      // Force refresh setup status after short delay
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ['/api/clinic/setup-status'] });
+      }, 1000);
     },
     onError: (error: any) => {
       toast({
@@ -135,7 +141,7 @@ export default function BusinessSetup() {
 
   // Service mutation
   const createService = useMutation({
-    mutationFn: (data: ServiceFormData) => {
+    mutationFn: async (data: ServiceFormData) => {
       const serviceData = {
         name: data.name,
         description: data.description,
@@ -143,7 +149,8 @@ export default function BusinessSetup() {
         duration: parseInt(data.duration),
         category: data.category
       };
-      return apiRequest("/api/services", "POST", serviceData);
+      const response = await apiRequest("/api/services", "POST", serviceData);
+      return response.json();
     },
     onSuccess: () => {
       toast({ title: "Service created successfully!" });
@@ -162,7 +169,7 @@ export default function BusinessSetup() {
 
   // Membership mutation
   const createMembership = useMutation({
-    mutationFn: (data: MembershipFormData) => {
+    mutationFn: async (data: MembershipFormData) => {
       const membershipData = {
         name: data.name,
         description: data.description,
@@ -175,7 +182,8 @@ export default function BusinessSetup() {
         ],
         discountPercentage: 10
       };
-      return apiRequest("/api/memberships", "POST", membershipData);
+      const response = await apiRequest("/api/memberships", "POST", membershipData);
+      return response.json();
     },
     onSuccess: () => {
       toast({ title: "Membership plan created successfully!" });
@@ -194,14 +202,15 @@ export default function BusinessSetup() {
 
   // Reward mutation
   const createReward = useMutation({
-    mutationFn: (data: RewardFormData) => {
+    mutationFn: async (data: RewardFormData) => {
       const rewardData = {
         name: data.name,
         description: data.description,
         pointsCost: parseInt(data.pointsCost),
         category: data.category
       };
-      return apiRequest("/api/rewards", "POST", rewardData);
+      const response = await apiRequest("/api/rewards", "POST", rewardData);
+      return response.json();
     },
     onSuccess: () => {
       toast({ title: "Reward program created successfully!" });

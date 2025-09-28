@@ -100,6 +100,7 @@ export interface IStorage {
 
   // Rewards
   getRewardsByClient(clientId: string): Promise<Reward[]>;
+  getRewardsByOrganization(organizationId: string): Promise<Reward[]>;
   getClientRewardBalance(clientId: string): Promise<number>;
   createReward(reward: InsertReward): Promise<Reward>;
 
@@ -497,6 +498,12 @@ export class DatabaseStorage implements IStorage {
   async getRewardsByClient(clientId: string): Promise<Reward[]> {
     return await db.select().from(rewards)
       .where(eq(rewards.clientId, clientId))
+      .orderBy(desc(rewards.createdAt));
+  }
+
+  async getRewardsByOrganization(organizationId: string): Promise<Reward[]> {
+    return await db.select().from(rewards)
+      .where(eq(rewards.organizationId, organizationId))
       .orderBy(desc(rewards.createdAt));
   }
 
