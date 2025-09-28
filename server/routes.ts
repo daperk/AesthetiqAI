@@ -1910,19 +1910,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const stripeConnected = !!organization.stripeAccountId;
 
       // Check if they have services
-      const services = await storage.getServices(organizationId);
+      const services = await storage.getServicesByOrganization(organizationId);
       const hasServices = services.length > 0;
 
       // Check if they have membership plans
-      const memberships = await storage.getMembershipPlans(organizationId);
+      const memberships = await storage.getMembershipTiersByOrganization(organizationId);
       const hasMemberships = memberships.length > 0;
 
       // Check if they have rewards programs
-      const rewards = await storage.getRewardsPrograms(organizationId);
+      const rewards = await storage.getRewardsByOrganization(organizationId);
       const hasRewards = rewards.length > 0;
 
       // Check if they have invited patients (new requirement)
-      const clients = await storage.getClients(organizationId);
+      const clients = await storage.getClientsByOrganization(organizationId);
       const hasPatients = clients.length > 0;
 
       const allComplete = stripeConnected && hasServices && hasMemberships && hasRewards && hasPatients;
