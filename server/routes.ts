@@ -300,6 +300,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
             res.json({ user: { ...user, password: undefined } });
           });
+          return;
           
         } else if (user.role === "clinic_admin") {
           // Get enterprise plan for testing (all features enabled)
@@ -1214,7 +1215,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Upgrade membership endpoint
+  // Upgrade membership endpoint with Stripe subscription
   app.post("/api/memberships/upgrade", requireAuth, async (req, res) => {
     try {
       const { tierId, billingCycle } = req.body;
@@ -1225,48 +1226,76 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Client profile not found" });
       }
 
-      // For now, create a simple membership record
-      // In production, this would integrate with Stripe for billing
+      // Get membership tier with Stripe price IDs (handle both UUID and name)
+      let tier;
+      console.log(`🔍 [TIER LOOKUP] tierId: ${tierId}, clientOrgId: ${client.organizationId}`);
+      
+      try {
+        // First try as UUID
+        tier = await storage.getMembershipTier(tierId);
+        console.log(`✅ [TIER LOOKUP] Found tier by UUID:`, tier?.name);
+      } catch (error) {
+        console.log(`❌ [TIER LOOKUP] UUID lookup failed, trying name lookup`);
+        // If UUID lookup fails, try by tier name
+        const tiers = await storage.getMembershipTiersByOrganization(client.organizationId);
+        console.log(`🔍 [TIER LOOKUP] Found ${tiers.length} tiers for org:`, tiers.map(t => t.name));
+        tier = tiers.find(t => t.name.toLowerCase() === tierId.toLowerCase());
+        console.log(`🔍 [TIER LOOKUP] Name match result:`, tier?.name || 'NO MATCH');
+      }
+      
+      if (!tier) {
+        console.log(`❌ [TIER LOOKUP] No tier found for: ${tierId}`);
+        return res.status(404).json({ message: "Membership tier not found" });
+      }
+      
+      console.log(`✅ [TIER LOOKUP] Using tier: ${tier.name} (${tier.id})`);
+
+      // Get the appropriate Stripe price ID based on billing cycle
+      const priceId = billingCycle === 'yearly' ? tier.stripePriceIdYearly : tier.stripePriceIdMonthly;
+      if (!priceId) {
+        return res.status(400).json({ message: "Stripe pricing not configured for this tier" });
+      }
+
+      // Get or create Stripe customer
+      let stripeCustomerId = req.user!.stripeCustomerId;
+      if (!stripeCustomerId) {
+        const customer = await stripeService.createCustomer(
+          req.user!.email,
+          `${req.user!.firstName} ${req.user!.lastName}`,
+          client.organizationId
+        );
+        stripeCustomerId = customer.id;
+        
+        // Update user with Stripe customer ID
+        await storage.updateUser(req.user!.id, { stripeCustomerId });
+      }
+
+      // Create Stripe subscription
+      const subscriptionResult = await stripeService.createSubscription(
+        stripeCustomerId,
+        priceId
+      );
+
+      // Create inactive membership record until payment confirmed
       const membership = await storage.createMembership({
         clientId: client.id,
         tierName: tierId,
         startDate: new Date(),
-        status: 'active',
+        status: 'suspended', // Will be activated by webhook
         organizationId: client.organizationId,
-        monthlyFee: "100.00" // Default membership fee
+        monthlyFee: billingCycle === 'yearly' ? tier.yearlyPrice || tier.monthlyPrice : tier.monthlyPrice,
+        stripeSubscriptionId: subscriptionResult.subscriptionId
       });
 
-      // Award reward points for membership purchase (with idempotency check and real pricing)
-      const existingRewards = await storage.getRewardsByClient(client.id);
-      const alreadyAwarded = existingRewards.some(r => 
-        r.referenceType === 'membership' && r.referenceId === membership.id
-      );
+      await auditLog(req, "upgrade_initiated", "membership", membership.id, { tierId, billingCycle, subscriptionId: subscriptionResult.subscriptionId });
       
-      if (!alreadyAwarded) {
-        // Get actual membership tier pricing
-        const tier = await storage.getMembershipTier(tierId);
-        const membershipAmount = tier ? parseFloat(tier.monthlyPrice) : parseFloat("100.00");
-        
-        const pointsEarned = await calculateRewardPoints(
-          client.id, 
-          client.organizationId, 
-          membershipAmount
-        );
-        
-        if (pointsEarned > 0) {
-          await storage.createReward({
-            organizationId: client.organizationId,
-            clientId: client.id,
-            points: pointsEarned,
-            reason: `Membership purchase: ${tierId} ($${membershipAmount})`,
-            referenceId: membership.id,
-            referenceType: 'membership'
-          });
-        }
-      }
-
-      await auditLog(req, "upgrade", "membership", membership.id, { tierId, billingCycle });
-      res.json(membership);
+      // Return client secret for frontend payment confirmation
+      res.json({
+        membership,
+        clientSecret: subscriptionResult.clientSecret,
+        subscriptionId: subscriptionResult.subscriptionId,
+        requiresPayment: true
+      });
     } catch (error) {
       console.error("Membership upgrade error:", error);
       res.status(500).json({ message: "Failed to upgrade membership" });
@@ -2046,6 +2075,62 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
 
           console.log(`Stripe Connect account ${account.id} updated for organization ${organizationId}: ready=${accountReady}`);
+        }
+      }
+
+      // Handle subscription activation
+      if (event.type === 'invoice.payment_succeeded') {
+        const invoice = event.data.object;
+        const subscriptionId = invoice.subscription;
+        
+        if (subscriptionId) {
+          // Find membership by subscription ID and activate it
+          const membership = await storage.getMembershipByStripeSubscriptionId(subscriptionId);
+          if (membership && membership.status === 'suspended') {
+            // Activate the membership
+            await storage.updateMembership(membership.id, { status: 'active' });
+            
+            // Award reward points for membership purchase (with idempotency check)
+            const existingRewards = await storage.getRewardsByClient(membership.clientId);
+            const alreadyAwarded = existingRewards.some(r => 
+              r.referenceType === 'membership' && r.referenceId === membership.id
+            );
+            
+            if (!alreadyAwarded) {
+              const membershipAmount = parseFloat(membership.monthlyFee);
+              const pointsEarned = await calculateRewardPoints(
+                membership.clientId, 
+                membership.organizationId, 
+                membershipAmount
+              );
+              
+              if (pointsEarned > 0) {
+                await storage.createReward({
+                  organizationId: membership.organizationId,
+                  clientId: membership.clientId,
+                  points: pointsEarned,
+                  reason: `Membership activated: ${membership.tierName} ($${membershipAmount})`,
+                  referenceId: membership.id,
+                  referenceType: 'membership'
+                });
+              }
+            }
+            
+            console.log(`Membership ${membership.id} activated for subscription ${subscriptionId}`);
+          }
+        }
+      }
+      
+      // Handle subscription cancellation
+      if (event.type === 'customer.subscription.deleted') {
+        const subscription = event.data.object;
+        const subscriptionId = subscription.id;
+        
+        // Find membership by subscription ID and cancel it
+        const membership = await storage.getMembershipByStripeSubscriptionId(subscriptionId);
+        if (membership) {
+          await storage.updateMembership(membership.id, { status: 'canceled' });
+          console.log(`Membership ${membership.id} canceled for subscription ${subscriptionId}`);
         }
       }
 
