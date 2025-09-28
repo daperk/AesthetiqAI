@@ -391,8 +391,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           if (err) {
             return res.status(500).json({ message: "Login failed after registration" });
           }
-          res.json({ user: { ...user, password: undefined } });
+          return res.json({ user: { ...user, password: undefined } });
         });
+        return; // Ensure we don't fall through to catch block
       }
 
     } catch (error) {
@@ -400,7 +401,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Invalid data", errors: error.errors });
       }
       console.error("Registration error:", error);
-      res.status(500).json({ message: "Registration failed" });
+      return res.status(500).json({ message: "Registration failed" });
     }
   });
 
