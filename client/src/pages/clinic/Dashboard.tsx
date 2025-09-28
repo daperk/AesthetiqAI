@@ -181,7 +181,7 @@ export default function ClinicDashboard() {
                     <div className="text-2xl font-bold text-foreground" data-testid="text-today-revenue">
                       ${stats?.revenue?.today?.toLocaleString() || "0"}
                     </div>
-                    <div className="text-sm text-green-500">+15% vs yesterday</div>
+                    <div className="text-sm text-muted-foreground">From completed appointments</div>
                   </CardContent>
                 </Card>
 
@@ -194,7 +194,7 @@ export default function ClinicDashboard() {
                     <div className="text-2xl font-bold text-foreground" data-testid="text-today-appointments">
                       {stats?.appointments?.today || todayAppointments?.length || 0}
                     </div>
-                    <div className="text-sm text-muted-foreground">3 remaining</div>
+                    <div className="text-sm text-muted-foreground">{todayAppointments ? todayAppointments.length - (stats?.appointments?.today || 0) : 0} remaining</div>
                   </CardContent>
                 </Card>
 
@@ -207,7 +207,7 @@ export default function ClinicDashboard() {
                     <div className="text-2xl font-bold text-foreground" data-testid="text-active-members">
                       {stats?.memberships?.active || 0}
                     </div>
-                    <div className="text-sm text-green-500">+5 new this week</div>
+                    <div className="text-sm text-muted-foreground">Active subscriptions</div>
                   </CardContent>
                 </Card>
 
@@ -249,62 +249,43 @@ export default function ClinicDashboard() {
                             </p>
                           </div>
                         ) : (
-                          <>
-                            {/* Sample appointment entries */}
-                            <div className="flex items-center space-x-4 p-4 bg-muted/30 rounded-lg" data-testid="appointment-item-1">
-                              <div className="text-center">
-                                <div className="text-sm font-medium text-foreground">10:00</div>
-                                <div className="text-xs text-muted-foreground">AM</div>
-                              </div>
-                              <div className="flex-1">
-                                <div className="font-medium text-foreground">Deluxe Facial</div>
-                                <div className="text-sm text-muted-foreground">Jessica Martinez</div>
-                              </div>
-                              <div className="text-sm text-muted-foreground">Dr. Smith</div>
-                              <div className="flex items-center space-x-2">
-                                <Badge className="bg-green-100 text-green-800">Confirmed</Badge>
-                                <Button variant="ghost" size="sm" data-testid="button-appointment-menu">
-                                  <Bell className="w-4 h-4" />
-                                </Button>
-                              </div>
-                            </div>
-
-                            <div className="flex items-center space-x-4 p-4 bg-muted/30 rounded-lg" data-testid="appointment-item-2">
-                              <div className="text-center">
-                                <div className="text-sm font-medium text-foreground">11:30</div>
-                                <div className="text-xs text-muted-foreground">AM</div>
-                              </div>
-                              <div className="flex-1">
-                                <div className="font-medium text-foreground">Botox Consultation</div>
-                                <div className="text-sm text-muted-foreground">Michael Chen</div>
-                              </div>
-                              <div className="text-sm text-muted-foreground">Dr. Johnson</div>
-                              <div className="flex items-center space-x-2">
-                                <Badge className="bg-blue-100 text-blue-800">In Progress</Badge>
-                                <Button variant="ghost" size="sm" data-testid="button-appointment-menu-2">
-                                  <Bell className="w-4 h-4" />
-                                </Button>
-                              </div>
-                            </div>
-
-                            <div className="flex items-center space-x-4 p-4 bg-muted/30 rounded-lg" data-testid="appointment-item-3">
-                              <div className="text-center">
-                                <div className="text-sm font-medium text-foreground">2:00</div>
-                                <div className="text-xs text-muted-foreground">PM</div>
-                              </div>
-                              <div className="flex-1">
-                                <div className="font-medium text-foreground">Laser Treatment</div>
-                                <div className="text-sm text-muted-foreground">Amanda Wilson</div>
-                              </div>
-                              <div className="text-sm text-muted-foreground">Dr. Smith</div>
-                              <div className="flex items-center space-x-2">
-                                <Badge variant="secondary" className="bg-gray-100 text-gray-800">Upcoming</Badge>
-                                <Button variant="ghost" size="sm" data-testid="button-appointment-menu-3">
-                                  <Bell className="w-4 h-4" />
-                                </Button>
-                              </div>
-                            </div>
-                          </>
+                          todayAppointments
+                            .sort((a: any, b: any) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
+                            .map((appointment: any) => {
+                              const startTime = new Date(appointment.startTime);
+                              const timeStr = startTime.toLocaleTimeString('en-US', { 
+                                hour: '2-digit', 
+                                minute: '2-digit',
+                                hour12: true 
+                              }).split(' ');
+                              
+                              return (
+                                <div key={appointment.id} className="flex items-center space-x-4 p-4 bg-muted/30 rounded-lg" data-testid={`appointment-item-${appointment.id}`}>
+                                  <div className="text-center">
+                                    <div className="text-sm font-medium text-foreground">{timeStr[0]}</div>
+                                    <div className="text-xs text-muted-foreground">{timeStr[1]}</div>
+                                  </div>
+                                  <div className="flex-1">
+                                    <div className="font-medium text-foreground">Appointment</div>
+                                    <div className="text-sm text-muted-foreground">Client</div>
+                                  </div>
+                                  <div className="text-sm text-muted-foreground">Staff</div>
+                                  <div className="flex items-center space-x-2">
+                                    <Badge className={`${
+                                      appointment.status === 'confirmed' ? 'bg-green-100 text-green-800' :
+                                      appointment.status === 'in_progress' ? 'bg-blue-100 text-blue-800' :
+                                      appointment.status === 'completed' ? 'bg-gray-100 text-gray-800' :
+                                      'bg-yellow-100 text-yellow-800'
+                                    }`}>
+                                      {appointment.status || 'Scheduled'}
+                                    </Badge>
+                                    <Button variant="ghost" size="sm" data-testid="button-appointment-menu">
+                                      <Bell className="w-4 h-4" />
+                                    </Button>
+                                  </div>
+                                </div>
+                              );
+                            })
                         )}
                       </div>
                     </CardContent>
@@ -376,18 +357,56 @@ export default function ClinicDashboard() {
                     </CardHeader>
                     <CardContent>
                       <div className="space-y-2">
-                        <Button variant="outline" className="w-full justify-start" data-testid="button-add-client">
-                          <UserPlus className="w-4 h-4 mr-2" />
-                          Add Client
-                        </Button>
-                        <Button variant="outline" className="w-full justify-start" data-testid="button-block-time">
-                          <CalendarPlus className="w-4 h-4 mr-2" />
-                          Block Time
-                        </Button>
-                        <Button variant="outline" className="w-full justify-start" data-testid="button-send-rewards">
-                          <Gift className="w-4 h-4 mr-2" />
-                          Send Rewards
-                        </Button>
+                        {/* Dynamic Quick Actions Based on Real Data */}
+                        {(!todayAppointments || todayAppointments.length === 0) && (
+                          <Button variant="outline" className="w-full justify-start" data-testid="button-schedule-appointments">
+                            <CalendarPlus className="w-4 h-4 mr-2" />
+                            Schedule First Appointment
+                          </Button>
+                        )}
+                        
+                        {(stats?.clients?.total || 0) < 5 && (
+                          <Button variant="outline" className="w-full justify-start" data-testid="button-add-client">
+                            <UserPlus className="w-4 h-4 mr-2" />
+                            Add Client
+                          </Button>
+                        )}
+                        
+                        {(stats?.memberships?.active || 0) === 0 && (stats?.clients?.total || 0) > 2 && (
+                          <Button variant="outline" className="w-full justify-start" data-testid="button-promote-memberships">
+                            <Crown className="w-4 h-4 mr-2" />
+                            Promote Memberships
+                          </Button>
+                        )}
+                        
+                        {(stats?.revenue?.today || 0) === 0 && (todayAppointments?.length || 0) > 0 && (
+                          <Button variant="outline" className="w-full justify-start" data-testid="button-process-payments">
+                            <DollarSign className="w-4 h-4 mr-2" />
+                            Process Payments
+                          </Button>
+                        )}
+                        
+                        {(staffAvailability?.online || 0) === 0 && (
+                          <Button variant="outline" className="w-full justify-start" data-testid="button-contact-staff">
+                            <Users className="w-4 h-4 mr-2" />
+                            Contact Staff
+                          </Button>
+                        )}
+                        
+                        {/* Default actions when data conditions are met */}
+                        {((todayAppointments?.length || 0) > 0 || (stats?.clients?.total || 0) >= 5) && (
+                          <Button variant="outline" className="w-full justify-start" data-testid="button-send-rewards">
+                            <Gift className="w-4 h-4 mr-2" />
+                            Send Rewards
+                          </Button>
+                        )}
+                        
+                        {((stats?.revenue?.today || 0) > 0 || (stats?.clients?.total || 0) >= 3) && (
+                          <Button variant="outline" className="w-full justify-start" data-testid="button-view-analytics">
+                            <TrendingUp className="w-4 h-4 mr-2" />
+                            View Analytics
+                          </Button>
+                        )}
                       </div>
                     </CardContent>
                   </Card>
