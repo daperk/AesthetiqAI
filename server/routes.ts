@@ -1252,49 +1252,84 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Get the appropriate Stripe price ID based on billing cycle
       const priceId = billingCycle === 'yearly' ? tier.stripePriceIdYearly : tier.stripePriceIdMonthly;
-      if (!priceId) {
-        return res.status(400).json({ message: "Stripe pricing not configured for this tier" });
-      }
-
-      // Get or create Stripe customer
-      let stripeCustomerId = req.user!.stripeCustomerId;
-      if (!stripeCustomerId) {
-        const customer = await stripeService.createCustomer(
-          req.user!.email,
-          `${req.user!.firstName} ${req.user!.lastName}`,
-          client.organizationId
-        );
-        stripeCustomerId = customer.id;
-        
-        // Update user with Stripe customer ID
-        await storage.updateUser(req.user!.id, { stripeCustomerId });
-      }
-
-      // Create Stripe subscription
-      const subscriptionResult = await stripeService.createSubscription(
-        stripeCustomerId,
-        priceId
-      );
-
-      // Create inactive membership record until payment confirmed
-      const membership = await storage.createMembership({
-        clientId: client.id,
-        tierName: tierId,
-        startDate: new Date(),
-        status: 'suspended', // Will be activated by webhook
-        organizationId: client.organizationId,
-        monthlyFee: billingCycle === 'yearly' ? tier.yearlyPrice || tier.monthlyPrice : tier.monthlyPrice,
-        stripeSubscriptionId: subscriptionResult.subscriptionId
-      });
-
-      await auditLog(req, "upgrade_initiated", "membership", membership.id, { tierId, billingCycle, subscriptionId: subscriptionResult.subscriptionId });
       
-      // Return client secret for frontend payment confirmation
+      let membership;
+      let clientSecret = null;
+      let subscriptionId = null;
+      let requiresPayment = false;
+      
+      if (!priceId) {
+        console.log(`⚠️ [STRIPE] No price ID configured for tier ${tier.name}, creating free membership for development`);
+        
+        // Create active membership without Stripe integration (for development/testing)
+        membership = await storage.createMembership({
+          clientId: client.id,
+          tierName: tier.name, // Use actual tier name instead of tierId
+          startDate: new Date(),
+          status: 'active', // Active immediately since no payment required
+          organizationId: client.organizationId,
+          monthlyFee: billingCycle === 'yearly' ? tier.yearlyPrice || tier.monthlyPrice : tier.monthlyPrice,
+          stripeSubscriptionId: null
+        });
+
+        await auditLog(req, "upgrade_completed_dev", "membership", membership.id, { tierId, billingCycle, reason: "no_stripe_config" });
+        
+        // Award membership signup points immediately
+        await storage.createReward({
+          clientId: client.id,
+          points: 100,
+          description: "Membership signup bonus",
+          type: "membership",
+          reason: "membership_signup",
+          organizationId: client.organizationId
+        });
+        
+      } else {
+        // Full Stripe integration flow
+        // Get or create Stripe customer
+        let stripeCustomerId = req.user!.stripeCustomerId;
+        if (!stripeCustomerId) {
+          const customer = await stripeService.createCustomer(
+            req.user!.email,
+            `${req.user!.firstName} ${req.user!.lastName}`,
+            client.organizationId
+          );
+          stripeCustomerId = customer.id;
+          
+          // Update user with Stripe customer ID
+          await storage.updateUser(req.user!.id, { stripeCustomerId });
+        }
+
+        // Create Stripe subscription
+        const subscriptionResult = await stripeService.createSubscription(
+          stripeCustomerId,
+          priceId
+        );
+
+        // Create inactive membership record until payment confirmed
+        membership = await storage.createMembership({
+          clientId: client.id,
+          tierName: tier.name, // Use actual tier name instead of tierId
+          startDate: new Date(),
+          status: 'suspended', // Will be activated by webhook
+          organizationId: client.organizationId,
+          monthlyFee: billingCycle === 'yearly' ? tier.yearlyPrice || tier.monthlyPrice : tier.monthlyPrice,
+          stripeSubscriptionId: subscriptionResult.subscriptionId
+        });
+
+        await auditLog(req, "upgrade_initiated", "membership", membership.id, { tierId, billingCycle, subscriptionId: subscriptionResult.subscriptionId });
+        
+        clientSecret = subscriptionResult.clientSecret;
+        subscriptionId = subscriptionResult.subscriptionId;
+        requiresPayment = true;
+      }
+      
+      // Return membership data and payment info
       res.json({
         membership,
-        clientSecret: subscriptionResult.clientSecret,
-        subscriptionId: subscriptionResult.subscriptionId,
-        requiresPayment: true
+        clientSecret,
+        subscriptionId,
+        requiresPayment
       });
     } catch (error) {
       console.error("Membership upgrade error:", error);

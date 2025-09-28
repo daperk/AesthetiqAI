@@ -149,8 +149,8 @@ export default function PatientMembership() {
   };
 
   const getCurrentTier = () => {
-    if (!currentMembership) return null;
-    return membershipTiers.find(tier => tier.name.toLowerCase() === currentMembership.tierName.toLowerCase());
+    if (!currentMembership || !currentMembership.tierName || !membershipTiers || membershipTiers.length === 0) return null;
+    return membershipTiers.find(tier => tier.name?.toLowerCase() === currentMembership.tierName?.toLowerCase());
   };
 
   const currentTier = getCurrentTier();

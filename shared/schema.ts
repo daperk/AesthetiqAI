@@ -185,8 +185,7 @@ export const memberships = pgTable("memberships", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
   organizationId: uuid("organization_id").notNull(),
   clientId: uuid("client_id").notNull(),
-  tierName: text("tier_name").notNull(), // Keep for backward compatibility during migration
-  tierId: uuid("tier_id"), // New foreign key to membershipTiers
+  tierName: text("tier_name").notNull(),
   monthlyFee: decimal("monthly_fee", { precision: 10, scale: 2 }).notNull(),
   benefits: jsonb("benefits"),
   discountPercentage: decimal("discount_percentage", { precision: 5, scale: 2 }),
@@ -396,8 +395,7 @@ export const membershipTiersRelations = relations(membershipTiers, ({ one, many 
 
 export const membershipsRelations = relations(memberships, ({ one }) => ({
   organization: one(organizations, { fields: [memberships.organizationId], references: [organizations.id] }),
-  client: one(clients, { fields: [memberships.clientId], references: [clients.id] }),
-  tier: one(membershipTiers, { fields: [memberships.tierId], references: [membershipTiers.id] })
+  client: one(clients, { fields: [memberships.clientId], references: [clients.id] })
 }));
 
 export const rewardsRelations = relations(rewards, ({ one }) => ({
