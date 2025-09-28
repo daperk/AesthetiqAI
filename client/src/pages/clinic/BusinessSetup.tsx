@@ -115,6 +115,11 @@ export default function BusinessSetup() {
     queryKey: ['/api/clinic/setup-status'],
   });
 
+  // Get organization for shareable link
+  const { data: organization } = useQuery({
+    queryKey: ['/api/organization'],
+  });
+
   // Set current step based on setup status
   useEffect(() => {
     if (setupStatus) {
@@ -760,10 +765,22 @@ export default function BusinessSetup() {
                   <h4 className="font-medium text-sm mb-2">📧 What happens next?</h4>
                   <ul className="text-sm text-muted-foreground space-y-1">
                     <li>• Patient receives an email invitation with your clinic's unique link</li>
-                    <li>• They can register using /c/[your-clinic-slug] for secure access</li>
+                    <li>• They can register using your secure portal for private access</li>
                     <li>• Once registered, your business setup will be complete</li>
                   </ul>
                 </div>
+
+                {organization && (
+                  <div className="bg-green-50 border border-green-200 p-4 rounded-lg">
+                    <h4 className="font-medium text-sm mb-2 text-green-800">🔒 Your Clinic's Private Registration Link</h4>
+                    <div className="text-sm text-green-700 font-mono bg-green-100 p-2 rounded border">
+                      {window.location.origin}/c/{organization.slug}/register
+                    </div>
+                    <p className="text-xs text-green-600 mt-2">
+                      Only patients you invite can access this secure registration portal. Share this link directly or use the invitation form above.
+                    </p>
+                  </div>
+                )}
 
                 <Button type="submit" disabled={invitePatient.isPending} size="lg" className="w-full" data-testid="button-invite-patient">
                   {invitePatient.isPending ? "Sending Invitation..." : "Send Invitation & Complete Setup"}
