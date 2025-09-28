@@ -11,6 +11,7 @@ interface BusinessSetupStatus {
   hasServices: boolean;
   hasMemberships: boolean;
   hasRewards: boolean;
+  hasPatients: boolean;
   allComplete: boolean;
 }
 

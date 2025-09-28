@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { CheckCircle, Circle, CreditCard, Calendar, Gift, Sparkles, ArrowRight } from "lucide-react";
+import { CheckCircle, Circle, CreditCard, Calendar, Gift, Sparkles, ArrowRight, Users } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useToast } from "@/hooks/use-toast";
@@ -22,6 +22,7 @@ interface BusinessSetupStatus {
   hasServices: boolean;
   hasMemberships: boolean;
   hasRewards: boolean;
+  hasPatients: boolean;
   allComplete: boolean;
 }
 
@@ -47,9 +48,17 @@ const rewardFormSchema = z.object({
   category: z.string().min(1, "Category is required")
 });
 
+const patientInviteSchema = z.object({
+  email: z.string().email("Valid email is required"),
+  firstName: z.string().min(1, "First name is required"),
+  lastName: z.string().min(1, "Last name is required"),
+  phone: z.string().optional()
+});
+
 type ServiceFormData = z.infer<typeof serviceFormSchema>;
 type MembershipFormData = z.infer<typeof membershipFormSchema>;
 type RewardFormData = z.infer<typeof rewardFormSchema>;
+type PatientInviteData = z.infer<typeof patientInviteSchema>;
 
 export default function BusinessSetup() {
   const [, setLocation] = useLocation();
@@ -91,6 +100,16 @@ export default function BusinessSetup() {
     }
   });
 
+  const patientInviteForm = useForm<PatientInviteData>({
+    resolver: zodResolver(patientInviteSchema),
+    defaultValues: {
+      email: "",
+      firstName: "",
+      lastName: "",
+      phone: ""
+    }
+  });
+
   // Check setup status
   const { data: setupStatus, isLoading: statusLoading } = useQuery<BusinessSetupStatus>({
     queryKey: ['/api/clinic/setup-status'],
@@ -107,6 +126,8 @@ export default function BusinessSetup() {
         setCurrentStep(3);
       } else if (!setupStatus.hasRewards) {
         setCurrentStep(4);
+      } else if (!setupStatus.hasPatients) {
+        setCurrentStep(5);
       } else if (setupStatus.allComplete) {
         // Setup complete, redirect to dashboard
         setLocation('/clinic');
@@ -200,6 +221,32 @@ export default function BusinessSetup() {
     }
   });
 
+  // Patient invitation mutation
+  const invitePatient = useMutation({
+    mutationFn: async (data: PatientInviteData) => {
+      const response = await apiRequest("/api/patients/invite", "POST", data);
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Patient invitation sent successfully!" });
+      patientInviteForm.reset();
+      queryClient.invalidateQueries({ queryKey: ['/api/clinic/setup-status'] });
+      // Complete setup and redirect to dashboard
+      toast({
+        title: "Business setup complete!",
+        description: "Welcome to Aesthiq. Your clinic is ready to accept bookings."
+      });
+      setTimeout(() => setLocation('/clinic'), 2000);
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Failed to send invitation",
+        description: error.message || "Please try again",
+        variant: "destructive"
+      });
+    }
+  });
+
   // Reward mutation
   const createReward = useMutation({
     mutationFn: async (data: RewardFormData) => {
@@ -216,12 +263,7 @@ export default function BusinessSetup() {
       toast({ title: "Reward program created successfully!" });
       rewardForm.reset();
       queryClient.invalidateQueries({ queryKey: ['/api/clinic/setup-status'] });
-      // Redirect to dashboard when all setup is complete
-      toast({
-        title: "Business setup complete!",
-        description: "Welcome to Aesthiq. Your clinic is ready to accept bookings."
-      });
-      setTimeout(() => setLocation('/clinic'), 2000);
+      setCurrentStep(5);
     },
     onError: (error: any) => {
       toast({
@@ -271,6 +313,13 @@ export default function BusinessSetup() {
       description: "Create customer rewards",
       icon: Gift,
       complete: setupStatus?.hasRewards || false
+    },
+    {
+      number: 5,
+      title: "Invite Patients",
+      description: "Send your first patient invitation",
+      icon: Users,
+      complete: setupStatus?.hasPatients || false
     }
   ];
 
@@ -621,7 +670,103 @@ export default function BusinessSetup() {
                 </div>
 
                 <Button type="submit" disabled={createReward.isPending} data-testid="button-create-reward">
-                  {createReward.isPending ? "Creating Reward..." : "Complete Setup"}
+                  {createReward.isPending ? "Creating Reward..." : "Create Reward Program"}
+                </Button>
+              </form>
+            </Form>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Step 5: Patient Invitation */}
+      {currentStep === 5 && (
+        <Card data-testid="card-patient-invite-setup">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Users className="w-5 h-5" />
+              Invite Your First Patient
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Alert className="mb-6">
+              <AlertDescription>
+                <strong>Final Step:</strong> Invite your first patient to complete your clinic setup. 
+                Patients can only access your clinic through your unique invitation link - this ensures 
+                complete privacy and security for your practice.
+              </AlertDescription>
+            </Alert>
+
+            <Form {...patientInviteForm}>
+              <form onSubmit={patientInviteForm.handleSubmit((data) => invitePatient.mutate(data))} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <FormField
+                    control={patientInviteForm.control}
+                    name="firstName"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>First Name</FormLabel>
+                        <FormControl>
+                          <Input placeholder="e.g., Sarah" {...field} data-testid="input-patient-first-name" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={patientInviteForm.control}
+                    name="lastName"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Last Name</FormLabel>
+                        <FormControl>
+                          <Input placeholder="e.g., Johnson" {...field} data-testid="input-patient-last-name" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                <FormField
+                  control={patientInviteForm.control}
+                  name="email"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Email Address</FormLabel>
+                      <FormControl>
+                        <Input type="email" placeholder="sarah@example.com" {...field} data-testid="input-patient-email" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={patientInviteForm.control}
+                  name="phone"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Phone Number (Optional)</FormLabel>
+                      <FormControl>
+                        <Input type="tel" placeholder="(555) 123-4567" {...field} data-testid="input-patient-phone" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <div className="bg-muted p-4 rounded-lg">
+                  <h4 className="font-medium text-sm mb-2">📧 What happens next?</h4>
+                  <ul className="text-sm text-muted-foreground space-y-1">
+                    <li>• Patient receives an email invitation with your clinic's unique link</li>
+                    <li>• They can register using /c/[your-clinic-slug] for secure access</li>
+                    <li>• Once registered, your business setup will be complete</li>
+                  </ul>
+                </div>
+
+                <Button type="submit" disabled={invitePatient.isPending} size="lg" className="w-full" data-testid="button-invite-patient">
+                  {invitePatient.isPending ? "Sending Invitation..." : "Send Invitation & Complete Setup"}
                 </Button>
               </form>
             </Form>

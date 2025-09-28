@@ -1779,6 +1779,55 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
 
+  // Business setup status endpoint
+  app.get("/api/clinic/setup-status", requireAuth, async (req, res) => {
+    try {
+      const organizationId = await getUserOrganizationId(req.user!);
+      if (!organizationId) {
+        return res.status(400).json({ message: "No organization found for user" });
+      }
+
+      const organization = await storage.getOrganization(organizationId);
+      if (!organization) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+
+      // Check Stripe Connect status
+      const stripeConnected = !!organization.stripeAccountId;
+
+      // Check if they have services
+      const services = await storage.getServices(organizationId);
+      const hasServices = services.length > 0;
+
+      // Check if they have membership plans
+      const memberships = await storage.getMembershipPlans(organizationId);
+      const hasMemberships = memberships.length > 0;
+
+      // Check if they have rewards programs
+      const rewards = await storage.getRewardsPrograms(organizationId);
+      const hasRewards = rewards.length > 0;
+
+      // Check if they have invited patients (new requirement)
+      const clients = await storage.getClients(organizationId);
+      const hasPatients = clients.length > 0;
+
+      const allComplete = stripeConnected && hasServices && hasMemberships && hasRewards && hasPatients;
+
+      res.json({
+        stripeConnected,
+        hasServices,
+        hasMemberships,
+        hasRewards,
+        hasPatients,
+        allComplete
+      });
+
+    } catch (error) {
+      console.error("Setup status check error:", error);
+      res.status(500).json({ message: "Failed to check setup status" });
+    }
+  });
+
   // Subscription routes  
   app.post("/api/subscriptions/create", requireAuth, async (req, res) => {
     try {
