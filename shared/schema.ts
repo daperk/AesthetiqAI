@@ -124,6 +124,7 @@ export const clients = pgTable("clients", {
   preferences: jsonb("preferences"),
   totalSpent: decimal("total_spent", { precision: 10, scale: 2 }).default("0"),
   lastVisit: timestamp("last_visit"),
+  status: text("status").default("active"), // "invited", "active", "inactive"
   isActive: boolean("is_active").default(true),
   createdAt: timestamp("created_at").default(sql`now()`)
 });

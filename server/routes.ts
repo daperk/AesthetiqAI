@@ -1779,6 +1779,100 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
 
+  // Patient invitation endpoint
+  app.post("/api/patients/invite", requireAuth, async (req, res) => {
+    try {
+      const { email, firstName, lastName, phone } = req.body;
+      
+      const organizationId = await getUserOrganizationId(req.user!);
+      if (!organizationId) {
+        return res.status(400).json({ message: "No organization found for user" });
+      }
+
+      const organization = await storage.getOrganization(organizationId);
+      if (!organization) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+
+      // Check if patient already exists with this email in this organization
+      const existingClients = await storage.getClients(organizationId);
+      const existingClient = existingClients.find(client => client.email === email);
+      
+      if (existingClient) {
+        return res.status(400).json({ message: "Patient with this email already exists" });
+      }
+
+      // Create a temporary client record (they'll complete registration later)
+      const client = await storage.createClient({
+        organizationId,
+        firstName,
+        lastName,
+        email,
+        phone: phone || null,
+        status: "invited" // Mark as invited until they complete registration
+      });
+
+      // Prepare invitation email
+      const invitationLink = `${req.protocol}://${req.get('host')}/c/${organization.slug}/register`;
+      const emailContent = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #B8860B;">You're Invited to ${organization.name}</h2>
+          <p>Hi ${firstName},</p>
+          <p>${organization.name} has invited you to join their patient portal where you can:</p>
+          <ul>
+            <li>Book appointments online</li>
+            <li>Manage your membership</li>
+            <li>Track your rewards points</li>
+            <li>View your treatment history</li>
+          </ul>
+          <p>
+            <a href="${invitationLink}" 
+               style="background-color: #B8860B; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; display: inline-block;">
+              Accept Invitation
+            </a>
+          </p>
+          <p style="font-size: 12px; color: #666;">
+            This invitation is specifically for ${organization.name}. 
+            Click the button above to create your secure patient account.
+          </p>
+        </div>
+      `;
+
+      // Send invitation email using SendGrid
+      const sgMail = require('@sendgrid/mail');
+      sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+
+      const msg = {
+        to: email,
+        from: {
+          email: 'noreply@aesthiq.com',
+          name: organization.name
+        },
+        subject: `You're invited to join ${organization.name}`,
+        html: emailContent
+      };
+
+      await sgMail.send(msg);
+
+      res.json({
+        success: true,
+        message: "Invitation sent successfully",
+        invitationLink,
+        client: {
+          id: client.id,
+          firstName: client.firstName,
+          lastName: client.lastName,
+          email: client.email,
+          status: client.status
+        }
+      });
+
+    } catch (error) {
+      console.error("Patient invitation error:", error);
+      res.status(500).json({ message: "Failed to send invitation" });
+    }
+  });
+
   // Business setup status endpoint
   app.get("/api/clinic/setup-status", requireAuth, async (req, res) => {
     try {
