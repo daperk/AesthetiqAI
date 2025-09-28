@@ -2376,6 +2376,176 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Recent activities endpoint
+  app.get("/api/activities/recent", requireAuth, requireBusinessSetupComplete, async (req, res) => {
+    try {
+      const organizationId = await getUserOrganizationId(req.user!);
+      
+      const now = new Date();
+      const last24Hours = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+      
+      // Get recent appointments, clients, and payments
+      const recentAppointments = await storage.getAppointmentsByOrganization(organizationId);
+      const recentClients = await storage.getClientsByOrganization(organizationId);
+      
+      const activities = [];
+      
+      // Add new appointments
+      const newAppointments = recentAppointments
+        .filter(apt => new Date(apt.createdAt!) >= last24Hours)
+        .slice(0, 3);
+      
+      for (const apt of newAppointments) {
+        const client = recentClients.find(c => c.id === apt.clientId);
+        activities.push({
+          id: `apt-${apt.id}`,
+          type: 'appointment',
+          title: 'New appointment booked',
+          description: `${client?.firstName || 'Client'} - Appointment`,
+          timestamp: apt.createdAt,
+          color: 'blue'
+        });
+      }
+      
+      // Add new clients
+      const newClients = recentClients
+        .filter(client => new Date(client.createdAt!) >= last24Hours)
+        .slice(0, 3);
+        
+      for (const client of newClients) {
+        activities.push({
+          id: `client-${client.id}`,
+          type: 'client',
+          title: 'New client registered',
+          description: `${client.firstName} ${client.lastName}`,
+          timestamp: client.createdAt,
+          color: 'green'
+        });
+      }
+      
+      // Add completed appointments (payments)
+      const completedAppointments = recentAppointments
+        .filter(apt => apt.status === 'completed' && new Date(apt.createdAt!) >= last24Hours)
+        .slice(0, 2);
+        
+      for (const apt of completedAppointments) {
+        const client = recentClients.find(c => c.id === apt.clientId);
+        activities.push({
+          id: `payment-${apt.id}`,
+          type: 'payment',
+          title: 'Payment received',
+          description: `$${apt.totalAmount} - ${client?.firstName || 'Client'}`,
+          timestamp: apt.createdAt,
+          color: 'blue'
+        });
+      }
+      
+      // Sort by timestamp and limit to 10
+      activities.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      
+      res.json(activities.slice(0, 10));
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch recent activities" });
+    }
+  });
+
+  // AI insights endpoint  
+  app.get("/api/ai-insights", requireAuth, requireBusinessSetupComplete, async (req, res) => {
+    try {
+      const organizationId = await getUserOrganizationId(req.user!);
+      
+      // Get data for AI analysis
+      const appointments = await storage.getAppointmentsByOrganization(organizationId);
+      const clients = await storage.getClientsByOrganization(organizationId);
+      const services = await storage.getServicesByOrganization(organizationId);
+      
+      const insights = [];
+      
+      // Identify potential upsells (clients with frequent single services)
+      const frequentClients = clients.filter(client => {
+        const clientAppts = appointments.filter(apt => apt.clientId === client.id);
+        return clientAppts.length >= 3;
+      }).slice(0, 2);
+      
+      for (const client of frequentClients) {
+        insights.push({
+          id: `upsell-${client.id}`,
+          type: 'upsell',
+          title: 'Upsell Opportunity',
+          description: `${client.firstName} ${client.lastName} books regularly - suggest membership for savings`,
+          priority: 'high'
+        });
+      }
+      
+      // Identify inactive clients for retention
+      const now = new Date();
+      const sixtyDaysAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
+      
+      const inactiveClients = clients.filter(client => {
+        const lastAppt = appointments
+          .filter(apt => apt.clientId === client.id)
+          .sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime())[0];
+        return lastAppt && new Date(lastAppt.startTime) < sixtyDaysAgo;
+      }).length;
+      
+      if (inactiveClients > 0) {
+        insights.push({
+          id: 'retention-alert',
+          type: 'retention',
+          title: 'Retention Alert',
+          description: `${inactiveClients} clients haven't booked in 60+ days - send reactivation campaign`,
+          priority: 'medium'
+        });
+      }
+      
+      // Popular service insights
+      const serviceBookings: Record<string, number> = {};
+      appointments.forEach(apt => {
+        const serviceName = 'Service'; // For now use generic name
+        serviceBookings[serviceName] = (serviceBookings[serviceName] || 0) + 1;
+      });
+      
+      const topService = Object.entries(serviceBookings)
+        .sort(([,a], [,b]) => (b as number) - (a as number))[0];
+        
+      if (topService) {
+        insights.push({
+          id: 'popular-service',
+          type: 'trend',
+          title: 'Popular Service',
+          description: `${topService[0]} is your most booked service (${topService[1]} bookings)`,
+          priority: 'low'
+        });
+      }
+      
+      res.json(insights.slice(0, 5));
+    } catch (error) {
+      res.status(500).json({ message: "Failed to generate AI insights" });
+    }
+  });
+
+  // Staff availability endpoint
+  app.get("/api/staff/availability", requireAuth, requireBusinessSetupComplete, async (req, res) => {
+    try {
+      const organizationId = await getUserOrganizationId(req.user!);
+      const staff = await storage.getStaffByOrganization(organizationId);
+      
+      // For now, simulate online status - in production this would track actual login/activity
+      const now = new Date();
+      const workingHours = now.getHours() >= 8 && now.getHours() <= 18; // 8 AM to 6 PM
+      
+      const availability = {
+        total: staff.length,
+        online: workingHours ? Math.min(staff.length, Math.max(1, Math.floor(staff.length * 0.8))) : 0,
+        available: workingHours ? Math.min(staff.length, Math.max(1, Math.floor(staff.length * 0.6))) : 0
+      };
+      
+      res.json(availability);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch staff availability" });
+    }
+  });
+
   // Dashboard analytics routes
   app.get("/api/analytics/dashboard", requireAuth, async (req, res) => {
     try {
@@ -2421,6 +2591,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const newClients = allClients.filter(client => new Date(client.createdAt!) >= thisMonth).length;
       const activeClients = allClients.filter(client => client.isActive !== false).length;
 
+      // Get membership counts
+      const allMemberships = await storage.getMembershipsByOrganization(organizationId);
+      const activeMemberships = allMemberships.filter(membership => membership.status === 'active').length;
+
       // Get staff counts
       const allStaff = await storage.getStaffByOrganization(organizationId);
       const activeStaff = allStaff.filter(staff => staff.isActive !== false).length;
@@ -2441,9 +2615,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           new: newClients,
           active: activeClients
         },
+        memberships: {
+          active: activeMemberships
+        },
         staff: {
           total: allStaff.length,
-          active: activeStaff
+          active: activeStaff,
+          online: activeStaff // For now, assume active staff are online during work hours
         }
       };
 

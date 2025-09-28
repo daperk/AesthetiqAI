@@ -38,7 +38,19 @@ export default function ClinicDashboard() {
     staleTime: 5 * 60000, // 5 minutes
   });
 
-  if (statsLoading || appointmentsLoading || insightsLoading) {
+  const { data: recentActivities, isLoading: activitiesLoading } = useQuery({
+    queryKey: ["/api/activities/recent", organization?.id],
+    enabled: !!organization?.id,
+    staleTime: 30000, // 30 seconds
+  });
+
+  const { data: staffAvailability, isLoading: staffLoading } = useQuery({
+    queryKey: ["/api/staff/availability", organization?.id],
+    enabled: !!organization?.id,
+    staleTime: 60000, // 1 minute
+  });
+
+  if (statsLoading || appointmentsLoading || insightsLoading || activitiesLoading || staffLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <LoadingSpinner size="lg" />
@@ -167,7 +179,7 @@ export default function ClinicDashboard() {
                       <DollarSign className="w-4 h-4 text-primary" />
                     </div>
                     <div className="text-2xl font-bold text-foreground" data-testid="text-today-revenue">
-                      ${stats?.revenue?.today?.toLocaleString() || "3,450"}
+                      ${stats?.revenue?.today?.toLocaleString() || "0"}
                     </div>
                     <div className="text-sm text-green-500">+15% vs yesterday</div>
                   </CardContent>
@@ -180,7 +192,7 @@ export default function ClinicDashboard() {
                       <Calendar className="w-4 h-4 text-primary" />
                     </div>
                     <div className="text-2xl font-bold text-foreground" data-testid="text-today-appointments">
-                      {stats?.appointments?.today || todayAppointments?.length || 18}
+                      {stats?.appointments?.today || todayAppointments?.length || 0}
                     </div>
                     <div className="text-sm text-muted-foreground">3 remaining</div>
                   </CardContent>
@@ -193,7 +205,7 @@ export default function ClinicDashboard() {
                       <Crown className="w-4 h-4 text-primary" />
                     </div>
                     <div className="text-2xl font-bold text-foreground" data-testid="text-active-members">
-                      {stats?.clients?.active || 142}
+                      {stats?.memberships?.active || 0}
                     </div>
                     <div className="text-sm text-green-500">+5 new this week</div>
                   </CardContent>
@@ -206,7 +218,7 @@ export default function ClinicDashboard() {
                       <Users className="w-4 h-4 text-primary" />
                     </div>
                     <div className="text-2xl font-bold text-foreground" data-testid="text-staff-online">
-                      {stats?.staff?.online || 6}/{stats?.staff?.total || 8}
+                      {staffAvailability?.online || stats?.staff?.online || 0}/{staffAvailability?.total || stats?.staff?.total || 0}
                     </div>
                     <div className="text-sm text-muted-foreground">Available now</div>
                   </CardContent>
@@ -313,19 +325,15 @@ export default function ClinicDashboard() {
                       <div className="space-y-3 text-sm">
                         {!aiInsights || aiInsights.length === 0 ? (
                           <p className="text-muted-foreground" data-testid="text-no-ai-insights">
-                            No AI insights available
+                            No AI insights available yet. Insights will appear as your clinic builds data.
                           </p>
                         ) : (
-                          <>
-                            <div className="p-3 bg-muted/30 rounded border" data-testid="ai-insight-upsell">
-                              <div className="font-medium text-foreground mb-1">Upsell Opportunity</div>
-                              <div className="text-muted-foreground">Jessica M. books monthly facials - suggest VIP membership for 20% savings</div>
+                          aiInsights.map((insight: any) => (
+                            <div key={insight.id} className="p-3 bg-muted/30 rounded border" data-testid={`ai-insight-${insight.type}`}>
+                              <div className="font-medium text-foreground mb-1">{insight.title}</div>
+                              <div className="text-muted-foreground">{insight.description}</div>
                             </div>
-                            <div className="p-3 bg-muted/30 rounded border" data-testid="ai-insight-retention">
-                              <div className="font-medium text-foreground mb-1">Retention Alert</div>
-                              <div className="text-muted-foreground">3 clients haven't booked in 60+ days - send reactivation campaign</div>
-                            </div>
-                          </>
+                          ))
                         )}
                       </div>
                     </CardContent>
@@ -338,27 +346,25 @@ export default function ClinicDashboard() {
                     </CardHeader>
                     <CardContent>
                       <div className="space-y-3 text-sm">
-                        <div className="flex items-center space-x-3" data-testid="activity-new-member">
-                          <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                          <div>
-                            <div className="text-foreground">New member signup</div>
-                            <div className="text-muted-foreground">Emma Thompson - Gold Plan</div>
-                          </div>
-                        </div>
-                        <div className="flex items-center space-x-3" data-testid="activity-payment">
-                          <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                          <div>
-                            <div className="text-foreground">Payment received</div>
-                            <div className="text-muted-foreground">$450 - Laser package</div>
-                          </div>
-                        </div>
-                        <div className="flex items-center space-x-3" data-testid="activity-reschedule">
-                          <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
-                          <div>
-                            <div className="text-foreground">Appointment rescheduled</div>
-                            <div className="text-muted-foreground">Marcus J. - Tomorrow 3PM</div>
-                          </div>
-                        </div>
+                        {!recentActivities || recentActivities.length === 0 ? (
+                          <p className="text-muted-foreground" data-testid="text-no-activities">
+                            No recent activities. Activities will appear as clients book appointments and interact with your clinic.
+                          </p>
+                        ) : (
+                          recentActivities.map((activity: any) => (
+                            <div key={activity.id} className="flex items-center space-x-3" data-testid={`activity-${activity.type}`}>
+                              <div className={`w-2 h-2 rounded-full ${
+                                activity.color === 'green' ? 'bg-green-500' :
+                                activity.color === 'blue' ? 'bg-blue-500' :
+                                activity.color === 'yellow' ? 'bg-yellow-500' : 'bg-gray-500'
+                              }`}></div>
+                              <div>
+                                <div className="text-foreground">{activity.title}</div>
+                                <div className="text-muted-foreground">{activity.description}</div>
+                              </div>
+                            </div>
+                          ))
+                        )}
                       </div>
                     </CardContent>
                   </Card>
