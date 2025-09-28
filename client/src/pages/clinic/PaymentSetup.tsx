@@ -38,6 +38,9 @@ export default function PaymentSetup() {
   const { user } = useAuth();
   const { organization } = useOrganization();
   const { toast } = useToast();
+  
+  // Check if this is mandatory setup
+  const isMandatory = new URLSearchParams(window.location.search).get('mandatory') === 'true';
   const [isCreatingAccount, setIsCreatingAccount] = useState(false);
 
   const { data: accountStatus, isLoading, refetch } = useQuery<StripeAccountStatus>({
@@ -205,7 +208,7 @@ export default function PaymentSetup() {
     if (accountStatus.businessFeaturesEnabled) {
       return <Badge className="bg-green-100 text-green-800" data-testid="status-active">Active</Badge>;
     }
-    if (accountStatus.payouts_enabled && accountStatus.capabilities.transfers === "active") {
+    if (accountStatus.payouts_enabled && accountStatus?.capabilities?.transfers === "active") {
       return <Badge className="bg-blue-100 text-blue-800" data-testid="status-pending">Pending Verification</Badge>;
     }
     return <Badge variant="secondary" data-testid="status-setup-required">Setup Required</Badge>;
@@ -238,11 +241,22 @@ export default function PaymentSetup() {
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-serif font-bold text-foreground mb-2" data-testid="text-payment-setup-title">
-            Payment Setup
+            {isMandatory ? "Complete Payment Setup" : "Payment Setup"}
           </h1>
           <p className="text-muted-foreground">
-            Set up payment processing to accept payments from your clients
+            {isMandatory 
+              ? "Before accessing your clinic dashboard, you must complete Stripe Connect setup to enable payments." 
+              : "Set up payment processing to accept payments from your clients"
+            }
           </p>
+          {isMandatory && (
+            <Alert className="mt-4">
+              <AlertTriangle className="w-4 h-4" />
+              <AlertDescription>
+                <strong>Setup Required:</strong> You must complete Stripe Connect onboarding before accessing core platform features. This enables payment processing for your clinic.
+              </AlertDescription>
+            </Alert>
+          )}
         </div>
 
         {/* Feature Status Alert */}
@@ -372,7 +386,7 @@ export default function PaymentSetup() {
 
                     <div className="p-3 bg-muted/30 rounded-lg">
                       <div className="flex items-center space-x-2 mb-1">
-                        {accountStatus.capabilities.transfers === 'active' ? (
+                        {accountStatus?.capabilities?.transfers === 'active' ? (
                           <CheckCircle className="w-4 h-4 text-green-600" />
                         ) : (
                           <XCircle className="w-4 h-4 text-red-600" />
@@ -380,7 +394,7 @@ export default function PaymentSetup() {
                         <span className="text-sm font-medium">Transfers</span>
                       </div>
                       <div className="text-xs text-muted-foreground" data-testid="text-transfers-status">
-                        {accountStatus.capabilities.transfers || 'Inactive'}
+                        {accountStatus?.capabilities?.transfers || 'Inactive'}
                       </div>
                     </div>
 

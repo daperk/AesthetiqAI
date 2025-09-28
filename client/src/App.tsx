@@ -29,6 +29,7 @@ import Memberships from "@/pages/clinic/Memberships";
 import Staff from "@/pages/clinic/Staff";
 import Reports from "@/pages/clinic/Reports";
 import PaymentSetup from "@/pages/clinic/PaymentSetup";
+import RequireStripeConnect from "@/components/RequireStripeConnect";
 
 // Patient Pages
 import PatientDashboard from "@/pages/patient/Dashboard";
@@ -75,13 +76,13 @@ function Router() {
           {/* Clinic Routes */}
           {(user.role === "clinic_admin" || user.role === "staff") && (
             <>
-              <Route path="/clinic" component={ClinicDashboard} />
-              <Route path="/clinic/appointments" component={Appointments} />
-              <Route path="/clinic/clients" component={Clients} />
-              <Route path="/clinic/services" component={Services} />
-              <Route path="/clinic/memberships" component={Memberships} />
-              <Route path="/clinic/staff" component={Staff} />
-              <Route path="/clinic/reports" component={Reports} />
+              <Route path="/clinic" component={() => (<RequireStripeConnect><ClinicDashboard /></RequireStripeConnect>)} />
+              <Route path="/clinic/appointments" component={() => (<RequireStripeConnect><Appointments /></RequireStripeConnect>)} />
+              <Route path="/clinic/clients" component={() => (<RequireStripeConnect><Clients /></RequireStripeConnect>)} />
+              <Route path="/clinic/services" component={() => (<RequireStripeConnect><Services /></RequireStripeConnect>)} />
+              <Route path="/clinic/memberships" component={() => (<RequireStripeConnect><Memberships /></RequireStripeConnect>)} />
+              <Route path="/clinic/staff" component={() => (<RequireStripeConnect><Staff /></RequireStripeConnect>)} />
+              <Route path="/clinic/reports" component={() => (<RequireStripeConnect><Reports /></RequireStripeConnect>)} />
               <Route path="/clinic/payment-setup" component={PaymentSetup} />
             </>
           )}

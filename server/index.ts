@@ -9,6 +9,29 @@ app.use('/api/stripe/webhook', express.raw({ type: 'application/json' }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
+// Disable CSP in development to allow Stripe and other necessary resources
+app.use((req, res, next) => {
+  if (process.env.NODE_ENV === 'development') {
+    // In development, allow everything to avoid CSP blocking Stripe/Vite
+    res.removeHeader('Content-Security-Policy');
+  } else {
+    // In production, use strict CSP
+    res.setHeader(
+      'Content-Security-Policy',
+      [
+        "default-src 'self'",
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com https://m.stripe.network",
+        "style-src 'self' 'unsafe-inline' https://m.stripe.network https://fonts.googleapis.com",
+        "img-src 'self' data: https:",
+        "font-src 'self' https://fonts.gstatic.com https://fonts.googleapis.com",
+        "connect-src 'self' https://api.stripe.com https://m.stripe.network",
+        "frame-src https://js.stripe.com https://hooks.stripe.com"
+      ].join('; ')
+    );
+  }
+  next();
+});
+
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
