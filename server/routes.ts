@@ -1894,6 +1894,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Business setup status check
+  app.get("/api/clinic/setup-status", requireRole(["clinic_admin", "staff"]), async (req, res) => {
+    try {
+      const organizationId = await getUserOrganizationId(req.user!);
+      if (!organizationId) {
+        return res.status(400).json({ message: "No organization found" });
+      }
+
+      const organization = await storage.getOrganization(organizationId);
+      if (!organization) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+
+      // Check Stripe Connect status
+      const stripeConnected = !!organization.stripeConnectAccountId;
+
+      // Check if has services
+      const services = await storage.getServicesByOrganization(organizationId);
+      const hasServices = services.length > 0;
+
+      // Check if has memberships
+      const memberships = await storage.getMembershipTiersByOrganization(organizationId);
+      const hasMemberships = memberships.length > 0;
+
+      // Check if has rewards
+      const rewards = await storage.getRewardsByOrganization(organizationId);
+      const hasRewards = rewards.length > 0;
+
+      const allComplete = stripeConnected && hasServices && hasMemberships && hasRewards;
+
+      res.json({
+        stripeConnected,
+        hasServices,
+        hasMemberships,
+        hasRewards,
+        allComplete
+      });
+    } catch (error) {
+      console.error("Setup status check error:", error);
+      res.status(500).json({ message: "Failed to check setup status" });
+    }
+  });
+
   // Stripe Connect Express account creation and onboarding
   app.post("/api/stripe-connect/create-account", requireRole("clinic_admin"), async (req, res) => {
     const startTime = Date.now();

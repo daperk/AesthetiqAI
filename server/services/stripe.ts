@@ -1,7 +1,9 @@
 import Stripe from "stripe";
 
-const stripe = process.env.STRIPE_SECRET_KEY 
-  ? new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: "2023-10-16" })
+// FIX: Environment variables are swapped - use VITE_STRIPE_PUBLIC_KEY as secret key (contains sk_test_...)
+const actualSecretKey = process.env.VITE_STRIPE_PUBLIC_KEY; // This actually contains the secret key
+const stripe = actualSecretKey 
+  ? new Stripe(actualSecretKey, { apiVersion: "2023-10-16" })
   : null;
 
 export interface SubscriptionResult {
