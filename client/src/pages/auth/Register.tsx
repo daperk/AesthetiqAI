@@ -18,7 +18,7 @@ export default function Register() {
     password: "",
     firstName: "",
     lastName: "",
-    role: "clinic_admin",
+    role: "patient",
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -56,9 +56,9 @@ export default function Register() {
             </div>
             <span className="text-2xl font-serif font-bold text-foreground">Aesthiq</span>
           </div>
-          <CardTitle className="text-2xl font-serif" data-testid="text-register-title">Start Your Business</CardTitle>
+          <CardTitle className="text-2xl font-serif" data-testid="text-register-title">Join Aesthiq</CardTitle>
           <CardDescription>
-            Join Aesthiq and transform your beauty practice with our professional platform.
+            Transform your beauty experience with our professional platform.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -136,6 +136,7 @@ export default function Register() {
                   <SelectValue placeholder="Select your role" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="patient">Patient/Client</SelectItem>
                   <SelectItem value="clinic_admin">Clinic Owner/Admin</SelectItem>
                 </SelectContent>
               </Select>

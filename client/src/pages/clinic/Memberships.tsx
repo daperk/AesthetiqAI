@@ -54,6 +54,8 @@ export default function Memberships() {
   const [activeTab, setActiveTab] = useState("tiers");
   const [searchTerm, setSearchTerm] = useState("");
   const [isCreateTierDialogOpen, setIsCreateTierDialogOpen] = useState(false);
+  const [isEditTierDialogOpen, setIsEditTierDialogOpen] = useState(false);
+  const [editingTier, setEditingTier] = useState<MembershipTier | null>(null);
   
   const [newTier, setNewTier] = useState({
     name: "",
@@ -379,6 +381,81 @@ export default function Memberships() {
               </Dialog>
             </div>
 
+            {/* Edit Tier Dialog */}
+            <Dialog open={isEditTierDialogOpen} onOpenChange={setIsEditTierDialogOpen}>
+              <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                  <DialogTitle>Edit Membership Tier</DialogTitle>
+                </DialogHeader>
+                <form onSubmit={(e) => {
+                  e.preventDefault();
+                  if (editingTier) {
+                    // Update tier logic would go here
+                    console.log('Updating tier:', editingTier);
+                    setIsEditTierDialogOpen(false);
+                  }
+                }} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-tier-name">Tier Name</Label>
+                    <Input
+                      id="edit-tier-name"
+                      placeholder="e.g., Gold, Platinum"
+                      defaultValue={editingTier?.name || ""}
+                      data-testid="input-tier-name"
+                    />
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-monthly-price">Monthly Price ($)</Label>
+                      <Input
+                        id="edit-monthly-price"
+                        type="number"
+                        placeholder="149"
+                        min="0"
+                        step="0.01"
+                        defaultValue={editingTier?.monthlyPrice?.toString() || ""}
+                        data-testid="input-monthly-price"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-discount">Discount (%)</Label>
+                      <Input
+                        id="edit-discount"
+                        type="number"
+                        placeholder="10"
+                        min="0"
+                        max="100"
+                        defaultValue={editingTier?.discountPercentage?.toString() || ""}
+                        data-testid="input-discount-percentage"
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-monthly-credits">Monthly Credits ($)</Label>
+                    <Input
+                      id="edit-monthly-credits"
+                      type="number"
+                      placeholder="50"
+                      min="0"
+                      defaultValue={editingTier?.monthlyCredits?.toString() || ""}
+                      data-testid="input-monthly-credits"
+                    />
+                  </div>
+                  
+                  <div className="flex justify-end space-x-2">
+                    <Button type="button" variant="outline" onClick={() => setIsEditTierDialogOpen(false)}>
+                      Cancel
+                    </Button>
+                    <Button type="submit" data-testid="button-update-tier">
+                      Update Tier
+                    </Button>
+                  </div>
+                </form>
+              </DialogContent>
+            </Dialog>
+
             <div className="grid lg:grid-cols-2 xl:grid-cols-4 gap-6">
               {membershipTiers.map((tier: MembershipTier) => (
                 <Card key={tier.id} className="relative" data-testid={`membership-tier-${tier.name.toLowerCase()}`}>
@@ -390,7 +467,15 @@ export default function Memberships() {
                           {tier.discountPercentage}% discount
                         </Badge>
                       </div>
-                      <Button variant="ghost" size="sm" data-testid={`button-edit-tier-${tier.name.toLowerCase()}`}>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={() => {
+                          setEditingTier(tier);
+                          setIsEditTierDialogOpen(true);
+                        }}
+                        data-testid={`button-edit-tier-${tier.name.toLowerCase()}`}
+                      >
                         <Settings className="w-4 h-4" />
                       </Button>
                     </div>

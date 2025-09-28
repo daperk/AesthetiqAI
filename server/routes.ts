@@ -250,9 +250,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
 
       } else {
-        // Main platform registration: ONLY business roles allowed
-        if (!userData.role || (userData.role !== "clinic_admin" && userData.role !== "staff")) {
-          return res.status(400).json({ message: "Invalid role for business registration" });
+        // Main platform registration: Allow clinic admin, staff, and patient roles
+        if (!userData.role || !["clinic_admin", "staff", "patient"].includes(userData.role)) {
+          return res.status(400).json({ message: "Invalid role for registration" });
         }
 
         // Staff registration requires additional validation (they need to be associated with an organization)
@@ -268,15 +268,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(400).json({ message: "User already exists" });
         }
 
-        // Create business user
+        // Create user
         const hashedPassword = await bcrypt.hash(validatedUserData.password, 12);
         const user = await storage.createUser({
           ...validatedUserData,
           password: hashedPassword
         });
 
-        // For clinic_admin, create organization with subscription and link them
-        if (user.role === "clinic_admin") {
+        // Handle different user roles
+        if (user.role === "patient") {
+          // For testing: Find first active organization to associate patient with
+          const organizations = await storage.getOrganizations();
+          const activeOrg = organizations.find(org => org.isActive);
+          
+          if (activeOrg) {
+            // Create client record to link patient to organization
+            await storage.createClient({
+              userId: user.id,
+              organizationId: activeOrg.id,
+              firstName: user.firstName || "",
+              lastName: user.lastName || "",
+              email: user.email,
+              phone: user.phone
+            });
+          }
+          
+          // Log them in
+          req.logIn(user, (err) => {
+            if (err) {
+              return res.status(500).json({ message: "Login failed after registration" });
+            }
+            res.json({ user: { ...user, password: undefined } });
+          });
+          
+        } else if (user.role === "clinic_admin") {
           // Get enterprise plan for testing (all features enabled)
           const plans = await storage.getSubscriptionPlans();
           const enterprisePlan = plans.find(p => p.tier === 'enterprise') || plans[0];
