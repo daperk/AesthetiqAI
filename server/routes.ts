@@ -198,6 +198,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   };
 
+  // Organization lookup by slug (for patient signup)
+  app.get("/api/organizations/by-slug/:slug", async (req, res) => {
+    try {
+      const { slug } = req.params;
+      const organization = await storage.getOrganizationBySlug(slug);
+      
+      if (!organization || !organization.isActive) {
+        return res.status(404).json({ message: "Clinic not found" });
+      }
+
+      // Return public info only
+      res.json({
+        id: organization.id,
+        name: organization.name,
+        slug: organization.slug,
+        description: organization.description,
+        website: organization.website,
+        whiteLabelSettings: organization.whiteLabelSettings
+      });
+    } catch (error) {
+      console.error("Organization lookup error:", error);
+      res.status(500).json({ message: "Failed to lookup clinic" });
+    }
+  });
+
   // Authentication routes
   app.post("/api/auth/register", async (req, res) => {
     try {
@@ -277,21 +302,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         // Handle different user roles
         if (user.role === "patient") {
-          // For testing: Find first active organization to associate patient with
-          const organizations = await storage.getOrganizations();
-          const activeOrg = organizations.find(org => org.isActive);
-          
-          if (activeOrg) {
-            // Create client record to link patient to organization
-            await storage.createClient({
-              userId: user.id,
-              organizationId: activeOrg.id,
-              firstName: user.firstName || "",
-              lastName: user.lastName || "",
-              email: user.email,
-              phone: user.phone
+          // Patients MUST register via clinic-specific link with organizationSlug
+          if (!userData.organizationSlug) {
+            return res.status(400).json({ 
+              message: "Patients can only register via clinic invitation links. Please contact your clinic for the correct registration link." 
             });
           }
+
+          // Find organization by slug
+          const organizations = await storage.getOrganizations();
+          const targetOrg = organizations.find(org => org.slug === userData.organizationSlug && org.isActive);
+          
+          if (!targetOrg) {
+            return res.status(404).json({ 
+              message: "Clinic not found or inactive. Please verify the registration link with your clinic." 
+            });
+          }
+
+          // Create client record to link patient to specific organization
+          await storage.createClient({
+            userId: user.id,
+            organizationId: targetOrg.id,
+            firstName: user.firstName || "",
+            lastName: user.lastName || "",
+            email: user.email,
+            phone: user.phone
+          });
           
           // Log them in
           req.logIn(user, (err) => {

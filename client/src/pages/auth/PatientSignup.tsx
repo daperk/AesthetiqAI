@@ -1,16 +1,17 @@
-import { useState } from "react";
-import { Link, useLocation } from "wouter";
+import { useState, useEffect } from "react";
+import { Link, useLocation, useRoute } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/hooks/useAuth";
 import { Gem } from "lucide-react";
 import LoadingSpinner from "@/components/ui/loading-spinner";
+import { useQuery } from "@tanstack/react-query";
 
-export default function Register() {
+export default function PatientSignup() {
   const [, setLocation] = useLocation();
+  const [match, params] = useRoute("/c/:slug");
   const { register, isRegisterPending } = useAuth();
   const [formData, setFormData] = useState({
     email: "",
@@ -18,15 +19,59 @@ export default function Register() {
     password: "",
     firstName: "",
     lastName: "",
-    role: "clinic_admin", // Default to clinic admin, patients can't register here
+    role: "patient",
+    organizationSlug: params?.slug || "",
   });
+
+  // Fetch clinic info to display
+  const { data: clinicInfo, isLoading: isLoadingClinic, error: clinicError } = useQuery<{
+    id: string;
+    name: string;
+    slug: string;
+    description?: string;
+    website?: string;
+    whiteLabelSettings?: any;
+  }>({
+    queryKey: ["/api/organizations/by-slug", params?.slug],
+    enabled: !!params?.slug,
+    retry: false, // Don't retry on 404
+  });
+
+  useEffect(() => {
+    if (params?.slug) {
+      setFormData(prev => ({
+        ...prev,
+        organizationSlug: params.slug
+      }));
+    }
+  }, [params?.slug]);
+
+  if (!match || !params?.slug) {
+    return (
+      <div className="min-h-screen luxury-gradient flex items-center justify-center p-6">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <CardTitle className="text-2xl font-serif text-destructive">Invalid Link</CardTitle>
+            <CardDescription>
+              This patient signup link is invalid. Please contact your clinic for a valid invitation link.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Link href="/" className="block w-full">
+              <Button className="w-full">Return to Home</Button>
+            </Link>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     try {
       await register(formData);
-      setLocation("/"); // Redirect to home, Navigation will handle role-based routing
+      setLocation("/patient"); // Redirect to patient dashboard
     } catch (error) {
       // Error is handled by the useAuth hook
     }
@@ -39,7 +84,34 @@ export default function Register() {
     }));
   };
 
-  // Role is fixed as clinic_admin for clinic registration
+  if (isLoadingClinic) {
+    return (
+      <div className="min-h-screen luxury-gradient flex items-center justify-center p-6">
+        <LoadingSpinner size="lg" />
+      </div>
+    );
+  }
+
+  // Show error if clinic not found
+  if (clinicError || !clinicInfo) {
+    return (
+      <div className="min-h-screen luxury-gradient flex items-center justify-center p-6">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <CardTitle className="text-2xl font-serif text-destructive">Invalid Link</CardTitle>
+            <CardDescription>
+              This patient signup link is invalid. Please contact your clinic for a valid invitation link.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Link href="/" className="block w-full">
+              <Button className="w-full">Return to Home</Button>
+            </Link>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen luxury-gradient flex items-center justify-center p-6">
@@ -49,11 +121,15 @@ export default function Register() {
             <div className="w-10 h-10 gold-shimmer rounded-lg flex items-center justify-center">
               <Gem className="text-primary-foreground text-lg" />
             </div>
-            <span className="text-2xl font-serif font-bold text-foreground">Aesthiq</span>
+            <span className="text-2xl font-serif font-bold text-foreground">
+              {clinicInfo?.name || "Beauty Clinic"}
+            </span>
           </div>
-          <CardTitle className="text-2xl font-serif" data-testid="text-register-title">Start Your Clinic</CardTitle>
+          <CardTitle className="text-2xl font-serif" data-testid="text-patient-signup-title">
+            Join {clinicInfo?.name || "Our Clinic"}
+          </CardTitle>
           <CardDescription>
-            Launch your beauty business with our comprehensive management platform.
+            Create your account to book appointments and manage your beauty journey.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -67,6 +143,7 @@ export default function Register() {
                   placeholder="First name"
                   value={formData.firstName}
                   onChange={handleChange}
+                  required
                   data-testid="input-first-name"
                 />
               </div>
@@ -78,6 +155,7 @@ export default function Register() {
                   placeholder="Last name"
                   value={formData.lastName}
                   onChange={handleChange}
+                  required
                   data-testid="input-last-name"
                 />
               </div>
@@ -124,8 +202,9 @@ export default function Register() {
               />
             </div>
 
-            {/* Hidden field since this is clinic registration only */}
-            <input type="hidden" name="role" value="clinic_admin" />
+            {/* Hidden fields for clinic association */}
+            <input type="hidden" name="role" value="patient" />
+            <input type="hidden" name="organizationSlug" value={params.slug} />
 
             <Button 
               type="submit" 
@@ -139,7 +218,7 @@ export default function Register() {
                   <span>Creating Account...</span>
                 </div>
               ) : (
-                "Start My Business"
+                "Join Clinic"
               )}
             </Button>
           </form>
@@ -154,9 +233,9 @@ export default function Register() {
           </div>
 
           <div className="mt-4 text-center">
-            <Link href="/" className="text-sm text-muted-foreground hover:text-foreground" data-testid="link-home">
-              ← Back to Home
-            </Link>
+            <p className="text-xs text-muted-foreground">
+              Powered by <span className="font-semibold">Aesthiq</span>
+            </p>
           </div>
         </CardContent>
       </Card>
