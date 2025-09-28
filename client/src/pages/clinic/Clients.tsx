@@ -49,6 +49,7 @@ export default function Clients() {
 
   const { data: clients, isLoading: clientsLoading } = useQuery<Client[]>({
     queryKey: ["/api/clients", organization?.id],
+    queryFn: () => fetch("/api/clients").then(res => res.json()),
     enabled: !!organization?.id,
     staleTime: 30000,
   });
@@ -63,14 +64,16 @@ export default function Clients() {
     mutationFn: async (clientData: typeof newClient) => {
       const response = await apiRequest("POST", "/api/clients", {
         ...clientData,
-        organizationId: organization?.id,
-        dateOfBirth: clientData.dateOfBirth ? new Date(clientData.dateOfBirth) : null,
-        address: clientData.address ? { street: clientData.address } : null,
+        // organizationId is now auto-inferred by backend
+        dateOfBirth: clientData.dateOfBirth ? clientData.dateOfBirth : undefined,
+        address: clientData.address ? { street: clientData.address } : undefined,
       });
       return response.json();
     },
     onSuccess: () => {
+      // Invalidate both general and organization-specific client queries
       queryClient.invalidateQueries({ queryKey: ["/api/clients"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/clients", organization?.id] });
       setIsCreateDialogOpen(false);
       setNewClient({
         firstName: "",
@@ -375,7 +378,7 @@ export default function Clients() {
                           <div className="flex justify-between">
                             <span className="text-muted-foreground">Member Since:</span>
                             <span className="font-medium">
-                              {new Date(selectedClient.createdAt).toLocaleDateString()}
+                              {selectedClient.createdAt ? new Date(selectedClient.createdAt).toLocaleDateString() : "Unknown"}
                             </span>
                           </div>
                           <div className="flex justify-between">
@@ -509,7 +512,7 @@ export default function Clients() {
                             {client.email} • {client.phone}
                           </div>
                           <div className="text-xs text-muted-foreground">
-                            Member since {new Date(client.createdAt).toLocaleDateString()}
+                            Member since {client.createdAt ? new Date(client.createdAt).toLocaleDateString() : "Unknown"}
                           </div>
                         </div>
                       </div>

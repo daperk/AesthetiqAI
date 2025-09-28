@@ -152,6 +152,8 @@ export default function Services() {
       return response.json();
     },
     onSuccess: () => {
+      // Invalidate both organization-specific and general services queries
+      queryClient.invalidateQueries({ queryKey: ["/api/services"] });
       queryClient.invalidateQueries({ queryKey: ["/api/services", organization?.id] });
       toast({
         title: "Service deleted",

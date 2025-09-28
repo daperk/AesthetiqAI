@@ -103,7 +103,9 @@ export default function Memberships() {
       return response.json();
     },
     onSuccess: () => {
+      // Invalidate both general and organization-specific queries
       queryClient.invalidateQueries({ queryKey: ["/api/membership-tiers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/membership-tiers", organization?.id] });
       setIsCreateTierDialogOpen(false);
       setNewTier({
         name: "",
@@ -123,6 +125,39 @@ export default function Memberships() {
     onError: () => {
       toast({
         title: "Failed to create tier",
+        description: "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Update tier mutation
+  const updateTierMutation = useMutation({
+    mutationFn: async (formData: FormData) => {
+      if (!editingTier) throw new Error("No tier selected for editing");
+      
+      const response = await apiRequest("PUT", `/api/membership-tiers/${editingTier.id}`, {
+        name: formData.get("tierName"),
+        monthlyPrice: formData.get("monthlyPrice"),
+        discountPercentage: formData.get("discountPercentage"),
+        monthlyCredits: formData.get("monthlyCredits"),
+      });
+      return response.json();
+    },
+    onSuccess: () => {
+      // Invalidate both general and organization-specific queries
+      queryClient.invalidateQueries({ queryKey: ["/api/membership-tiers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/membership-tiers", organization?.id] });
+      setIsEditTierDialogOpen(false);
+      setEditingTier(null);
+      toast({
+        title: "Tier updated",
+        description: "Membership tier has been updated successfully.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Failed to update tier",
         description: "Please try again.",
         variant: "destructive",
       });
@@ -390,18 +425,19 @@ export default function Memberships() {
                 <form onSubmit={(e) => {
                   e.preventDefault();
                   if (editingTier) {
-                    // Update tier logic would go here
-                    console.log('Updating tier:', editingTier);
-                    setIsEditTierDialogOpen(false);
+                    const formData = new FormData(e.target as HTMLFormElement);
+                    updateTierMutation.mutate(formData);
                   }
                 }} className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="edit-tier-name">Tier Name</Label>
                     <Input
                       id="edit-tier-name"
+                      name="tierName"
                       placeholder="e.g., Gold, Platinum"
                       defaultValue={editingTier?.name || ""}
                       data-testid="input-tier-name"
+                      required
                     />
                   </div>
                   
@@ -410,18 +446,21 @@ export default function Memberships() {
                       <Label htmlFor="edit-monthly-price">Monthly Price ($)</Label>
                       <Input
                         id="edit-monthly-price"
+                        name="monthlyPrice"
                         type="number"
                         placeholder="149"
                         min="0"
                         step="0.01"
                         defaultValue={editingTier?.monthlyPrice?.toString() || ""}
                         data-testid="input-monthly-price"
+                        required
                       />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="edit-discount">Discount (%)</Label>
                       <Input
                         id="edit-discount"
+                        name="discountPercentage"
                         type="number"
                         placeholder="10"
                         min="0"
@@ -436,6 +475,7 @@ export default function Memberships() {
                     <Label htmlFor="edit-monthly-credits">Monthly Credits ($)</Label>
                     <Input
                       id="edit-monthly-credits"
+                      name="monthlyCredits"
                       type="number"
                       placeholder="50"
                       min="0"
@@ -448,8 +488,8 @@ export default function Memberships() {
                     <Button type="button" variant="outline" onClick={() => setIsEditTierDialogOpen(false)}>
                       Cancel
                     </Button>
-                    <Button type="submit" data-testid="button-update-tier">
-                      Update Tier
+                    <Button type="submit" disabled={updateTierMutation.isPending} data-testid="button-update-tier">
+                      {updateTierMutation.isPending ? "Updating..." : "Update Tier"}
                     </Button>
                   </div>
                 </form>

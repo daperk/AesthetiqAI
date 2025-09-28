@@ -582,7 +582,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/clients", requireRole("clinic_admin", "staff", "super_admin"), async (req, res) => {
     try {
-      const clientData = insertClientSchema.parse(req.body);
+      // Get organization ID from user session (same logic as GET endpoint)
+      let organizationId: string;
+      
+      if (req.user!.role === "super_admin") {
+        organizationId = req.body.organizationId;
+        if (!organizationId) {
+          return res.status(400).json({ message: "Organization ID required for super admin" });
+        }
+      } else {
+        const userOrgId = await getUserOrganizationId(req.user!);
+        if (!userOrgId) {
+          return res.status(403).json({ message: "No organization access" });
+        }
+        organizationId = userOrgId;
+      }
+
+      // Parse client data and automatically set organizationId
+      const clientDataWithOrg = {
+        ...req.body,
+        organizationId,
+        // Convert date string to Date object if needed
+        dateOfBirth: req.body.dateOfBirth ? new Date(req.body.dateOfBirth) : undefined
+      };
+      
+      const clientData = insertClientSchema.parse(clientDataWithOrg);
       const client = await storage.createClient(clientData);
       
       await auditLog(req, "create", "client", client.id, clientData);
