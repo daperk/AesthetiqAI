@@ -1873,6 +1873,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get current user's organization
+  app.get("/api/organization", requireAuth, async (req, res) => {
+    try {
+      const organizationId = await getUserOrganizationId(req.user!);
+      if (!organizationId) {
+        return res.status(400).json({ message: "No organization found for user" });
+      }
+
+      const organization = await storage.getOrganization(organizationId);
+      if (!organization) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+
+      res.json(organization);
+    } catch (error) {
+      console.error("Organization fetch error:", error);
+      res.status(500).json({ message: "Failed to fetch organization" });
+    }
+  });
+
   // Business setup status endpoint
   app.get("/api/clinic/setup-status", requireAuth, async (req, res) => {
     try {
