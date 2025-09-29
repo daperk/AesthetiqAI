@@ -1907,7 +1907,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Check Stripe Connect status
-      const stripeConnected = !!organization.stripeAccountId;
+      const stripeConnected = !!organization.stripeConnectAccountId;
 
       // Check if they have services
       const services = await storage.getServicesByOrganization(organizationId);
