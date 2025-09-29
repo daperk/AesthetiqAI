@@ -245,6 +245,19 @@ export default function BusinessSetup() {
     queryKey: ['/api/subscription-plans'],
   });
 
+  // Get membership tiers (clinic's membership plans for patients)
+  const { data: membershipTiers } = useQuery<Array<{
+    id: string;
+    name: string;
+    description: string;
+    monthlyPrice: number;
+    yearlyPrice: number | null;
+    benefits: string[];
+    isActive: boolean;
+  }>>({
+    queryKey: ['/api/membership-tiers'],
+  });
+
 
   // Handle successful Stripe Connect redirect
   useEffect(() => {
@@ -322,7 +335,7 @@ export default function BusinessSetup() {
   // Create membership mutation
   const createMembership = useMutation({
     mutationFn: async (data: MembershipFormData) => {
-      const response = await apiRequest("POST", "/api/memberships", {
+      const response = await apiRequest("POST", "/api/membership-tiers", {
         name: data.name,
         description: data.description,
         monthlyPrice: parseFloat(data.monthlyPrice),
@@ -333,6 +346,7 @@ export default function BusinessSetup() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/clinic/setup-status'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/membership-tiers'] });
       toast({
         title: "Membership plan created!",
         description: "Your membership plan has been added successfully.",
@@ -938,8 +952,129 @@ export default function BusinessSetup() {
             </Form>
           )}
 
-          {/* Additional steps would continue here... */}
-          {currentStep > 2 && (
+          {/* Step 4: Create Membership Plan */}
+          {currentStep === 4 && (
+            <div className="space-y-8">
+              {/* Display existing membership plans */}
+              {membershipTiers && membershipTiers.length > 0 && (
+                <Card className="border-2 border-green-200 bg-green-50">
+                  <CardHeader>
+                    <CardTitle className="text-xl text-green-800 flex items-center gap-2">
+                      <CheckCircle className="h-5 w-5" />
+                      Your Membership Plans
+                    </CardTitle>
+                    <p className="text-green-700">You've created {membershipTiers.length} membership plan{membershipTiers.length !== 1 ? 's' : ''} for your patients</p>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      {membershipTiers.map((tier) => (
+                        <div key={tier.id} className="bg-white p-4 rounded-lg border border-green-200">
+                          <div className="flex justify-between items-start mb-2">
+                            <h4 className="font-semibold text-gray-900">{tier.name}</h4>
+                            <span className={`px-2 py-1 text-xs rounded-full ${
+                              tier.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                            }`}>
+                              {tier.isActive ? 'Active' : 'Inactive'}
+                            </span>
+                          </div>
+                          <p className="text-sm text-gray-600 mb-2">{tier.description}</p>
+                          <div className="text-sm font-medium text-gray-900">
+                            ${tier.monthlyPrice}/month
+                            {tier.yearlyPrice && (
+                              <span className="text-gray-600 ml-2">
+                                • ${tier.yearlyPrice}/year
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Create new membership plan form */}
+              <Form {...membershipForm}>
+                <form onSubmit={membershipForm.handleSubmit((data) => createMembership.mutate(data))} className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <FormField
+                      control={membershipForm.control}
+                      name="name"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Membership Plan Name</FormLabel>
+                          <FormControl>
+                            <Input placeholder="e.g., Premium Wellness Plan" {...field} data-testid="input-membership-name" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={membershipForm.control}
+                      name="monthlyPrice"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Monthly Price ($)</FormLabel>
+                          <FormControl>
+                            <Input type="number" placeholder="99" {...field} data-testid="input-membership-monthly-price" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={membershipForm.control}
+                      name="yearlyPrice"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Yearly Price ($ - Optional)</FormLabel>
+                          <FormControl>
+                            <Input type="number" placeholder="999" {...field} data-testid="input-membership-yearly-price" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
+                  <FormField
+                    control={membershipForm.control}
+                    name="description"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Plan Description</FormLabel>
+                        <FormControl>
+                          <Textarea 
+                            placeholder="Describe the benefits, perks, and value of this membership plan..."
+                            className="min-h-[100px]"
+                            {...field}
+                            data-testid="textarea-membership-description"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <Button 
+                    type="submit" 
+                    disabled={createMembership.isPending}
+                    size="lg" 
+                    className="w-full"
+                    data-testid="button-create-membership"
+                  >
+                    {createMembership.isPending ? "Creating Membership Plan..." : "Create Membership Plan"}
+                  </Button>
+                </form>
+              </Form>
+            </div>
+          )}
+
+          {/* Step 5 and beyond - Coming Soon */}
+          {currentStep > 4 && (
             <div className="text-center py-12">
               <div className="text-6xl mb-4">🚧</div>
               <h3 className="text-xl font-semibold text-gray-900 mb-2">
