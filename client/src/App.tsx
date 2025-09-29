@@ -52,8 +52,6 @@ function Router() {
     );
   }
 
-  // Debug: Log user state to console
-  console.log("[DEBUG] User state:", { user, role: user?.role, isLoading });
 
   return (
     <Switch>
@@ -81,7 +79,6 @@ function Router() {
           {/* Clinic Routes */}
           {(user.role === "clinic_admin" || user.role === "staff") && (
             <>
-              {console.log("[DEBUG] Clinic routes block is executing - setup route should be available")}
               <Route path="/clinic" component={() => (<RequireBusinessSetup><ClinicDashboard /></RequireBusinessSetup>)} />
               <Route path="/clinic/appointments" component={() => (<RequireBusinessSetup><Appointments /></RequireBusinessSetup>)} />
               <Route path="/clinic/clients" component={() => (<RequireBusinessSetup><Clients /></RequireBusinessSetup>)} />
@@ -89,7 +86,7 @@ function Router() {
               <Route path="/clinic/memberships" component={() => (<RequireBusinessSetup><Memberships /></RequireBusinessSetup>)} />
               <Route path="/clinic/staff" component={() => (<RequireBusinessSetup><Staff /></RequireBusinessSetup>)} />
               <Route path="/clinic/reports" component={() => (<RequireBusinessSetup><Reports /></RequireBusinessSetup>)} />
-              <Route path="/clinic/setup" component={() => <div className="p-8"><h1 className="text-2xl">✅ Setup Route Working!</h1><p>BusinessSetup component will load here.</p></div>} />
+              <Route path="/clinic/setup" component={BusinessSetup} />
               <Route path="/clinic/payment-setup" component={PaymentSetup} />
             </>
           )}
