@@ -2949,11 +2949,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Create or get Stripe customer for organization (on platform account, not Connect)
       let customerId = organization.stripeCustomerId;
       if (!customerId) {
-        const customer = await stripeService.createCustomer({
-          email: req.user!.email,
-          name: organization.name,
-          description: `Organization: ${organization.name}`,
-        });
+        const customer = await stripeService.createCustomer(
+          req.user!.email,
+          organization.name,
+          organizationId
+        );
         customerId = customer.id;
         
         // Update organization with customer ID
@@ -2962,28 +2962,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // Create subscription on platform account
-      const subscription = await stripeService.createSubscription({
+      // Create subscription on platform account with 30-day trial
+      const subscription = await stripeService.createSubscription(
         customerId,
         priceId,
-        metadata: {
-          organizationId,
-          planId,
-          billingCycle
-        }
-      });
+        30 // 30-day trial period
+      );
 
-      // Update organization with subscription details
+      // Update organization with subscription details and trial period
+      const trialEndsAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days from now
       await storage.updateOrganization(organizationId, {
         subscriptionPlanId: planId,
-        stripeSubscriptionId: subscription.id,
-        subscriptionStatus: 'active' as any
+        stripeSubscriptionId: subscription.subscriptionId,
+        subscriptionStatus: 'trialing' as any,
+        trialEndsAt: trialEndsAt
       });
 
       res.json({ 
         message: "Subscription created successfully",
-        subscriptionId: subscription.id,
-        status: subscription.status
+        subscriptionId: subscription.subscriptionId,
+        status: subscription.status,
+        trial: true,
+        trialEndsAt: trialEndsAt
       });
     } catch (error) {
       console.error("Subscribe to plan error:", error);

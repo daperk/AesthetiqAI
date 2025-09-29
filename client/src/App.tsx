@@ -80,6 +80,7 @@ function Router() {
           {(user.role === "clinic_admin" || user.role === "staff") && (
             <>
               <Route path="/clinic" component={() => (<RequireBusinessSetup><ClinicDashboard /></RequireBusinessSetup>)} />
+              <Route path="/clinic/dashboard" component={() => (<RequireBusinessSetup><ClinicDashboard /></RequireBusinessSetup>)} />
               <Route path="/clinic/appointments" component={() => (<RequireBusinessSetup><Appointments /></RequireBusinessSetup>)} />
               <Route path="/clinic/clients" component={() => (<RequireBusinessSetup><Clients /></RequireBusinessSetup>)} />
               <Route path="/clinic/services" component={() => (<RequireBusinessSetup><Services /></RequireBusinessSetup>)} />
