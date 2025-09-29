@@ -1210,33 +1210,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const stripeConnectAccountId = organization.stripeConnectAccountId;
       
-      // Create Stripe product and price for deposit if required
-      let stripeProductId, stripePriceId;
+      // Create Stripe product and prices for the service
+      let stripeProductId, stripePriceId, stripeDepositPriceId;
       
-      if (serviceData.depositRequired && serviceData.depositAmount && stripeConnectAccountId) {
+      if (stripeConnectAccountId && serviceData.price) {
         try {
+          // Always create a Stripe product for the service
           const product = await stripeService.createProduct({
-            name: `${serviceData.name} - Deposit`,
-            description: `Deposit for ${serviceData.name}${serviceData.description ? `: ${serviceData.description}` : ''}`,
+            name: serviceData.name,
+            description: serviceData.description || `${serviceData.name} service`,
             connectAccountId: stripeConnectAccountId
           });
           stripeProductId = product.id;
 
+          // Create main service price
           stripePriceId = await stripeService.createOneTimePrice({
             productId: product.id,
-            amount: Math.round(parseFloat(serviceData.depositAmount.toString()) * 100), // Convert deposit to cents
+            amount: Math.round(parseFloat(serviceData.price.toString()) * 100), // Convert service price to cents
             connectAccountId: stripeConnectAccountId
           });
 
-          console.log(`✅ [STRIPE] Created deposit product ${stripeProductId} and price ${stripePriceId} on Connect account ${stripeConnectAccountId} for service: ${serviceData.name} (Deposit: $${serviceData.depositAmount})`);
+          console.log(`✅ [STRIPE] Created service product ${stripeProductId} and price ${stripePriceId} on Connect account ${stripeConnectAccountId} for service: ${serviceData.name} (Price: $${serviceData.price})`);
+
+          // Additionally create deposit price if required
+          if (serviceData.depositRequired && serviceData.depositAmount) {
+            stripeDepositPriceId = await stripeService.createOneTimePrice({
+              productId: product.id,
+              amount: Math.round(parseFloat(serviceData.depositAmount.toString()) * 100), // Convert deposit to cents
+              connectAccountId: stripeConnectAccountId
+            });
+            console.log(`✅ [STRIPE] Created deposit price ${stripeDepositPriceId} for service: ${serviceData.name} (Deposit: $${serviceData.depositAmount})`);
+          }
+
         } catch (stripeError) {
-          console.error('❌ [STRIPE] Failed to create deposit product/price for service:', stripeError);
+          console.error('❌ [STRIPE] Failed to create service product/prices:', stripeError);
           // Continue without Stripe integration for now
         }
       } else if (!stripeConnectAccountId) {
         console.log(`⚠️ [STRIPE] No Stripe Connect account found for organization - skipping Stripe product creation`);
       } else {
-        console.log(`ℹ️ [STRIPE] No deposit required for service: ${serviceData.name} - skipping Stripe product creation`);
+        console.log(`⚠️ [STRIPE] No service price specified for: ${serviceData.name} - skipping Stripe product creation`);
       }
 
       // Add organization ID and Stripe IDs to service data
