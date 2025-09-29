@@ -180,6 +180,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Check if business setup is complete
       const stripeConnected = !!organization.stripeConnectAccountId;
+      
+      // CRITICAL: Check active subscription - organizations must pay to use the platform
+      const hasActiveSubscription = !!organization.subscriptionPlanId && 
+        (organization.subscriptionStatus === 'active' || organization.subscriptionStatus === 'trialing');
+      
       const services = await storage.getServicesByOrganization(organizationId);
       const hasServices = services.length > 0;
       const memberships = await storage.getMembershipTiersByOrganization(organizationId);
@@ -187,19 +192,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const rewards = await storage.getRewardsByOrganization(organizationId);
       const hasRewards = rewards.length > 0;
       
-      const allComplete = stripeConnected && hasServices && hasMemberships && hasRewards;
+      const allComplete = stripeConnected && hasActiveSubscription && hasServices && hasMemberships && hasRewards;
 
       if (!allComplete) {
+        const missingItems = [];
+        if (!stripeConnected) missingItems.push("Payment setup");
+        if (!hasActiveSubscription) missingItems.push("Active subscription");
+        if (!hasServices) missingItems.push("Services");
+        if (!hasMemberships) missingItems.push("Membership plans");
+        if (!hasRewards) missingItems.push("Rewards program");
+        
         return res.status(403).json({ 
-          message: "Business setup incomplete. Please complete your business setup first.",
+          message: `Business setup incomplete. Missing: ${missingItems.join(", ")}. Please complete your business setup first.`,
           error_code: "BUSINESS_SETUP_INCOMPLETE",
           setup_status: {
             stripeConnected,
+            hasSubscription: hasActiveSubscription,
             hasServices,
             hasMemberships,
             hasRewards,
             allComplete
-          }
+          },
+          missingSubscription: !hasActiveSubscription
         });
       }
 
