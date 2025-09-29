@@ -86,12 +86,23 @@ export async function cancelSubscription(subscriptionId: string): Promise<Stripe
 export async function createProduct(params: {
   name: string;
   description?: string;
+  connectAccountId?: string;
 }): Promise<Stripe.Product> {
   if (!stripe) throw new Error("Stripe not configured");
-  return await stripe.products.create({
+  
+  const options: any = {
     name: params.name,
     description: params.description
-  });
+  };
+  
+  // Create product on Connect account if provided
+  if (params.connectAccountId) {
+    return await stripe.products.create(options, {
+      stripeAccount: params.connectAccountId
+    });
+  }
+  
+  return await stripe.products.create(options);
 }
 
 export async function createPrice(params: {
@@ -116,14 +127,26 @@ export async function createOneTimePrice(params: {
   productId: string;
   amount: number; // in cents
   currency?: string;
+  connectAccountId?: string;
 }): Promise<string> {
   if (!stripe) throw new Error("Stripe not configured");
-  const price = await stripe.prices.create({
+  
+  const options: any = {
     product: params.productId,
     unit_amount: params.amount,
     currency: params.currency || 'usd'
     // No recurring object = one-time payment
-  });
+  };
+  
+  // Create price on Connect account if provided
+  if (params.connectAccountId) {
+    const price = await stripe.prices.create(options, {
+      stripeAccount: params.connectAccountId
+    });
+    return price.id;
+  }
+  
+  const price = await stripe.prices.create(options);
   return price.id;
 }
 
