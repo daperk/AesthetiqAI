@@ -141,10 +141,15 @@ export default function BusinessSetup() {
   // Create service mutation
   const createService = useMutation({
     mutationFn: async (data: ServiceFormData) => {
+      if (!organization?.id) {
+        throw new Error("Organization not found");
+      }
+      
       const response = await apiRequest("POST", "/api/services", {
+        organizationId: organization.id,
         name: data.name,
         description: data.description,
-        price: parseFloat(data.price),
+        price: data.price, // Keep as string
         duration: parseInt(data.duration),
         category: data.category,
         isActive: true
