@@ -1643,32 +1643,55 @@ export async function registerRoutes(app: Express): Promise<Server> {
         organizationId: orgId
       });
 
-      // Create Stripe products/prices if needed
+      // Get organization and Stripe Connect account
+      const organization = await storage.getOrganization(orgId);
+      if (!organization) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+      
+      const stripeConnectAccountId = organization.stripeConnectAccountId;
+
+      // Create Stripe products/prices on the organization's Connect account
       let stripePriceIdMonthly, stripePriceIdYearly;
-      if (tierData.monthlyPrice) {
+      if (tierData.monthlyPrice && stripeConnectAccountId) {
         try {
+          console.log(`🔄 [STRIPE] Creating membership product on Connect account ${stripeConnectAccountId} for: ${tierData.name}`);
+          
           const product = await stripeService.createProduct({
             name: `${tierData.name} Membership`,
-            description: tierData.description || `${tierData.name} membership tier`
+            description: tierData.description || `${tierData.name} membership tier`,
+            connectAccountId: stripeConnectAccountId
           });
 
           stripePriceIdMonthly = await stripeService.createPrice({
             productId: product.id,
             amount: Math.round(parseFloat(tierData.monthlyPrice.toString()) * 100),
-            interval: 'month'
+            interval: 'month',
+            connectAccountId: stripeConnectAccountId
           });
 
           if (tierData.yearlyPrice) {
             stripePriceIdYearly = await stripeService.createPrice({
               productId: product.id,
               amount: Math.round(parseFloat(tierData.yearlyPrice.toString()) * 100),
-              interval: 'year'
+              interval: 'year',
+              connectAccountId: stripeConnectAccountId
             });
           }
+
+          console.log(`✅ [STRIPE] Created membership product ${product.id} with prices (Monthly: ${stripePriceIdMonthly}, Yearly: ${stripePriceIdYearly || 'N/A'}) on Connect account ${stripeConnectAccountId} for: ${tierData.name}`);
         } catch (stripeError) {
-          console.error('Stripe integration error:', stripeError);
-          // Continue without Stripe prices for now
+          console.error('❌ [STRIPE] Failed to create membership product/prices on Connect account:', stripeError);
+          return res.status(500).json({ 
+            message: "Failed to create membership plan in Stripe. Please check your Stripe Connect setup.", 
+            error: stripeError.message 
+          });
         }
+      } else if (!stripeConnectAccountId) {
+        console.log(`⚠️ [STRIPE] No Stripe Connect account found for organization - membership will be created without Stripe integration`);
+        return res.status(400).json({ 
+          message: "Stripe Connect account required to create membership plans. Please complete your payment setup first." 
+        });
       }
 
       const newTier = await storage.createMembershipTier({
