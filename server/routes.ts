@@ -1990,8 +1990,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const clients = await storage.getClientsByOrganization(organizationId);
       const hasPatients = clients.length > 0;
 
-      // Check subscription status
-      const hasSubscription = !!organization.subscriptionPlanId && organization.subscriptionStatus === 'active';
+      // Check subscription status (include trialing subscriptions)
+      const hasSubscription = !!organization.subscriptionPlanId && 
+        (organization.subscriptionStatus === 'active' || organization.subscriptionStatus === 'trialing');
 
       const allComplete = stripeConnected && hasSubscription && hasServices && hasMemberships && hasRewards && hasPatients;
 
@@ -2192,8 +2193,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const rewards = await storage.getRewardsByOrganization(organizationId);
       const hasRewards = rewards.length > 0;
 
-      // Check subscription status
-      const hasSubscription = !!organization.subscriptionPlanId && organization.subscriptionStatus === 'active';
+      // Check subscription status (include trialing subscriptions)
+      const hasSubscription = !!organization.subscriptionPlanId && 
+        (organization.subscriptionStatus === 'active' || organization.subscriptionStatus === 'trialing');
 
       // Check if has patients
       const clients = await storage.getClientsByOrganization(organizationId);
