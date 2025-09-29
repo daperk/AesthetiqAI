@@ -468,6 +468,9 @@ export const insertAppointmentSchema = createInsertSchema(appointments).omit({
 export const insertMembershipTierSchema = createInsertSchema(membershipTiers).omit({
   id: true,
   createdAt: true
+}).extend({
+  monthlyPrice: z.union([z.string(), z.number()]).transform(val => String(val)),
+  yearlyPrice: z.union([z.string(), z.number()]).optional().transform(val => val ? String(val) : val)
 });
 
 export const insertMembershipSchema = createInsertSchema(memberships).omit({
