@@ -136,7 +136,7 @@ export const services = pgTable("services", {
   description: text("description"),
   category: text("category"),
   duration: integer("duration").notNull(),
-  price: decimal("price", { precision: 10, scale: 2 }).notNull(),
+  price: decimal("price", { precision: 10, scale: 2 }),
   depositRequired: boolean("deposit_required").default(false),
   depositAmount: decimal("deposit_amount", { precision: 10, scale: 2 }),
   requiresConsent: boolean("requires_consent").default(false),

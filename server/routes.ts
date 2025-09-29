@@ -1183,24 +1183,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const serviceData = insertServiceSchema.parse(req.body);
       
-      // Create Stripe product and price for the service
+      // Create Stripe product and price for deposit if required
       let stripeProductId, stripePriceId;
-      try {
-        const product = await stripeService.createProduct({
-          name: serviceData.name,
-          description: serviceData.description || `${serviceData.name} service`
-        });
-        stripeProductId = product.id;
+      
+      if (serviceData.depositRequired && serviceData.depositAmount) {
+        try {
+          const product = await stripeService.createProduct({
+            name: `${serviceData.name} - Deposit`,
+            description: `Deposit for ${serviceData.name}${serviceData.description ? `: ${serviceData.description}` : ''}`
+          });
+          stripeProductId = product.id;
 
-        stripePriceId = await stripeService.createOneTimePrice({
-          productId: product.id,
-          amount: Math.round(parseFloat(serviceData.price.toString()) * 100) // Convert to cents
-        });
+          stripePriceId = await stripeService.createOneTimePrice({
+            productId: product.id,
+            amount: Math.round(parseFloat(serviceData.depositAmount.toString()) * 100) // Convert deposit to cents
+          });
 
-        console.log(`✅ [STRIPE] Created product ${stripeProductId} and price ${stripePriceId} for service: ${serviceData.name}`);
-      } catch (stripeError) {
-        console.error('❌ [STRIPE] Failed to create product/price for service:', stripeError);
-        // Continue without Stripe integration for now
+          console.log(`✅ [STRIPE] Created deposit product ${stripeProductId} and price ${stripePriceId} for service: ${serviceData.name} (Deposit: $${serviceData.depositAmount})`);
+        } catch (stripeError) {
+          console.error('❌ [STRIPE] Failed to create deposit product/price for service:', stripeError);
+          // Continue without Stripe integration for now
+        }
+      } else {
+        console.log(`ℹ️ [STRIPE] No deposit required for service: ${serviceData.name} - skipping Stripe product creation`);
       }
 
       // Add Stripe IDs to service data
