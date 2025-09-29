@@ -112,6 +112,21 @@ export async function createPrice(params: {
   return price.id;
 }
 
+export async function createOneTimePrice(params: {
+  productId: string;
+  amount: number; // in cents
+  currency?: string;
+}): Promise<string> {
+  if (!stripe) throw new Error("Stripe not configured");
+  const price = await stripe.prices.create({
+    product: params.productId,
+    unit_amount: params.amount,
+    currency: params.currency || 'usd'
+    // No recurring object = one-time payment
+  });
+  return price.id;
+}
+
 // Stripe Connect Express account functions
 export async function createConnectAccount(organization: { 
   name: string; 

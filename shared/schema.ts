@@ -141,6 +141,8 @@ export const services = pgTable("services", {
   depositAmount: decimal("deposit_amount", { precision: 10, scale: 2 }),
   requiresConsent: boolean("requires_consent").default(false),
   availableStaffIds: jsonb("available_staff_ids"),
+  stripeProductId: text("stripe_product_id"),
+  stripePriceId: text("stripe_price_id"),
   isActive: boolean("is_active").default(true),
   createdAt: timestamp("created_at").default(sql`now()`)
 });

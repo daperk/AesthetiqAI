@@ -1182,7 +1182,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/services", requireRole("clinic_admin", "super_admin"), async (req, res) => {
     try {
       const serviceData = insertServiceSchema.parse(req.body);
-      const service = await storage.createService(serviceData);
+      
+      // Create Stripe product and price for the service
+      let stripeProductId, stripePriceId;
+      try {
+        const product = await stripeService.createProduct({
+          name: serviceData.name,
+          description: serviceData.description || `${serviceData.name} service`
+        });
+        stripeProductId = product.id;
+
+        stripePriceId = await stripeService.createOneTimePrice({
+          productId: product.id,
+          amount: Math.round(parseFloat(serviceData.price.toString()) * 100) // Convert to cents
+        });
+
+        console.log(`✅ [STRIPE] Created product ${stripeProductId} and price ${stripePriceId} for service: ${serviceData.name}`);
+      } catch (stripeError) {
+        console.error('❌ [STRIPE] Failed to create product/price for service:', stripeError);
+        // Continue without Stripe integration for now
+      }
+
+      // Add Stripe IDs to service data
+      const serviceWithStripe = {
+        ...serviceData,
+        stripeProductId,
+        stripePriceId
+      };
+
+      const service = await storage.createService(serviceWithStripe);
       
       await auditLog(req, "create", "service", service.id, serviceData);
       res.json(service);
