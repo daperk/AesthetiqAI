@@ -231,6 +231,31 @@ export default function BusinessSetup() {
     },
   });
 
+  // Create Stripe Connect account mutation
+  const createStripeAccount = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", "/api/stripe-connect/create-account", {});
+      return response.json();
+    },
+    onSuccess: (data) => {
+      if (data.onboardingUrl) {
+        window.open(data.onboardingUrl, '_blank', 'noopener,noreferrer');
+        toast({
+          title: "Stripe account created!",
+          description: "Complete your setup in the new tab.",
+        });
+      }
+      queryClient.invalidateQueries({ queryKey: ['/api/clinic/setup-status'] });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Failed to create Stripe account",
+        description: error.message || "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
   // Invite patient mutation
   const invitePatient = useMutation({
     mutationFn: async (data: PatientInviteData) => {
@@ -379,21 +404,45 @@ export default function BusinessSetup() {
           {/* Step 1: Payment Setup */}
           {currentStep === 1 && (
             <div className="text-center py-12">
-              <CheckCircle className="h-16 w-16 text-green-500 mx-auto mb-4" />
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                Payment Setup Complete!
-              </h3>
-              <p className="text-gray-600 mb-6">
-                Your Stripe Connect account has been successfully configured.
-              </p>
-              <Button
-                onClick={() => setCurrentStep(2)}
-                size="lg"
-                className="px-8"
-                data-testid="button-continue-to-services"
-              >
-                Continue to Services <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
+              {setupStatus?.stripeConnected ? (
+                <>
+                  <CheckCircle className="h-16 w-16 text-green-500 mx-auto mb-4" />
+                  <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                    Payment Setup Complete!
+                  </h3>
+                  <p className="text-gray-600 mb-6">
+                    Your Stripe Connect account has been successfully configured.
+                  </p>
+                  <Button
+                    onClick={() => setCurrentStep(2)}
+                    size="lg"
+                    className="px-8"
+                    data-testid="button-continue-to-services"
+                  >
+                    Continue to Services <ArrowRight className="ml-2 h-4 w-4" />
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <CreditCard className="h-16 w-16 text-blue-500 mx-auto mb-4" />
+                  <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                    Set Up Payment Processing
+                  </h3>
+                  <p className="text-gray-600 mb-6">
+                    Connect your Stripe account to start accepting payments from your patients.
+                  </p>
+                  <Button
+                    onClick={() => createStripeAccount.mutate()}
+                    disabled={createStripeAccount.isPending}
+                    size="lg"
+                    className="px-8"
+                    data-testid="button-setup-payments"
+                  >
+                    {createStripeAccount.isPending ? "Setting up..." : "Set Up Payments"}
+                    <CreditCard className="ml-2 h-4 w-4" />
+                  </Button>
+                </>
+              )}
             </div>
           )}
 
