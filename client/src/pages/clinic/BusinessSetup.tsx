@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { CheckCircle, Circle, CreditCard, Calendar, Gift, Sparkles, ArrowRight, Users } from "lucide-react";
+import { CheckCircle, Circle, CreditCard, Calendar, Gift, Sparkles, ArrowRight, Users, Crown } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useToast } from "@/hooks/use-toast";
@@ -19,6 +19,7 @@ import { z } from "zod";
 
 interface BusinessSetupStatus {
   stripeConnected: boolean;
+  hasSubscription: boolean;
   hasServices: boolean;
   hasMemberships: boolean;
   hasRewards: boolean;
@@ -122,6 +123,22 @@ export default function BusinessSetup() {
     queryKey: ['/api/organization'],
   });
 
+  // Get subscription plans
+  const { data: subscriptionPlans } = useQuery<Array<{
+    id: string;
+    name: string;
+    tier: string;
+    description: string;
+    monthlyPrice: number;
+    yearlyPrice: number;
+    features: string[];
+  }>>({
+    queryKey: ['/api/subscription-plans'],
+  });
+
+  const [selectedPlan, setSelectedPlan] = useState<string>('');
+  const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
+
   // Handle successful Stripe Connect redirect
   useEffect(() => {
     if (isStripeSuccess) {
@@ -143,14 +160,16 @@ export default function BusinessSetup() {
     if (setupStatus) {
       if (!setupStatus.stripeConnected) {
         setCurrentStep(1);
-      } else if (!setupStatus.hasServices) {
+      } else if (!setupStatus.hasSubscription) {
         setCurrentStep(2);
-      } else if (!setupStatus.hasMemberships) {
+      } else if (!setupStatus.hasServices) {
         setCurrentStep(3);
-      } else if (!setupStatus.hasRewards) {
+      } else if (!setupStatus.hasMemberships) {
         setCurrentStep(4);
-      } else if (!setupStatus.hasPatients) {
+      } else if (!setupStatus.hasRewards) {
         setCurrentStep(5);
+      } else if (!setupStatus.hasPatients) {
+        setCurrentStep(6);
       } else {
         // All complete, redirect to dashboard
         setLocation("/clinic");
@@ -216,6 +235,29 @@ export default function BusinessSetup() {
     onError: (error: any) => {
       toast({
         title: "Failed to create membership",
+        description: error.message || "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Subscribe to plan mutation
+  const subscribeToPlan = useMutation({
+    mutationFn: async (data: { planId: string; billingCycle: 'monthly' | 'yearly' }) => {
+      const response = await apiRequest("POST", "/api/subscription/subscribe", data);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/clinic/setup-status'] });
+      toast({
+        title: "Subscription activated!",
+        description: "Welcome to Aesthiq! Your subscription is now active.",
+      });
+      setSelectedPlan('');
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Failed to activate subscription",
         description: error.message || "Please try again.",
         variant: "destructive",
       });
@@ -336,27 +378,34 @@ export default function BusinessSetup() {
     },
     {
       number: 2,
+      title: "Choose Plan",
+      description: "Select your subscription plan",
+      icon: <Crown className="h-5 w-5" />,
+      completed: setupStatus?.hasSubscription || false
+    },
+    {
+      number: 3,
       title: "First Service",
       description: "Add your first treatment",
       icon: <Sparkles className="h-5 w-5" />,
       completed: setupStatus?.hasServices || false
     },
     {
-      number: 3,
+      number: 4,
       title: "Membership Plan",
       description: "Create a membership offering",
       icon: <Calendar className="h-5 w-5" />,
       completed: setupStatus?.hasMemberships || false
     },
     {
-      number: 4,
+      number: 5,
       title: "Rewards Program",
       description: "Set up patient rewards",
       icon: <Gift className="h-5 w-5" />,
       completed: setupStatus?.hasRewards || false
     },
     {
-      number: 5,
+      number: 6,
       title: "Patient Invitation",
       description: "Invite your first patient",
       icon: <Users className="h-5 w-5" />,
@@ -453,9 +502,9 @@ export default function BusinessSetup() {
                     onClick={() => setCurrentStep(2)}
                     size="lg"
                     className="px-8"
-                    data-testid="button-continue-to-services"
+                    data-testid="button-continue-to-subscription"
                   >
-                    Continue to Services <ArrowRight className="ml-2 h-4 w-4" />
+                    Continue to Plan Selection <ArrowRight className="ml-2 h-4 w-4" />
                   </Button>
                 </>
               ) : (
@@ -482,8 +531,143 @@ export default function BusinessSetup() {
             </div>
           )}
 
-          {/* Step 2: Create First Service */}
+          {/* Step 2: Subscription Plan Selection */}
           {currentStep === 2 && (
+            <Card className="border-2 border-yellow-200 bg-yellow-50">
+              <CardHeader className="text-center">
+                <div className="flex items-center justify-center gap-2 mb-4">
+                  <Crown className="h-8 w-8 text-yellow-600" />
+                  <CardTitle className="text-2xl text-yellow-800">Choose Your Plan</CardTitle>
+                </div>
+                <p className="text-yellow-700">
+                  Select a subscription plan to unlock Aesthiq's powerful features for your clinic.
+                </p>
+                
+                {/* Billing Cycle Toggle */}
+                <div className="flex items-center justify-center gap-4 mt-6">
+                  <span className={`text-sm ${billingCycle === 'monthly' ? 'font-semibold text-yellow-800' : 'text-yellow-600'}`}>
+                    Monthly
+                  </span>
+                  <button
+                    onClick={() => setBillingCycle(billingCycle === 'monthly' ? 'yearly' : 'monthly')}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${billingCycle === 'yearly' ? 'bg-yellow-600' : 'bg-gray-300'}`}
+                    data-testid="toggle-billing-cycle"
+                  >
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${billingCycle === 'yearly' ? 'translate-x-6' : 'translate-x-1'}`} />
+                  </button>
+                  <span className={`text-sm ${billingCycle === 'yearly' ? 'font-semibold text-yellow-800' : 'text-yellow-600'}`}>
+                    Yearly <Badge variant="secondary" className="ml-1 text-xs">Save 20%</Badge>
+                  </span>
+                </div>
+              </CardHeader>
+              
+              <CardContent>
+                {subscriptionPlans ? (
+                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    {subscriptionPlans.map((plan) => {
+                      const price = billingCycle === 'monthly' ? plan.monthlyPrice : plan.yearlyPrice;
+                      const isPopular = plan.tier === 'business';
+                      const isSelected = selectedPlan === plan.id;
+                      
+                      return (
+                        <div
+                          key={plan.id}
+                          onClick={() => setSelectedPlan(plan.id)}
+                          className={`relative cursor-pointer rounded-lg border-2 p-6 transition-all hover:shadow-lg ${
+                            isSelected
+                              ? 'border-yellow-600 bg-yellow-50 shadow-md'
+                              : isPopular
+                              ? 'border-yellow-400 bg-white'
+                              : 'border-gray-200 bg-white hover:border-gray-300'
+                          }`}
+                          data-testid={`plan-card-${plan.tier}`}
+                        >
+                          {isPopular && (
+                            <Badge className="absolute -top-2 left-1/2 -translate-x-1/2 bg-yellow-600 text-white">
+                              Most Popular
+                            </Badge>
+                          )}
+                          
+                          <div className="text-center">
+                            <h3 className="text-lg font-semibold text-gray-900">{plan.name}</h3>
+                            <p className="text-sm text-gray-600 mt-1">{plan.description}</p>
+                            
+                            <div className="mt-4">
+                              <span className="text-3xl font-bold text-gray-900">${price}</span>
+                              <span className="text-gray-600">/{billingCycle === 'monthly' ? 'month' : 'year'}</span>
+                              {billingCycle === 'yearly' && (
+                                <div className="text-sm text-green-600 mt-1">
+                                  Save ${(plan.monthlyPrice * 12 - plan.yearlyPrice).toFixed(0)}/year
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          
+                          <div className="mt-6">
+                            <h4 className="text-sm font-medium text-gray-900 mb-3">Features include:</h4>
+                            <ul className="space-y-2">
+                              {plan.features.slice(0, 4).map((feature, index) => (
+                                <li key={index} className="flex items-center text-sm text-gray-600">
+                                  <CheckCircle className="h-4 w-4 text-green-500 mr-2 flex-shrink-0" />
+                                  {feature}
+                                </li>
+                              ))}
+                              {plan.features.length > 4 && (
+                                <li className="text-sm text-gray-500 italic">
+                                  + {plan.features.length - 4} more features
+                                </li>
+                              )}
+                            </ul>
+                          </div>
+                          
+                          <div className="mt-6">
+                            <div className={`w-full h-10 rounded-md border-2 transition-colors flex items-center justify-center ${
+                              isSelected
+                                ? 'border-yellow-600 bg-yellow-600 text-white'
+                                : 'border-gray-300 text-gray-700 hover:border-gray-400'
+                            }`}>
+                              {isSelected ? (
+                                <>
+                                  <CheckCircle className="h-4 w-4 mr-2" />
+                                  Selected
+                                </>
+                              ) : (
+                                'Select Plan'
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <div className="text-gray-500">Loading subscription plans...</div>
+                  </div>
+                )}
+                
+                {selectedPlan && (
+                  <div className="mt-8 text-center">
+                    <Button
+                      onClick={() => subscribeToPlan.mutate({ planId: selectedPlan, billingCycle })}
+                      disabled={subscribeToPlan.isPending}
+                      size="lg"
+                      className="px-8 bg-yellow-600 hover:bg-yellow-700"
+                      data-testid="button-activate-subscription"
+                    >
+                      {subscribeToPlan.isPending ? "Activating..." : `Activate ${billingCycle === 'monthly' ? 'Monthly' : 'Yearly'} Subscription`}
+                    </Button>
+                    <p className="text-sm text-gray-600 mt-2">
+                      You can change or cancel your plan anytime from your dashboard.
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Step 3: Create First Service */}
+          {currentStep === 3 && (
             <Form {...serviceForm}>
               <form onSubmit={serviceForm.handleSubmit((data) => createService.mutate(data))} className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

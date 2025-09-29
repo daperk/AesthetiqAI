@@ -1976,10 +1976,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const clients = await storage.getClientsByOrganization(organizationId);
       const hasPatients = clients.length > 0;
 
-      const allComplete = stripeConnected && hasServices && hasMemberships && hasRewards && hasPatients;
+      // Check subscription status
+      const hasSubscription = !!organization.subscriptionPlanId && organization.subscriptionStatus === 'active';
+
+      const allComplete = stripeConnected && hasSubscription && hasServices && hasMemberships && hasRewards && hasPatients;
 
       res.json({
         stripeConnected,
+        hasSubscription,
         hasServices,
         hasMemberships,
         hasRewards,
@@ -2174,13 +2178,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const rewards = await storage.getRewardsByOrganization(organizationId);
       const hasRewards = rewards.length > 0;
 
-      const allComplete = stripeConnected && hasServices && hasMemberships && hasRewards;
+      // Check subscription status
+      const hasSubscription = !!organization.subscriptionPlanId && organization.subscriptionStatus === 'active';
+
+      // Check if has patients
+      const clients = await storage.getClientsByOrganization(organizationId);
+      const hasPatients = clients.length > 0;
+
+      const allComplete = stripeConnected && hasSubscription && hasServices && hasMemberships && hasRewards && hasPatients;
 
       res.json({
         stripeConnected,
+        hasSubscription,
         hasServices,
         hasMemberships,
         hasRewards,
+        hasPatients,
         allComplete
       });
     } catch (error) {
@@ -2875,6 +2888,92 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Chat endpoint error:", error);
       res.status(500).json({ message: "Failed to process chat message" });
+    }
+  });
+
+  // Get subscription plans (public)
+  app.get("/api/subscription-plans", async (req, res) => {
+    try {
+      const plans = await storage.getSubscriptionPlans();
+      res.json(plans);
+    } catch (error) {
+      console.error("Get subscription plans error:", error);
+      res.status(500).json({ message: "Failed to fetch subscription plans" });
+    }
+  });
+
+  // Subscribe to a plan
+  app.post("/api/subscription/subscribe", requireAuth, async (req, res) => {
+    try {
+      const { planId, billingCycle } = req.body;
+      
+      if (!planId || !billingCycle) {
+        return res.status(400).json({ message: "Plan ID and billing cycle are required" });
+      }
+
+      const organizationId = await getUserOrganizationId(req.user!);
+      if (!organizationId) {
+        return res.status(400).json({ message: "Organization not found" });
+      }
+
+      const organization = await storage.getOrganization(organizationId);
+      if (!organization) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+
+      const plan = await storage.getSubscriptionPlan(planId);
+      if (!plan) {
+        return res.status(404).json({ message: "Subscription plan not found" });
+      }
+
+      // Get the correct price ID based on billing cycle
+      const priceId = billingCycle === 'monthly' ? plan.stripePriceIdMonthly : plan.stripePriceIdYearly;
+      if (!priceId) {
+        return res.status(400).json({ message: "Price not available for selected billing cycle" });
+      }
+
+      // Create or get Stripe customer for organization (on platform account, not Connect)
+      let customerId = organization.stripeCustomerId;
+      if (!customerId) {
+        const customer = await stripeService.createCustomer({
+          email: req.user!.email,
+          name: organization.name,
+          description: `Organization: ${organization.name}`,
+        });
+        customerId = customer.id;
+        
+        // Update organization with customer ID
+        await storage.updateOrganization(organizationId, {
+          stripeCustomerId: customerId
+        });
+      }
+
+      // Create subscription on platform account
+      const subscription = await stripeService.createSubscription({
+        customerId,
+        priceId,
+        metadata: {
+          organizationId,
+          planId,
+          billingCycle
+        }
+      });
+
+      // Update organization with subscription details
+      await storage.updateOrganization(organizationId, {
+        subscriptionPlanId: planId,
+        stripeSubscriptionId: subscription.id,
+        subscriptionStatus: 'active' as any
+      });
+
+      res.json({ 
+        message: "Subscription created successfully",
+        subscriptionId: subscription.id,
+        status: subscription.status
+      });
+    } catch (error) {
+      console.error("Subscribe to plan error:", error);
+      res.status(500).json({ message: "Failed to create subscription" });
     }
   });
 
