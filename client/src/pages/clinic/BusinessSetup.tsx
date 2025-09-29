@@ -258,6 +258,19 @@ export default function BusinessSetup() {
     queryKey: ['/api/membership-tiers'],
   });
 
+  // Get reward options (clinic's reward catalog)
+  const { data: rewardOptions } = useQuery<Array<{
+    id: string;
+    name: string;
+    description: string;
+    pointsCost: number;
+    discountValue: number | null;
+    category: string;
+    isActive: boolean;
+  }>>({
+    queryKey: ['/api/reward-options'],
+  });
+
 
   // Handle successful Stripe Connect redirect
   useEffect(() => {
@@ -407,13 +420,17 @@ export default function BusinessSetup() {
     },
   });
 
-  // Create reward mutation
+  // Create reward option mutation
   const createReward = useMutation({
     mutationFn: async (data: RewardFormData) => {
-      const response = await apiRequest("POST", "/api/rewards", {
+      const pointsCost = parseInt(data.pointsCost);
+      const discountValue = data.category === 'discount' ? (pointsCost / 10) : undefined;
+      
+      const response = await apiRequest("POST", "/api/reward-options", {
         name: data.name,
         description: data.description,
-        pointsCost: parseInt(data.pointsCost),
+        pointsCost: pointsCost,
+        discountValue: discountValue,
         category: data.category,
         isActive: true
       });
@@ -421,9 +438,10 @@ export default function BusinessSetup() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/clinic/setup-status'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/reward-options'] });
       toast({
         title: "Reward created!",
-        description: "Your reward has been added successfully.",
+        description: "Your reward option has been added successfully.",
       });
       rewardForm.reset();
     },
@@ -1073,8 +1091,135 @@ export default function BusinessSetup() {
             </div>
           )}
 
-          {/* Step 5 and beyond - Coming Soon */}
-          {currentStep > 4 && (
+          {/* Step 5: Create Reward Options */}
+          {currentStep === 5 && (
+            <div className="space-y-8">
+              {/* Display existing reward options */}
+              {rewardOptions && rewardOptions.length > 0 && (
+                <Card className="border-2 border-green-200 bg-green-50">
+                  <CardHeader>
+                    <CardTitle className="text-xl text-green-800 flex items-center gap-2">
+                      <CheckCircle className="h-5 w-5" />
+                      Your Reward Options
+                    </CardTitle>
+                    <p className="text-green-700">You've created {rewardOptions.length} reward option{rewardOptions.length !== 1 ? 's' : ''} for your patients</p>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      {rewardOptions.map((option) => (
+                        <div key={option.id} className="bg-white p-4 rounded-lg border border-green-200">
+                          <div className="flex justify-between items-start mb-2">
+                            <h4 className="font-semibold text-gray-900">{option.name}</h4>
+                            <Badge variant="outline">{option.pointsCost} pts</Badge>
+                          </div>
+                          <p className="text-sm text-gray-600 mb-2">{option.description}</p>
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm text-gray-500 capitalize">{option.category}</span>
+                            {option.discountValue && (
+                              <span className="text-sm font-medium text-green-700">
+                                ${option.discountValue} off
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Create new reward option form */}
+              <Form {...rewardForm}>
+                <form onSubmit={rewardForm.handleSubmit((data) => createReward.mutate(data))} className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <FormField
+                      control={rewardForm.control}
+                      name="name"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Reward Name</FormLabel>
+                          <FormControl>
+                            <Input placeholder="e.g., $50 Off Any Service" {...field} data-testid="input-reward-name" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={rewardForm.control}
+                      name="pointsCost"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Points Required</FormLabel>
+                          <FormControl>
+                            <Input type="number" placeholder="500" {...field} data-testid="input-reward-points" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={rewardForm.control}
+                      name="category"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Reward Category</FormLabel>
+                          <Select onValueChange={field.onChange} defaultValue={field.value}>
+                            <FormControl>
+                              <SelectTrigger data-testid="select-reward-category">
+                                <SelectValue placeholder="Select category" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="discount">Discount</SelectItem>
+                              <SelectItem value="service">Free Service</SelectItem>
+                              <SelectItem value="product">Product</SelectItem>
+                              <SelectItem value="perk">Special Perk</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
+                  <FormField
+                    control={rewardForm.control}
+                    name="description"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Reward Description</FormLabel>
+                        <FormControl>
+                          <Textarea 
+                            placeholder="Describe what customers get when they redeem this reward..."
+                            className="min-h-[80px]"
+                            {...field}
+                            data-testid="textarea-reward-description"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <Button 
+                    type="submit" 
+                    disabled={createReward.isPending}
+                    size="lg" 
+                    className="w-full"
+                    data-testid="button-create-reward"
+                  >
+                    {createReward.isPending ? "Creating Reward..." : "Create Reward Option"}
+                  </Button>
+                </form>
+              </Form>
+            </div>
+          )}
+
+          {/* Step 6 and beyond - Coming Soon */}
+          {currentStep > 5 && (
             <div className="text-center py-12">
               <div className="text-6xl mb-4">🚧</div>
               <h3 className="text-xl font-semibold text-gray-900 mb-2">

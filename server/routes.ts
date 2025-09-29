@@ -1520,13 +1520,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Redeem points endpoint
   app.post("/api/rewards/redeem", requireAuth, async (req, res) => {
     try {
-      const { optionId, pointsCost } = req.body;
+      const { optionId } = req.body;
       
       // Get client record for current user
       const client = await storage.getClientByUser(req.user!.id);
       if (!client) {
         return res.status(404).json({ message: "Client profile not found" });
       }
+
+      // Look up reward option from catalog
+      const rewardOption = await storage.getRewardOptionById(optionId);
+      if (!rewardOption) {
+        return res.status(404).json({ message: "Reward option not found" });
+      }
+
+      if (!rewardOption.isActive) {
+        return res.status(400).json({ message: "This reward option is no longer available" });
+      }
+
+      if (rewardOption.organizationId !== client.organizationId) {
+        return res.status(403).json({ message: "This reward is not available for your organization" });
+      }
+
+      const pointsCost = rewardOption.pointsCost;
 
       // Check if client has enough points
       const currentBalance = await storage.getClientRewardBalance(client.id);
@@ -1539,11 +1555,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         organizationId: client.organizationId,
         clientId: client.id,
         points: -pointsCost, // Negative for redemption
-        reason: `Redeemed: ${optionId}`
+        reason: `Redeemed: ${rewardOption.name}`,
+        referenceId: rewardOption.id,
+        referenceType: 'reward_option'
       });
 
-      await auditLog(req, "redeem", "reward", reward.id, { optionId, pointsCost });
-      res.json({ message: "Points redeemed successfully", reward });
+      await auditLog(req, "redeem", "reward", reward.id, { 
+        optionId, 
+        optionName: rewardOption.name, 
+        pointsCost,
+        discountValue: rewardOption.discountValue 
+      });
+      
+      res.json({ 
+        message: "Points redeemed successfully", 
+        reward,
+        discountValue: rewardOption.discountValue 
+      });
     } catch (error) {
       console.error("Reward redemption error:", error);
       res.status(500).json({ message: "Failed to redeem points" });
