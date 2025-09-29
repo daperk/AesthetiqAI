@@ -140,13 +140,20 @@ export async function createConnectAccount(organization: {
 
 export async function createAccountLink(accountId: string, organizationId: string): Promise<Stripe.AccountLink> {
   if (!stripe) throw new Error("Stripe not configured");
-  // Use Replit public URL instead of localhost for development
-  const baseUrl = process.env.FRONTEND_URL || process.env.REPL_SLUG ? 
-    `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER || 'replit'}.repl.co` : 
-    'http://localhost:5000';
+  
+  // Build the correct base URL for Replit environment
+  let baseUrl: string;
+  if (process.env.FRONTEND_URL) {
+    baseUrl = process.env.FRONTEND_URL;
+  } else if (process.env.REPL_SLUG) {
+    // Use the modern Replit domain format
+    baseUrl = `https://${process.env.REPL_SLUG}--${process.env.REPL_OWNER || 'replit'}.replit.app`;
+  } else {
+    baseUrl = 'http://localhost:5000';
+  }
   
   const refreshUrl = `${baseUrl}/clinic/payment-setup?refresh=true&org=${organizationId}`;
-  const returnUrl = `${baseUrl}/clinic/payment-setup?success=true&org=${organizationId}`;
+  const returnUrl = `${baseUrl}/clinic/setup?success=true&org=${organizationId}`;
   
   return await stripe.accountLinks.create({
     account: accountId,
