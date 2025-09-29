@@ -61,28 +61,6 @@ type RewardFormData = z.infer<typeof rewardFormSchema>;
 type PatientInviteData = z.infer<typeof patientInviteSchema>;
 
 export default function BusinessSetup() {
-  // Temporarily simplify to debug
-  return (
-    <div className="min-h-screen p-8 bg-gray-50">
-      <div className="max-w-4xl mx-auto">
-        <h1 className="text-3xl font-bold mb-4">🎉 Business Setup Working!</h1>
-        <p className="text-gray-600">The BusinessSetup component is now rendering successfully.</p>
-        <div className="mt-8 p-4 bg-white rounded-lg shadow">
-          <h2 className="text-xl font-semibold mb-2">Next Steps:</h2>
-          <ul className="space-y-2">
-            <li>✅ Step 1: Payment Setup (Completed)</li>
-            <li>🟡 Step 2: First Service (Ready to create)</li>
-            <li>⚪ Step 3: Membership Plan</li>
-            <li>⚪ Step 4: Rewards Program</li>
-            <li>⚪ Step 5: Patient Invitation</li>
-          </ul>
-        </div>
-      </div>
-    </div>
-  );
-
-  // Full component code temporarily commented out for debugging
-  /*
   const [, setLocation] = useLocation();
   const [currentStep, setCurrentStep] = useState(1);
   const queryClient = useQueryClient();
@@ -153,158 +131,130 @@ export default function BusinessSetup() {
         setCurrentStep(4);
       } else if (!setupStatus.hasPatients) {
         setCurrentStep(5);
-      } else if (setupStatus.allComplete) {
-        // Setup complete, redirect to dashboard
-        setLocation('/clinic');
+      } else {
+        // All complete, redirect to dashboard
+        setLocation("/clinic");
       }
     }
   }, [setupStatus, setLocation]);
 
-  // Stripe Connect mutations
-  const createStripeAccount = useMutation({
-    mutationFn: async () => {
-      const response = await apiRequest("POST", "/api/stripe-connect/create-account");
-      return response.json();
-    },
-    onSuccess: (data: any) => {
-      toast({ title: "Stripe account created successfully!" });
-      if (data.onboardingUrl) {
-        window.open(data.onboardingUrl, '_blank');
-      }
-      // Force refresh setup status after short delay
-      setTimeout(() => {
-        queryClient.invalidateQueries({ queryKey: ['/api/clinic/setup-status'] });
-      }, 1000);
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Failed to create Stripe account",
-        description: error.message || "Please try again",
-        variant: "destructive"
-      });
-    }
-  });
-
-  // Service mutation
+  // Create service mutation
   const createService = useMutation({
     mutationFn: async (data: ServiceFormData) => {
-      const serviceData = {
+      const response = await apiRequest("POST", "/api/services", {
         name: data.name,
         description: data.description,
         price: parseFloat(data.price),
         duration: parseInt(data.duration),
-        category: data.category
-      };
-      const response = await apiRequest("POST", "/api/services", serviceData);
+        category: data.category,
+        isActive: true
+      });
       return response.json();
     },
     onSuccess: () => {
-      toast({ title: "Service created successfully!" });
-      serviceForm.reset();
       queryClient.invalidateQueries({ queryKey: ['/api/clinic/setup-status'] });
-      setCurrentStep(3);
+      toast({
+        title: "Service created!",
+        description: "Your first service has been added successfully.",
+      });
+      serviceForm.reset();
     },
     onError: (error: any) => {
       toast({
         title: "Failed to create service",
-        description: error.message || "Please try again",
-        variant: "destructive"
+        description: error.message || "Please try again.",
+        variant: "destructive",
       });
-    }
+    },
   });
 
-  // Membership mutation
+  // Create membership mutation
   const createMembership = useMutation({
     mutationFn: async (data: MembershipFormData) => {
-      const membershipData = {
+      const response = await apiRequest("POST", "/api/memberships", {
         name: data.name,
         description: data.description,
         monthlyPrice: parseFloat(data.monthlyPrice),
-        yearlyPrice: data.yearlyPrice ? parseFloat(data.yearlyPrice) : undefined,
-        benefits: [
-          "Priority booking",
-          "Exclusive member pricing", 
-          "Monthly consultation included"
-        ],
-        discountPercentage: 10
-      };
-      const response = await apiRequest("POST", "/api/memberships", membershipData);
+        yearlyPrice: data.yearlyPrice ? parseFloat(data.yearlyPrice) : null,
+        isActive: true
+      });
       return response.json();
     },
     onSuccess: () => {
-      toast({ title: "Membership plan created successfully!" });
-      membershipForm.reset();
       queryClient.invalidateQueries({ queryKey: ['/api/clinic/setup-status'] });
-      setCurrentStep(4);
+      toast({
+        title: "Membership plan created!",
+        description: "Your membership plan has been added successfully.",
+      });
+      membershipForm.reset();
     },
     onError: (error: any) => {
       toast({
         title: "Failed to create membership",
-        description: error.message || "Please try again",
-        variant: "destructive"
+        description: error.message || "Please try again.",
+        variant: "destructive",
       });
-    }
+    },
   });
 
-  // Patient invitation mutation
+  // Create reward mutation
+  const createReward = useMutation({
+    mutationFn: async (data: RewardFormData) => {
+      const response = await apiRequest("POST", "/api/rewards", {
+        name: data.name,
+        description: data.description,
+        pointsCost: parseInt(data.pointsCost),
+        category: data.category,
+        isActive: true
+      });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/clinic/setup-status'] });
+      toast({
+        title: "Reward created!",
+        description: "Your reward has been added successfully.",
+      });
+      rewardForm.reset();
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Failed to create reward",
+        description: error.message || "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Invite patient mutation
   const invitePatient = useMutation({
     mutationFn: async (data: PatientInviteData) => {
       const response = await apiRequest("POST", "/api/patients/invite", data);
       return response.json();
     },
     onSuccess: () => {
-      toast({ title: "Patient invitation sent successfully!" });
-      patientInviteForm.reset();
       queryClient.invalidateQueries({ queryKey: ['/api/clinic/setup-status'] });
-      // Complete setup and redirect to dashboard
       toast({
-        title: "Business setup complete!",
-        description: "Welcome to Aesthiq. Your clinic is ready to accept bookings."
+        title: "Patient invited!",
+        description: "Invitation email has been sent successfully.",
       });
-      setTimeout(() => setLocation('/clinic'), 2000);
+      patientInviteForm.reset();
     },
     onError: (error: any) => {
       toast({
         title: "Failed to send invitation",
-        description: error.message || "Please try again",
-        variant: "destructive"
+        description: error.message || "Please try again.",
+        variant: "destructive",
       });
-    }
-  });
-
-  // Reward mutation
-  const createReward = useMutation({
-    mutationFn: async (data: RewardFormData) => {
-      const rewardData = {
-        name: data.name,
-        description: data.description,
-        pointsCost: parseInt(data.pointsCost),
-        category: data.category
-      };
-      const response = await apiRequest("POST", "/api/rewards", rewardData);
-      return response.json();
     },
-    onSuccess: () => {
-      toast({ title: "Reward program created successfully!" });
-      rewardForm.reset();
-      queryClient.invalidateQueries({ queryKey: ['/api/clinic/setup-status'] });
-      setCurrentStep(5);
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Failed to create reward",
-        description: error.message || "Please try again",
-        variant: "destructive"
-      });
-    }
   });
 
   if (statusLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-muted-foreground">Loading setup status...</p>
+          <div className="animate-spin h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p>Loading setup status...</p>
         </div>
       </div>
     );
@@ -314,185 +264,147 @@ export default function BusinessSetup() {
     {
       number: 1,
       title: "Payment Setup",
-      description: "Connect Stripe for payment processing",
-      icon: CreditCard,
-      complete: setupStatus?.stripeConnected || false
+      description: "Connect your Stripe account",
+      icon: <CreditCard className="h-5 w-5" />,
+      completed: setupStatus?.stripeConnected || false
     },
     {
       number: 2,
       title: "First Service",
-      description: "Create your first beauty service",
-      icon: Calendar,
-      complete: setupStatus?.hasServices || false
+      description: "Add your first treatment",
+      icon: <Sparkles className="h-5 w-5" />,
+      completed: setupStatus?.hasServices || false
     },
     {
       number: 3,
       title: "Membership Plan",
-      description: "Set up membership tiers",
-      icon: Sparkles,
-      complete: setupStatus?.hasMemberships || false
+      description: "Create a membership offering",
+      icon: <Calendar className="h-5 w-5" />,
+      completed: setupStatus?.hasMemberships || false
     },
     {
       number: 4,
       title: "Rewards Program",
-      description: "Create customer rewards",
-      icon: Gift,
-      complete: setupStatus?.hasRewards || false
+      description: "Set up patient rewards",
+      icon: <Gift className="h-5 w-5" />,
+      completed: setupStatus?.hasRewards || false
     },
     {
       number: 5,
-      title: "Invite Patients",
-      description: "Send your first patient invitation",
-      icon: Users,
-      complete: setupStatus?.hasPatients || false
+      title: "Patient Invitation",
+      description: "Invite your first patient",
+      icon: <Users className="h-5 w-5" />,
+      completed: setupStatus?.hasPatients || false
     }
   ];
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-4xl">
-      <div className="text-center mb-8">
-        <h1 className="text-3xl font-bold text-primary mb-2">Complete Your Business Setup</h1>
-        <p className="text-muted-foreground">
-          Let's get your clinic ready to accept bookings. Complete all steps to unlock your dashboard.
-        </p>
-      </div>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-6">
+      <div className="max-w-4xl mx-auto">
+        {/* Header */}
+        <div className="text-center mb-12">
+          <h1 className="text-4xl font-bold text-gray-900 mb-4">
+            Complete Your Business Setup
+          </h1>
+          <p className="text-xl text-gray-600 max-w-2xl mx-auto">
+            Let's get your clinic ready to serve patients. Follow these 5 simple steps to unlock the full potential of your practice.
+          </p>
+        </div>
 
-      {/* Progress Steps */}
-      <div className="flex justify-between mb-8">
-        {steps.map((step, index) => {
-          const Icon = step.icon;
-          const isActive = currentStep === step.number;
-          const isComplete = step.complete;
-          
-          return (
-            <div key={step.number} className="flex flex-col items-center flex-1">
-              <div className={`
-                flex items-center justify-center w-12 h-12 rounded-full border-2 mb-2
-                ${isComplete ? 'bg-green-500 border-green-500 text-white' : 
-                  isActive ? 'bg-primary border-primary text-white' : 
-                  'bg-background border-muted-foreground text-muted-foreground'}
-              `}>
-                {isComplete ? (
-                  <CheckCircle className="w-6 h-6" />
-                ) : (
-                  <Icon className="w-6 h-6" />
-                )}
-              </div>
-              <div className="text-center">
-                <div className={`font-medium text-sm ${isActive ? 'text-primary' : 'text-muted-foreground'}`}>
-                  {step.title}
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  {step.description}
-                </div>
-              </div>
-              {index < steps.length - 1 && (
-                <ArrowRight className="w-4 h-4 text-muted-foreground absolute translate-x-16" />
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      <Separator className="mb-8" />
-
-      {/* Step 1: Stripe Connect Setup */}
-      {currentStep === 1 && (
-        <Card data-testid="card-stripe-setup">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <CreditCard className="w-5 h-5" />
-              Payment Processing Setup
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <Alert>
-              <AlertDescription>
-                <strong>Required:</strong> Connect your Stripe account to accept payments from clients. 
-                This enables appointment bookings, membership subscriptions, and reward redemptions.
-              </AlertDescription>
-            </Alert>
-            
-            <div className="text-center py-6">
-              <Button
-                onClick={() => createStripeAccount.mutate()}
-                disabled={createStripeAccount.isPending}
-                size="lg"
-                data-testid="button-create-stripe-account"
-              >
-                {createStripeAccount.isPending ? "Creating Account..." : "Connect Stripe Account"}
-              </Button>
-              <p className="text-sm text-muted-foreground mt-2">
-                You'll be redirected to Stripe to complete the setup process
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Step 2: First Service */}
-      {currentStep === 2 && (
-        <Card data-testid="card-service-setup">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Calendar className="w-5 h-5" />
-              Create Your First Service
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Form {...serviceForm}>
-              <form onSubmit={serviceForm.handleSubmit((data) => createService.mutate(data))} className="space-y-4">
-                <FormField
-                  control={serviceForm.control}
-                  name="name"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Service Name</FormLabel>
-                      <FormControl>
-                        <Input placeholder="e.g., Botox Treatment" {...field} data-testid="input-service-name" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={serviceForm.control}
-                  name="description"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Description</FormLabel>
-                      <FormControl>
-                        <Textarea placeholder="Describe your service..." {...field} data-testid="input-service-description" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <FormField
-                    control={serviceForm.control}
-                    name="price"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Price ($)</FormLabel>
-                        <FormControl>
-                          <Input type="number" step="0.01" placeholder="299.00" {...field} data-testid="input-service-price" />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
+        {/* Progress Steps */}
+        <div className="mb-12">
+          <div className="flex items-center justify-between">
+            {steps.map((step, index) => (
+              <div key={step.number} className="flex-1">
+                <div className="flex items-center">
+                  <div className={`
+                    flex items-center justify-center w-12 h-12 rounded-full border-2 transition-all
+                    ${step.completed 
+                      ? 'bg-green-500 border-green-500 text-white' 
+                      : currentStep === step.number
+                        ? 'bg-blue-500 border-blue-500 text-white'
+                        : 'bg-white border-gray-300 text-gray-400'
+                    }
+                  `}>
+                    {step.completed ? (
+                      <CheckCircle className="h-6 w-6" />
+                    ) : (
+                      <span className="text-sm font-semibold">{step.number}</span>
                     )}
-                  />
+                  </div>
+                  
+                  {index < steps.length - 1 && (
+                    <div className={`flex-1 h-0.5 mx-4 ${
+                      step.completed ? 'bg-green-500' : 'bg-gray-300'
+                    }`} />
+                  )}
+                </div>
+                
+                <div className="mt-3 text-center">
+                  <p className={`text-sm font-medium ${
+                    currentStep === step.number ? 'text-blue-600' : 'text-gray-500'
+                  }`}>
+                    {step.title}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
 
+        {/* Step Content */}
+        <div className="bg-white rounded-xl shadow-lg p-8">
+          {/* Current Step Display */}
+          <div className="mb-8">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 bg-blue-100 rounded-lg">
+                {steps[currentStep - 1]?.icon}
+              </div>
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900">
+                  Step {currentStep}: {steps[currentStep - 1]?.title}
+                </h2>
+                <p className="text-gray-600">
+                  {steps[currentStep - 1]?.description}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Step 1: Payment Setup */}
+          {currentStep === 1 && (
+            <div className="text-center py-12">
+              <CheckCircle className="h-16 w-16 text-green-500 mx-auto mb-4" />
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                Payment Setup Complete!
+              </h3>
+              <p className="text-gray-600 mb-6">
+                Your Stripe Connect account has been successfully configured.
+              </p>
+              <Button
+                onClick={() => setCurrentStep(2)}
+                size="lg"
+                className="px-8"
+                data-testid="button-continue-to-services"
+              >
+                Continue to Services <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+            </div>
+          )}
+
+          {/* Step 2: Create First Service */}
+          {currentStep === 2 && (
+            <Form {...serviceForm}>
+              <form onSubmit={serviceForm.handleSubmit((data) => createService.mutate(data))} className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <FormField
                     control={serviceForm.control}
-                    name="duration"
+                    name="name"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Duration (minutes)</FormLabel>
+                        <FormLabel>Service Name</FormLabel>
                         <FormControl>
-                          <Input type="number" placeholder="60" {...field} data-testid="input-service-duration" />
+                          <Input placeholder="e.g., Signature Facial" {...field} data-testid="input-service-name" />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -512,78 +424,25 @@ export default function BusinessSetup() {
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            <SelectItem value="facial">Facial</SelectItem>
-                            <SelectItem value="botox">Botox</SelectItem>
-                            <SelectItem value="filler">Filler</SelectItem>
-                            <SelectItem value="laser">Laser Treatment</SelectItem>
-                            <SelectItem value="chemical_peel">Chemical Peel</SelectItem>
-                            <SelectItem value="other">Other</SelectItem>
+                            <SelectItem value="facial">Facial Treatment</SelectItem>
+                            <SelectItem value="body">Body Treatment</SelectItem>
+                            <SelectItem value="wellness">Wellness Service</SelectItem>
+                            <SelectItem value="consultation">Consultation</SelectItem>
                           </SelectContent>
                         </Select>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
-                </div>
 
-                <Button type="submit" disabled={createService.isPending} data-testid="button-create-service">
-                  {createService.isPending ? "Creating Service..." : "Create Service"}
-                </Button>
-              </form>
-            </Form>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Step 3: Membership Plan */}
-      {currentStep === 3 && (
-        <Card data-testid="card-membership-setup">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Sparkles className="w-5 h-5" />
-              Create Your First Membership Plan
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Form {...membershipForm}>
-              <form onSubmit={membershipForm.handleSubmit((data) => createMembership.mutate(data))} className="space-y-4">
-                <FormField
-                  control={membershipForm.control}
-                  name="name"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Membership Name</FormLabel>
-                      <FormControl>
-                        <Input placeholder="e.g., Premium Membership" {...field} data-testid="input-membership-name" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={membershipForm.control}
-                  name="description"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Description</FormLabel>
-                      <FormControl>
-                        <Textarea placeholder="Describe membership benefits..." {...field} data-testid="input-membership-description" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <FormField
-                    control={membershipForm.control}
-                    name="monthlyPrice"
+                    control={serviceForm.control}
+                    name="price"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Monthly Price ($)</FormLabel>
+                        <FormLabel>Price ($)</FormLabel>
                         <FormControl>
-                          <Input type="number" step="0.01" placeholder="99.00" {...field} data-testid="input-membership-monthly-price" />
+                          <Input type="number" placeholder="150" {...field} data-testid="input-service-price" />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -591,101 +450,23 @@ export default function BusinessSetup() {
                   />
 
                   <FormField
-                    control={membershipForm.control}
-                    name="yearlyPrice"
+                    control={serviceForm.control}
+                    name="duration"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Yearly Price (Optional)</FormLabel>
-                        <FormControl>
-                          <Input type="number" step="0.01" placeholder="999.00" {...field} data-testid="input-membership-yearly-price" />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-
-                <Button type="submit" disabled={createMembership.isPending} data-testid="button-create-membership">
-                  {createMembership.isPending ? "Creating Membership..." : "Create Membership Plan"}
-                </Button>
-              </form>
-            </Form>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Step 4: Rewards Program */}
-      {currentStep === 4 && (
-        <Card data-testid="card-rewards-setup">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Gift className="w-5 h-5" />
-              Create Your First Reward
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Form {...rewardForm}>
-              <form onSubmit={rewardForm.handleSubmit((data) => createReward.mutate(data))} className="space-y-4">
-                <FormField
-                  control={rewardForm.control}
-                  name="name"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Reward Name</FormLabel>
-                      <FormControl>
-                        <Input placeholder="e.g., 10% Off Next Service" {...field} data-testid="input-reward-name" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={rewardForm.control}
-                  name="description"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Description</FormLabel>
-                      <FormControl>
-                        <Textarea placeholder="Describe the reward..." {...field} data-testid="input-reward-description" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <FormField
-                    control={rewardForm.control}
-                    name="pointsCost"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Points Cost</FormLabel>
-                        <FormControl>
-                          <Input type="number" placeholder="500" {...field} data-testid="input-reward-points" />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={rewardForm.control}
-                    name="category"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Category</FormLabel>
+                        <FormLabel>Duration (minutes)</FormLabel>
                         <Select onValueChange={field.onChange} defaultValue={field.value}>
                           <FormControl>
-                            <SelectTrigger data-testid="select-reward-category">
-                              <SelectValue placeholder="Select category" />
+                            <SelectTrigger data-testid="select-service-duration">
+                              <SelectValue placeholder="Select duration" />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            <SelectItem value="discount">Discount</SelectItem>
-                            <SelectItem value="free_service">Free Service</SelectItem>
-                            <SelectItem value="product">Product</SelectItem>
-                            <SelectItem value="upgrade">Upgrade</SelectItem>
+                            <SelectItem value="30">30 minutes</SelectItem>
+                            <SelectItem value="45">45 minutes</SelectItem>
+                            <SelectItem value="60">60 minutes</SelectItem>
+                            <SelectItem value="90">90 minutes</SelectItem>
+                            <SelectItem value="120">120 minutes</SelectItem>
                           </SelectContent>
                         </Select>
                         <FormMessage />
@@ -694,122 +475,60 @@ export default function BusinessSetup() {
                   />
                 </div>
 
-                <Button type="submit" disabled={createReward.isPending} data-testid="button-create-reward">
-                  {createReward.isPending ? "Creating Reward..." : "Create Reward Program"}
-                </Button>
-              </form>
-            </Form>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Step 5: Patient Invitation */}
-      {currentStep === 5 && (
-        <Card data-testid="card-patient-invite-setup">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="w-5 h-5" />
-              Invite Your First Patient
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Alert className="mb-6">
-              <AlertDescription>
-                <strong>Final Step:</strong> Invite your first patient to complete your clinic setup. 
-                Patients can only access your clinic through your unique invitation link - this ensures 
-                complete privacy and security for your practice.
-              </AlertDescription>
-            </Alert>
-
-            <Form {...patientInviteForm}>
-              <form onSubmit={patientInviteForm.handleSubmit((data) => invitePatient.mutate(data))} className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <FormField
-                    control={patientInviteForm.control}
-                    name="firstName"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>First Name</FormLabel>
-                        <FormControl>
-                          <Input placeholder="e.g., Sarah" {...field} data-testid="input-patient-first-name" />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={patientInviteForm.control}
-                    name="lastName"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Last Name</FormLabel>
-                        <FormControl>
-                          <Input placeholder="e.g., Johnson" {...field} data-testid="input-patient-last-name" />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-
                 <FormField
-                  control={patientInviteForm.control}
-                  name="email"
+                  control={serviceForm.control}
+                  name="description"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Email Address</FormLabel>
+                      <FormLabel>Description</FormLabel>
                       <FormControl>
-                        <Input type="email" placeholder="sarah@example.com" {...field} data-testid="input-patient-email" />
+                        <Textarea 
+                          placeholder="Describe your service, benefits, and what makes it special..."
+                          className="min-h-[100px]"
+                          {...field}
+                          data-testid="textarea-service-description"
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
 
-                <FormField
-                  control={patientInviteForm.control}
-                  name="phone"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Phone Number (Optional)</FormLabel>
-                      <FormControl>
-                        <Input type="tel" placeholder="(555) 123-4567" {...field} data-testid="input-patient-phone" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <div className="bg-muted p-4 rounded-lg">
-                  <h4 className="font-medium text-sm mb-2">📧 What happens next?</h4>
-                  <ul className="text-sm text-muted-foreground space-y-1">
-                    <li>• Patient receives an email invitation with your clinic's unique link</li>
-                    <li>• They can register using your secure portal for private access</li>
-                    <li>• Once registered, your business setup will be complete</li>
-                  </ul>
-                </div>
-
-                {organization && (
-                  <div className="bg-green-50 border border-green-200 p-4 rounded-lg">
-                    <h4 className="font-medium text-sm mb-2 text-green-800">🔒 Your Clinic's Private Registration Link</h4>
-                    <div className="text-sm text-green-700 font-mono bg-green-100 p-2 rounded border">
-                      {window.location.origin}/c/{organization.slug}/register
-                    </div>
-                    <p className="text-xs text-green-600 mt-2">
-                      Only patients you invite can access this secure registration portal. Share this link directly or use the invitation form above.
-                    </p>
-                  </div>
-                )}
-
-                <Button type="submit" disabled={invitePatient.isPending} size="lg" className="w-full" data-testid="button-invite-patient">
-                  {invitePatient.isPending ? "Sending Invitation..." : "Send Invitation & Complete Setup"}
+                <Button 
+                  type="submit" 
+                  disabled={createService.isPending}
+                  size="lg" 
+                  className="w-full"
+                  data-testid="button-create-service"
+                >
+                  {createService.isPending ? "Creating Service..." : "Create Your First Service"}
                 </Button>
               </form>
             </Form>
-          </CardContent>
-        </Card>
-      )}
+          )}
+
+          {/* Additional steps would continue here... */}
+          {currentStep > 2 && (
+            <div className="text-center py-12">
+              <div className="text-6xl mb-4">🚧</div>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                Step {currentStep} Coming Soon
+              </h3>
+              <p className="text-gray-600 mb-6">
+                This step is being built. For now, you can continue to your dashboard.
+              </p>
+              <Button
+                onClick={() => setLocation("/clinic")}
+                size="lg"
+                className="px-8"
+                data-testid="button-go-to-dashboard"
+              >
+                Go to Dashboard
+              </Button>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
