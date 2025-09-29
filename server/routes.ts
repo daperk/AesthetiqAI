@@ -2919,7 +2919,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Subscribe to a plan
   app.post("/api/subscription/subscribe", requireAuth, async (req, res) => {
     try {
-      const { planId, billingCycle } = req.body;
+      const { planId, billingCycle, paymentMethodId } = req.body;
       
       if (!planId || !billingCycle) {
         return res.status(400).json({ message: "Plan ID and billing cycle are required" });
@@ -2960,6 +2960,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         await storage.updateOrganization(organizationId, {
           stripeCustomerId: customerId
         });
+      }
+
+      // If payment method is provided, attach it to customer
+      if (paymentMethodId) {
+        await stripeService.attachPaymentMethodToCustomer(paymentMethodId, customerId, true);
       }
 
       // Create subscription on platform account with 30-day trial

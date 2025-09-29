@@ -50,69 +50,108 @@ export default function Navigation() {
             </Link>
             
             <div className="hidden md:flex items-center space-x-6">
-              <Link
-                href="/#features"
-                className={`text-muted-foreground hover:text-foreground transition-colors ${
-                  isActive("/#features") ? "text-primary" : ""
-                }`}
-                data-testid="link-features"
-              >
-                Features
-              </Link>
-              <Link
-                href="/#pricing"
-                className={`text-muted-foreground hover:text-foreground transition-colors ${
-                  isActive("/#pricing") ? "text-primary" : ""
-                }`}
-                data-testid="link-pricing"
-              >
-                Pricing
-              </Link>
-              <Link
-                href="/#contact"
-                className={`text-muted-foreground hover:text-foreground transition-colors ${
-                  isActive("/#contact") ? "text-primary" : ""
-                }`}
-                data-testid="link-contact"
-              >
-                Contact
-              </Link>
-              
-              {user && (
-                <DropdownMenu>
-                  <DropdownMenuTrigger className="text-muted-foreground hover:text-foreground transition-colors flex items-center space-x-1" data-testid="dropdown-dashboard">
-                    <span>Dashboard</span>
-                    <ChevronDown className="w-4 h-4" />
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent className="w-64">
-                    {user.role === "super_admin" && (
-                      <DropdownMenuItem asChild>
-                        <Link href="/super-admin" className="flex flex-col items-start" data-testid="link-super-admin">
-                          <div className="font-medium text-foreground">Super Admin HQ</div>
-                          <div className="text-sm text-muted-foreground">Platform management</div>
-                        </Link>
-                      </DropdownMenuItem>
-                    )}
-                    
-                    {(user.role === "clinic_admin" || user.role === "staff") && (
-                      <DropdownMenuItem asChild>
-                        <Link href="/clinic" className="flex flex-col items-start" data-testid="link-clinic-dashboard">
-                          <div className="font-medium text-foreground">Clinic Dashboard</div>
-                          <div className="text-sm text-muted-foreground">Practice management</div>
-                        </Link>
-                      </DropdownMenuItem>
-                    )}
-                    
-                    {user.role === "patient" && (
-                      <DropdownMenuItem asChild>
-                        <Link href="/patient" className="flex flex-col items-start" data-testid="link-patient-portal">
-                          <div className="font-medium text-foreground">Patient Portal</div>
-                          <div className="text-sm text-muted-foreground">Client experience</div>
-                        </Link>
-                      </DropdownMenuItem>
-                    )}
-                  </DropdownMenuContent>
-                </DropdownMenu>
+              {!user ? (
+                // Marketing navigation for guests
+                <>
+                  <Link
+                    href="/#features"
+                    className={`text-muted-foreground hover:text-foreground transition-colors ${
+                      isActive("/#features") ? "text-primary" : ""
+                    }`}
+                    data-testid="link-features"
+                  >
+                    Features
+                  </Link>
+                  <Link
+                    href="/#pricing"
+                    className={`text-muted-foreground hover:text-foreground transition-colors ${
+                      isActive("/#pricing") ? "text-primary" : ""
+                    }`}
+                    data-testid="link-pricing"
+                  >
+                    Pricing
+                  </Link>
+                  <Link
+                    href="/#contact"
+                    className={`text-muted-foreground hover:text-foreground transition-colors ${
+                      isActive("/#contact") ? "text-primary" : ""
+                    }`}
+                    data-testid="link-contact"
+                  >
+                    Contact
+                  </Link>
+                </>
+              ) : (
+                // Dashboard navigation for authenticated users
+                <>
+                  <Link
+                    href={getDashboardUrl()}
+                    className={`text-muted-foreground hover:text-foreground transition-colors ${
+                      location.startsWith(getDashboardUrl()) ? "text-primary" : ""
+                    }`}
+                    data-testid="link-main-dashboard"
+                  >
+                    Dashboard
+                  </Link>
+                  
+                  {user.role === "super_admin" && (
+                    <Link
+                      href="/super-admin/analytics"
+                      className={`text-muted-foreground hover:text-foreground transition-colors ${
+                        isActive("/super-admin/analytics") ? "text-primary" : ""
+                      }`}
+                      data-testid="link-analytics"
+                    >
+                      Analytics
+                    </Link>
+                  )}
+                  
+                  {(user.role === "clinic_admin" || user.role === "staff") && (
+                    <>
+                      <Link
+                        href="/clinic/appointments"
+                        className={`text-muted-foreground hover:text-foreground transition-colors ${
+                          isActive("/clinic/appointments") ? "text-primary" : ""
+                        }`}
+                        data-testid="link-appointments"
+                      >
+                        Appointments
+                      </Link>
+                      <Link
+                        href="/clinic/clients"
+                        className={`text-muted-foreground hover:text-foreground transition-colors ${
+                          isActive("/clinic/clients") ? "text-primary" : ""
+                        }`}
+                        data-testid="link-clients"
+                      >
+                        Clients
+                      </Link>
+                    </>
+                  )}
+                  
+                  {user.role === "patient" && (
+                    <>
+                      <Link
+                        href="/patient/appointments"
+                        className={`text-muted-foreground hover:text-foreground transition-colors ${
+                          isActive("/patient/appointments") ? "text-primary" : ""
+                        }`}
+                        data-testid="link-my-appointments"
+                      >
+                        My Appointments
+                      </Link>
+                      <Link
+                        href="/patient/membership"
+                        className={`text-muted-foreground hover:text-foreground transition-colors ${
+                          isActive("/patient/membership") ? "text-primary" : ""
+                        }`}
+                        data-testid="link-membership"
+                      >
+                        Membership
+                      </Link>
+                    </>
+                  )}
+                </>
               )}
             </div>
           </div>
@@ -182,51 +221,33 @@ export default function Navigation() {
         {isMobileMenuOpen && (
           <div className="md:hidden mt-4 pb-4 border-t border-border">
             <div className="flex flex-col space-y-4 pt-4">
-              <Link
-                href="/#features"
-                className="text-muted-foreground hover:text-foreground transition-colors"
-                onClick={() => setIsMobileMenuOpen(false)}
-                data-testid="mobile-link-features"
-              >
-                Features
-              </Link>
-              <Link
-                href="/#pricing"
-                className="text-muted-foreground hover:text-foreground transition-colors"
-                onClick={() => setIsMobileMenuOpen(false)}
-                data-testid="mobile-link-pricing"
-              >
-                Pricing
-              </Link>
-              <Link
-                href="/#contact"
-                className="text-muted-foreground hover:text-foreground transition-colors"
-                onClick={() => setIsMobileMenuOpen(false)}
-                data-testid="mobile-link-contact"
-              >
-                Contact
-              </Link>
-              
-              {user ? (
+              {!user ? (
+                // Marketing navigation for guests
                 <>
                   <Link
-                    href={getDashboardUrl()}
+                    href="/#features"
                     className="text-muted-foreground hover:text-foreground transition-colors"
                     onClick={() => setIsMobileMenuOpen(false)}
-                    data-testid="mobile-link-dashboard"
+                    data-testid="mobile-link-features"
                   >
-                    Dashboard
+                    Features
                   </Link>
-                  <button
-                    onClick={handleLogout}
-                    className="text-left text-muted-foreground hover:text-foreground transition-colors"
-                    data-testid="mobile-button-logout"
+                  <Link
+                    href="/#pricing"
+                    className="text-muted-foreground hover:text-foreground transition-colors"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    data-testid="mobile-link-pricing"
                   >
-                    Sign Out
-                  </button>
-                </>
-              ) : (
-                <>
+                    Pricing
+                  </Link>
+                  <Link
+                    href="/#contact"
+                    className="text-muted-foreground hover:text-foreground transition-colors"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    data-testid="mobile-link-contact"
+                  >
+                    Contact
+                  </Link>
                   <Link
                     href="/login"
                     className="text-muted-foreground hover:text-foreground transition-colors"
@@ -244,6 +265,79 @@ export default function Navigation() {
                       Start Free Trial
                     </Button>
                   </Link>
+                </>
+              ) : (
+                // Dashboard navigation for authenticated users
+                <>
+                  <Link
+                    href={getDashboardUrl()}
+                    className="text-muted-foreground hover:text-foreground transition-colors"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    data-testid="mobile-link-dashboard"
+                  >
+                    Dashboard
+                  </Link>
+                  
+                  {user.role === "super_admin" && (
+                    <Link
+                      href="/super-admin/analytics"
+                      className="text-muted-foreground hover:text-foreground transition-colors"
+                      onClick={() => setIsMobileMenuOpen(false)}
+                      data-testid="mobile-link-analytics"
+                    >
+                      Analytics
+                    </Link>
+                  )}
+                  
+                  {(user.role === "clinic_admin" || user.role === "staff") && (
+                    <>
+                      <Link
+                        href="/clinic/appointments"
+                        className="text-muted-foreground hover:text-foreground transition-colors"
+                        onClick={() => setIsMobileMenuOpen(false)}
+                        data-testid="mobile-link-appointments"
+                      >
+                        Appointments
+                      </Link>
+                      <Link
+                        href="/clinic/clients"
+                        className="text-muted-foreground hover:text-foreground transition-colors"
+                        onClick={() => setIsMobileMenuOpen(false)}
+                        data-testid="mobile-link-clients"
+                      >
+                        Clients
+                      </Link>
+                    </>
+                  )}
+                  
+                  {user.role === "patient" && (
+                    <>
+                      <Link
+                        href="/patient/appointments"
+                        className="text-muted-foreground hover:text-foreground transition-colors"
+                        onClick={() => setIsMobileMenuOpen(false)}
+                        data-testid="mobile-link-my-appointments"
+                      >
+                        My Appointments
+                      </Link>
+                      <Link
+                        href="/patient/membership"
+                        className="text-muted-foreground hover:text-foreground transition-colors"
+                        onClick={() => setIsMobileMenuOpen(false)}
+                        data-testid="mobile-link-membership"
+                      >
+                        Membership
+                      </Link>
+                    </>
+                  )}
+                  
+                  <button
+                    onClick={handleLogout}
+                    className="text-left text-muted-foreground hover:text-foreground transition-colors"
+                    data-testid="mobile-button-logout"
+                  >
+                    Sign Out
+                  </button>
                 </>
               )}
             </div>

@@ -45,6 +45,30 @@ export async function createSetupIntent(customerId: string): Promise<Stripe.Setu
   });
 }
 
+export async function attachPaymentMethodToCustomer(
+  paymentMethodId: string,
+  customerId: string,
+  setAsDefault: boolean = true
+): Promise<Stripe.PaymentMethod> {
+  if (!stripe) throw new Error("Stripe not configured");
+  
+  // Attach payment method to customer
+  const paymentMethod = await stripe.paymentMethods.attach(paymentMethodId, {
+    customer: customerId,
+  });
+
+  // Set as default payment method if requested
+  if (setAsDefault) {
+    await stripe.customers.update(customerId, {
+      invoice_settings: {
+        default_payment_method: paymentMethodId,
+      },
+    });
+  }
+
+  return paymentMethod;
+}
+
 export async function createSubscription(
   customerId: string,
   priceId: string,
