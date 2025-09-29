@@ -1,11 +1,13 @@
 import Stripe from "stripe";
 
-// Use the correct secret key with fallback for swapped environment variables
-const secretKey = process.env.STRIPE_SECRET_KEY || process.env.VITE_STRIPE_PUBLIC_KEY;
+// Use only the secret key - never use publishable key for server-side calls
+const secretKey = process.env.STRIPE_SECRET_KEY;
 if (!secretKey) {
-  console.error("⚠️ [STRIPE] No secret key found in STRIPE_SECRET_KEY or VITE_STRIPE_PUBLIC_KEY");
+  console.error("⚠️ [STRIPE] STRIPE_SECRET_KEY environment variable is required");
 } else if (secretKey.startsWith('pk_')) {
-  console.warn("⚠️ [STRIPE] Warning: Using publishable key as secret key (environment variables may be swapped)");
+  console.error("⚠️ [STRIPE] CRITICAL: STRIPE_SECRET_KEY contains a publishable key (starts with pk_). Server-side operations require a secret key (starts with sk_)");
+} else {
+  console.log("✅ [STRIPE] Secret key configured correctly");
 }
 
 const stripe = secretKey 
