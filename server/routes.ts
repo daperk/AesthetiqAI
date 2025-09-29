@@ -189,8 +189,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const hasServices = services.length > 0;
       const memberships = await storage.getMembershipTiersByOrganization(organizationId);
       const hasMemberships = memberships.length > 0;
-      const rewards = await storage.getRewardsByOrganization(organizationId);
-      const hasRewards = rewards.length > 0;
+      const rewardOptions = await storage.getRewardOptionsByOrganization(organizationId);
+      const hasRewards = rewardOptions.length > 0;
       
       const allComplete = stripeConnected && hasActiveSubscription && hasServices && hasMemberships && hasRewards;
 
@@ -2125,9 +2125,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const memberships = await storage.getMembershipTiersByOrganization(organizationId);
       const hasMemberships = memberships.length > 0;
 
-      // Check if they have rewards programs
-      const rewards = await storage.getRewardsByOrganization(organizationId);
-      const hasRewards = rewards.length > 0;
+      // Check if they have reward options (catalog)
+      const rewardOptions = await storage.getRewardOptionsByOrganization(organizationId);
+      const hasRewards = rewardOptions.length > 0;
 
       // Check if they have invited patients (new requirement)
       const clients = await storage.getClientsByOrganization(organizationId);
