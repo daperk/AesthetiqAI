@@ -214,6 +214,21 @@ export const rewards = pgTable("rewards", {
   createdAt: timestamp("created_at").default(sql`now()`)
 });
 
+export const rewardOptions = pgTable("reward_options", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: uuid("organization_id").notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  pointsCost: integer("points_cost").notNull(),
+  discountValue: decimal("discount_value", { precision: 10, scale: 2 }),
+  category: text("category").notNull(),
+  stripeProductId: text("stripe_product_id"),
+  stripePriceId: text("stripe_price_id"),
+  isActive: boolean("is_active").default(true),
+  sortOrder: integer("sort_order").default(0),
+  createdAt: timestamp("created_at").default(sql`now()`)
+});
+
 export const transactions = pgTable("transactions", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
   organizationId: uuid("organization_id").notNull(),
@@ -483,6 +498,11 @@ export const insertRewardSchema = createInsertSchema(rewards).omit({
   createdAt: true
 });
 
+export const insertRewardOptionSchema = createInsertSchema(rewardOptions).omit({
+  id: true,
+  createdAt: true
+});
+
 export const insertTransactionSchema = createInsertSchema(transactions).omit({
   id: true,
   createdAt: true
@@ -546,6 +566,8 @@ export type Membership = typeof memberships.$inferSelect;
 export type InsertMembership = z.infer<typeof insertMembershipSchema>;
 export type Reward = typeof rewards.$inferSelect;
 export type InsertReward = z.infer<typeof insertRewardSchema>;
+export type RewardOption = typeof rewardOptions.$inferSelect;
+export type InsertRewardOption = z.infer<typeof insertRewardOptionSchema>;
 export type Transaction = typeof transactions.$inferSelect;
 export type InsertTransaction = z.infer<typeof insertTransactionSchema>;
 export type AddOn = typeof addOns.$inferSelect;

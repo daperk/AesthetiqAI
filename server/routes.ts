@@ -53,7 +53,7 @@ import * as openaiService from "./services/openai";
 import { 
   insertUserSchema, insertOrganizationSchema, insertStaffSchema, insertClientSchema,
   insertAppointmentSchema, insertServiceSchema, insertMembershipSchema, insertMembershipTierSchema,
-  insertRewardSchema, insertTransactionSchema, insertAuditLogSchema, insertUsageLogSchema, 
+  insertRewardSchema, insertRewardOptionSchema, insertTransactionSchema, insertAuditLogSchema, insertUsageLogSchema, 
   insertAiInsightSchema, type User
 } from "@shared/schema";
 import { z } from "zod";
@@ -1562,6 +1562,85 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Invalid data", errors: error.errors });
       }
       res.status(500).json({ message: "Failed to create reward" });
+    }
+  });
+
+  // Reward Options API (catalog items)
+  app.get("/api/reward-options", requireAuth, async (req, res) => {
+    try {
+      const orgId = await getUserOrganizationId(req.user!);
+      if (!orgId) {
+        return res.status(400).json({ message: "User organization not found" });
+      }
+
+      const options = await storage.getRewardOptionsByOrganization(orgId);
+      res.json(options);
+    } catch (error) {
+      console.error('Error fetching reward options:', error);
+      res.status(500).json({ message: "Failed to fetch reward options" });
+    }
+  });
+
+  app.post("/api/reward-options", requireAuth, async (req, res) => {
+    try {
+      const orgId = await getUserOrganizationId(req.user!);
+      if (!orgId) {
+        return res.status(400).json({ message: "User organization not found" });
+      }
+
+      const optionData = insertRewardOptionSchema.parse({
+        ...req.body,
+        organizationId: orgId
+      });
+
+      // Get organization and Stripe Connect account
+      const organization = await storage.getOrganization(orgId);
+      if (!organization) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+
+      const stripeConnectAccountId = organization.stripeConnectAccountId;
+
+      // Create Stripe product on Connect account if available (optional for rewards)
+      let stripeProductId, stripePriceId;
+      if (stripeConnectAccountId && optionData.discountValue) {
+        try {
+          console.log(`🔄 [STRIPE] Creating reward option product on Connect account ${stripeConnectAccountId} for: ${optionData.name}`);
+          
+          const product = await stripeService.createProduct({
+            name: `${optionData.name} Reward`,
+            description: optionData.description || `Reward: ${optionData.name}`,
+            connectAccountId: stripeConnectAccountId
+          });
+
+          // Create price for the discount value (one-time)
+          stripePriceId = await stripeService.createOneTimePrice({
+            productId: product.id,
+            amount: Math.round(parseFloat(optionData.discountValue.toString()) * 100),
+            connectAccountId: stripeConnectAccountId
+          });
+
+          stripeProductId = product.id;
+          console.log(`✅ [STRIPE] Created reward product ${product.id} and price ${stripePriceId} on Connect account for: ${optionData.name}`);
+        } catch (stripeError) {
+          console.error('⚠️ [STRIPE] Failed to create reward product on Connect account (continuing without Stripe):', stripeError);
+        }
+      }
+
+      const rewardOption = await storage.createRewardOption({
+        ...optionData,
+        stripeProductId,
+        stripePriceId
+      });
+
+      await auditLog(req, "create", "reward_option", rewardOption.id, optionData);
+      res.json(rewardOption);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      console.error('Error creating reward option:', error);
+      res.status(500).json({ message: "Failed to create reward option" });
     }
   });
 

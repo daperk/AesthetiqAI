@@ -1,12 +1,13 @@
 import {
   users, organizations, subscriptionPlans, locations, staff, clients, services,
-  appointments, memberships, membershipTiers, rewards, transactions, addOns, organizationAddOns,
+  appointments, memberships, membershipTiers, rewards, rewardOptions, transactions, addOns, organizationAddOns,
   usageLogs, aiInsights, notifications, auditLogs, fileStorage, featureFlags,
   type User, type InsertUser, type Organization, type InsertOrganization,
   type SubscriptionPlan, type InsertSubscriptionPlan, type Location, type InsertLocation,
   type Staff, type InsertStaff, type Client, type InsertClient, type Service, type InsertService,
   type Appointment, type InsertAppointment, type Membership, type InsertMembership,
-  type MembershipTier, type InsertMembershipTier, type Reward, type InsertReward, 
+  type MembershipTier, type InsertMembershipTier, type Reward, type InsertReward,
+  type RewardOption, type InsertRewardOption,
   type Transaction, type InsertTransaction, type AddOn, type InsertAddOn, type UsageLog, type InsertUsageLog,
   type AiInsight, type InsertAiInsight, type Notification, type InsertNotification,
   type AuditLog, type InsertAuditLog, type FileStorage, type InsertFileStorage,
@@ -103,6 +104,12 @@ export interface IStorage {
   getRewardsByOrganization(organizationId: string): Promise<Reward[]>;
   getClientRewardBalance(clientId: string): Promise<number>;
   createReward(reward: InsertReward): Promise<Reward>;
+
+  // Reward Options
+  getRewardOptionsByOrganization(organizationId: string): Promise<RewardOption[]>;
+  getRewardOptionById(id: string): Promise<RewardOption | undefined>;
+  createRewardOption(rewardOption: InsertRewardOption): Promise<RewardOption>;
+  updateRewardOption(id: string, updates: Partial<InsertRewardOption>): Promise<RewardOption>;
 
   // Transactions
   getTransactionsByOrganization(organizationId: string): Promise<Transaction[]>;
@@ -514,6 +521,31 @@ export class DatabaseStorage implements IStorage {
   async createReward(insertReward: InsertReward): Promise<Reward> {
     const [reward] = await db.insert(rewards).values(insertReward).returning();
     return reward;
+  }
+
+  // Reward Options
+  async getRewardOptionsByOrganization(organizationId: string): Promise<RewardOption[]> {
+    return await db.select().from(rewardOptions)
+      .where(and(eq(rewardOptions.organizationId, organizationId), eq(rewardOptions.isActive, true)))
+      .orderBy(asc(rewardOptions.sortOrder), asc(rewardOptions.pointsCost));
+  }
+
+  async getRewardOptionById(id: string): Promise<RewardOption | undefined> {
+    const [option] = await db.select().from(rewardOptions).where(eq(rewardOptions.id, id));
+    return option;
+  }
+
+  async createRewardOption(insertRewardOption: InsertRewardOption): Promise<RewardOption> {
+    const [option] = await db.insert(rewardOptions).values(insertRewardOption).returning();
+    return option;
+  }
+
+  async updateRewardOption(id: string, updates: Partial<InsertRewardOption>): Promise<RewardOption> {
+    const [updated] = await db.update(rewardOptions)
+      .set(updates)
+      .where(eq(rewardOptions.id, id))
+      .returning();
+    return updated;
   }
 
   // Transactions
