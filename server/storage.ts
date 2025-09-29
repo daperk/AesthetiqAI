@@ -236,12 +236,6 @@ export class DatabaseStorage implements IStorage {
       .orderBy(asc(locations.name));
   }
 
-  async getAllLocations(): Promise<Location[]> {
-    return await db.select().from(locations)
-      .where(eq(locations.isActive, true))
-      .orderBy(asc(locations.name));
-  }
-
   async getLocation(id: string): Promise<Location | undefined> {
     const [location] = await db.select().from(locations).where(eq(locations.id, id));
     return location || undefined;
@@ -293,8 +287,8 @@ export class DatabaseStorage implements IStorage {
       .orderBy(asc(staff.title));
     
     // If service has specific staff assigned, filter by those
-    if (service.availableStaffIds && service.availableStaffIds.length > 0) {
-      staffMembers = staffMembers.filter(s => service.availableStaffIds!.includes(s.id));
+    if (service.availableStaffIds && Array.isArray(service.availableStaffIds) && service.availableStaffIds.length > 0) {
+      staffMembers = staffMembers.filter(s => (service.availableStaffIds as string[]).includes(s.id));
     }
     
     return staffMembers;
@@ -630,31 +624,6 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(locations)
       .where(eq(locations.isActive, true))
       .orderBy(asc(locations.name));
-  }
-
-  async getServicesByLocation(locationId: string): Promise<Service[]> {
-    return await db.select().from(services)
-      .where(and(eq(services.organizationId, locationId), eq(services.isActive, true)))
-      .orderBy(asc(services.name));
-  }
-
-  async getStaffByLocation(locationId: string): Promise<Staff[]> {
-    return await db.select().from(staff)
-      .where(and(
-        eq(staff.isActive, true),
-        sql`${staff.locationIds}::jsonb ? ${locationId}`
-      ))
-      .orderBy(asc(staff.title));
-  }
-
-  async getStaffByLocationAndService(locationId: string, serviceId: string): Promise<Staff[]> {
-    return await db.select().from(staff)
-      .where(and(
-        eq(staff.isActive, true),
-        sql`${staff.locationIds}::jsonb ? ${locationId}`,
-        sql`${staff.specialties}::jsonb ? ${serviceId}`
-      ))
-      .orderBy(asc(staff.title));
   }
 }
 
