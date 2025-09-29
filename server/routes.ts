@@ -2878,6 +2878,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Setup subscription plans with Stripe (Platform account)
+  app.post("/api/admin/setup-subscription-plans", requireRole("super_admin"), async (req, res) => {
+    try {
+      const plans = await storage.getSubscriptionPlans();
+      
+      for (const plan of plans) {
+        if (!plan.stripePriceIdMonthly) {
+          // Create Stripe product on platform account (no connectAccountId)
+          const product = await stripeService.createProduct({
+            name: `Aesthiq ${plan.name} Plan`,
+            description: plan.description || `${plan.name} subscription plan for Aesthiq platform`
+          });
+          
+          // Create monthly price on platform account
+          const monthlyPriceId = await stripeService.createPrice({
+            productId: product.id,
+            amount: Math.round(parseFloat(plan.monthlyPrice.toString()) * 100), // Convert to cents
+            interval: 'month'
+          });
+          
+          // Create yearly price if yearlyPrice exists
+          let yearlyPriceId;
+          if (plan.yearlyPrice) {
+            yearlyPriceId = await stripeService.createPrice({
+              productId: product.id,
+              amount: Math.round(parseFloat(plan.yearlyPrice.toString()) * 100), // Convert to cents
+              interval: 'year'
+            });
+          }
+          
+          // Update plan with Stripe IDs
+          await storage.updateSubscriptionPlan(plan.id, {
+            stripePriceIdMonthly: monthlyPriceId,
+            stripePriceIdYearly: yearlyPriceId
+          });
+          
+          console.log(`✅ [STRIPE PLATFORM] Created subscription plan ${plan.name}: Product ${product.id}, Monthly Price ${monthlyPriceId}${yearlyPriceId ? `, Yearly Price ${yearlyPriceId}` : ''}`);
+        }
+      }
+      
+      res.json({ message: "Subscription plans setup complete", plans: await storage.getSubscriptionPlans() });
+    } catch (error) {
+      console.error("Setup subscription plans error:", error);
+      res.status(500).json({ message: "Failed to setup subscription plans" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

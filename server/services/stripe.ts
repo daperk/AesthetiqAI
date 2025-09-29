@@ -110,16 +110,28 @@ export async function createPrice(params: {
   amount: number; // in cents
   interval: 'month' | 'year';
   currency?: string;
+  connectAccountId?: string;
 }): Promise<string> {
   if (!stripe) throw new Error("Stripe not configured");
-  const price = await stripe.prices.create({
+  
+  const options: any = {
     product: params.productId,
     unit_amount: params.amount,
     currency: params.currency || 'usd',
     recurring: {
       interval: params.interval
     }
-  });
+  };
+  
+  // Create price on Connect account if provided
+  if (params.connectAccountId) {
+    const price = await stripe.prices.create(options, {
+      stripeAccount: params.connectAccountId
+    });
+    return price.id;
+  }
+  
+  const price = await stripe.prices.create(options);
   return price.id;
 }
 
