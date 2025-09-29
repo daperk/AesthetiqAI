@@ -36,6 +36,15 @@ export async function createCustomer(email: string, name: string, organizationId
   });
 }
 
+export async function createSetupIntent(customerId: string): Promise<Stripe.SetupIntent> {
+  if (!stripe) throw new Error("Stripe not configured");
+  return await stripe.setupIntents.create({
+    customer: customerId,
+    usage: 'off_session',
+    payment_method_types: ['card'],
+  });
+}
+
 export async function createSubscription(
   customerId: string,
   priceId: string,

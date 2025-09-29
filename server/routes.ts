@@ -2991,6 +2991,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Create setup intent for payment method collection
+  app.post("/api/stripe/setup-intent", requireAuth, async (req, res) => {
+    try {
+      const organizationId = await getUserOrganizationId(req.user!);
+      if (!organizationId) {
+        return res.status(400).json({ message: "Organization not found" });
+      }
+
+      const organization = await storage.getOrganization(organizationId);
+      if (!organization) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+
+      // Create or get Stripe customer for organization (on platform account, not Connect)
+      let customerId = organization.stripeCustomerId;
+      if (!customerId) {
+        const customer = await stripeService.createCustomer(
+          req.user!.email,
+          organization.name,
+          organizationId
+        );
+        customerId = customer.id;
+        
+        // Update organization with customer ID
+        await storage.updateOrganization(organizationId, {
+          stripeCustomerId: customerId
+        });
+      }
+
+      // Create setup intent for collecting payment method
+      const setupIntent = await stripeService.createSetupIntent(customerId);
+
+      res.json({
+        clientSecret: setupIntent.client_secret
+      });
+    } catch (error) {
+      console.error("Setup intent creation error:", error);
+      res.status(500).json({ message: "Failed to create setup intent" });
+    }
+  });
+
   // Setup subscription plans with Stripe (Platform account)
   app.post("/api/admin/setup-subscription-plans", requireRole("super_admin"), async (req, res) => {
     try {

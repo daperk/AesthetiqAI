@@ -16,6 +16,11 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { z } from "zod";
+import { loadStripe } from '@stripe/stripe-js';
+import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
+
+// Load Stripe
+const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLIC_KEY!);
 
 interface BusinessSetupStatus {
   stripeConnected: boolean;
@@ -61,11 +66,115 @@ type MembershipFormData = z.infer<typeof membershipFormSchema>;
 type RewardFormData = z.infer<typeof rewardFormSchema>;
 type PatientInviteData = z.infer<typeof patientInviteSchema>;
 
+// Payment Form Component
+interface PaymentFormProps {
+  planId: string;
+  billingCycle: 'monthly' | 'yearly';
+  planName: string;
+  price: number;
+  onSuccess: (paymentMethodId: string) => void;
+  onCancel: () => void;
+  isProcessing: boolean;
+}
+
+function PaymentForm({ planId, billingCycle, planName, price, onSuccess, onCancel, isProcessing }: PaymentFormProps) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const { toast } = useToast();
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!stripe || !elements) {
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      const { error, setupIntent } = await stripe.confirmSetup({
+        elements,
+        confirmParams: {
+          return_url: window.location.origin,
+        },
+        redirect: 'if_required',
+      });
+
+      if (error) {
+        toast({
+          title: "Payment Setup Failed",
+          description: error.message,
+          variant: "destructive",
+        });
+      } else if (setupIntent?.payment_method) {
+        onSuccess(setupIntent.payment_method as string);
+      }
+    } catch (error) {
+      toast({
+        title: "Payment Setup Failed",
+        description: "An unexpected error occurred. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <Card className="border-2 border-blue-200 bg-blue-50">
+      <CardHeader className="text-center">
+        <CardTitle className="text-2xl text-blue-800">Add Payment Method</CardTitle>
+        <p className="text-blue-700">
+          Secure your subscription to <strong>{planName}</strong> at ${price}/{billingCycle === 'monthly' ? 'month' : 'year'}
+        </p>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div className="p-4 border border-gray-200 rounded-lg bg-white">
+            <PaymentElement />
+          </div>
+          
+          <div className="flex gap-4">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onCancel}
+              disabled={isLoading || isProcessing}
+              className="flex-1"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              disabled={!stripe || isLoading || isProcessing}
+              className="flex-1 bg-blue-600 hover:bg-blue-700"
+            >
+              {isLoading || isProcessing ? "Processing..." : `Subscribe to ${planName}`}
+            </Button>
+          </div>
+        </form>
+        
+        <div className="mt-4 text-center text-sm text-gray-600">
+          <p>🔒 Your payment information is secure and encrypted</p>
+          <p>30-day free trial • Cancel anytime</p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function BusinessSetup() {
   const [, setLocation] = useLocation();
   const [currentStep, setCurrentStep] = useState(1);
   const queryClient = useQueryClient();
   const { toast } = useToast();
+
+  // Subscription and payment states
+  const [selectedPlan, setSelectedPlan] = useState<string>("");
+  const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
+  const [showPaymentForm, setShowPaymentForm] = useState(false);
+  const [clientSecret, setClientSecret] = useState<string>("");
 
   // Check for success parameter from Stripe redirect
   const urlParams = new URLSearchParams(window.location.search);
@@ -136,8 +245,6 @@ export default function BusinessSetup() {
     queryKey: ['/api/subscription-plans'],
   });
 
-  const [selectedPlan, setSelectedPlan] = useState<string>('');
-  const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
 
   // Handle successful Stripe Connect redirect
   useEffect(() => {
@@ -241,14 +348,36 @@ export default function BusinessSetup() {
     },
   });
 
-  // Subscribe to plan mutation
+  // Create setup intent for payment method collection
+  const createSetupIntent = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", "/api/stripe/setup-intent", {});
+      return response.json();
+    },
+    onSuccess: (data) => {
+      setClientSecret(data.clientSecret);
+      setShowPaymentForm(true);
+    },
+    onError: () => {
+      toast({
+        title: "Setup failed",
+        description: "There was an error setting up payment. Please try again.",
+        variant: "destructive"
+      });
+    }
+  });
+
+  // Subscribe to plan mutation with payment method
   const subscribeToPlan = useMutation({
-    mutationFn: async (data: { planId: string; billingCycle: 'monthly' | 'yearly' }) => {
+    mutationFn: async (data: { planId: string; billingCycle: 'monthly' | 'yearly'; paymentMethodId?: string }) => {
       const response = await apiRequest("POST", "/api/subscription/subscribe", data);
       return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/clinic/setup-status'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/organization'] });
+      setShowPaymentForm(false);
+      setClientSecret("");
       toast({
         title: "Subscription activated!",
         description: "Welcome to Aesthiq! Your subscription is now active.",
@@ -649,17 +778,45 @@ export default function BusinessSetup() {
                 {selectedPlan && (
                   <div className="mt-8 text-center">
                     <Button
-                      onClick={() => subscribeToPlan.mutate({ planId: selectedPlan, billingCycle })}
-                      disabled={subscribeToPlan.isPending}
+                      onClick={() => createSetupIntent.mutate()}
+                      disabled={createSetupIntent.isPending}
                       size="lg"
                       className="px-8 bg-yellow-600 hover:bg-yellow-700"
                       data-testid="button-activate-subscription"
                     >
-                      {subscribeToPlan.isPending ? "Activating..." : `Activate ${billingCycle === 'monthly' ? 'Monthly' : 'Yearly'} Subscription`}
+                      {createSetupIntent.isPending ? "Setting up..." : `Add Payment & Subscribe`}
                     </Button>
                     <p className="text-sm text-gray-600 mt-2">
-                      You can change or cancel your plan anytime from your dashboard.
+                      30-day free trial • Add payment method to activate subscription
                     </p>
+                  </div>
+                )}
+                
+                {/* Payment Form Modal */}
+                {showPaymentForm && clientSecret && selectedPlan && (
+                  <div className="mt-8">
+                    <Elements stripe={stripePromise} options={{ clientSecret }}>
+                      <PaymentForm
+                        planId={selectedPlan}
+                        billingCycle={billingCycle}
+                        planName={subscriptionPlans?.find(p => p.id === selectedPlan)?.name || ''}
+                        price={billingCycle === 'monthly' 
+                          ? subscriptionPlans?.find(p => p.id === selectedPlan)?.monthlyPrice || 0
+                          : subscriptionPlans?.find(p => p.id === selectedPlan)?.yearlyPrice || 0}
+                        onSuccess={(paymentMethodId) => {
+                          subscribeToPlan.mutate({
+                            planId: selectedPlan,
+                            billingCycle,
+                            paymentMethodId
+                          });
+                        }}
+                        onCancel={() => {
+                          setShowPaymentForm(false);
+                          setClientSecret("");
+                        }}
+                        isProcessing={subscribeToPlan.isPending}
+                      />
+                    </Elements>
                   </div>
                 )}
               </CardContent>
