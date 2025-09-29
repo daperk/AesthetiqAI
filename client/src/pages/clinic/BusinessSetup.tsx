@@ -84,9 +84,7 @@ export default function BusinessSetup() {
       name: "",
       description: "",
       monthlyPrice: "",
-      yearlyPrice: "",
-      benefits: [],
-      discountPercentage: 0
+      yearlyPrice: ""
     }
   });
 
@@ -116,7 +114,7 @@ export default function BusinessSetup() {
   });
 
   // Get organization for shareable link
-  const { data: organization } = useQuery({
+  const { data: organization } = useQuery<{ id: string; name: string; slug: string }>({
     queryKey: ['/api/organization'],
   });
 
