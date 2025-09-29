@@ -66,6 +66,10 @@ export default function BusinessSetup() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
+  // Check for success parameter from Stripe redirect
+  const urlParams = new URLSearchParams(window.location.search);
+  const isStripeSuccess = urlParams.get('success') === 'true';
+
   // Forms
   const serviceForm = useForm<ServiceFormData>({
     resolver: zodResolver(serviceFormSchema),
@@ -117,6 +121,22 @@ export default function BusinessSetup() {
   const { data: organization } = useQuery<{ id: string; name: string; slug: string }>({
     queryKey: ['/api/organization'],
   });
+
+  // Handle successful Stripe Connect redirect
+  useEffect(() => {
+    if (isStripeSuccess) {
+      toast({
+        title: "Payment Setup Complete!",
+        description: "Your Stripe Connect account has been successfully configured.",
+      });
+      
+      // Refresh setup status to get updated Stripe connection
+      queryClient.invalidateQueries({ queryKey: ['/api/clinic/setup-status'] });
+      
+      // Clean up URL parameters
+      window.history.replaceState({}, '', '/clinic/setup');
+    }
+  }, [isStripeSuccess, toast, queryClient]);
 
   // Set current step based on setup status
   useEffect(() => {
