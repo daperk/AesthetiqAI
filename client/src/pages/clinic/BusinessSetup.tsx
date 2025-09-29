@@ -143,7 +143,7 @@ export default function BusinessSetup() {
   // Stripe Connect mutations
   const createStripeAccount = useMutation({
     mutationFn: async () => {
-      const response = await apiRequest("/api/stripe-connect/create-account", "POST");
+      const response = await apiRequest("POST", "/api/stripe-connect/create-account");
       return response.json();
     },
     onSuccess: (data: any) => {
@@ -175,7 +175,7 @@ export default function BusinessSetup() {
         duration: parseInt(data.duration),
         category: data.category
       };
-      const response = await apiRequest("/api/services", "POST", serviceData);
+      const response = await apiRequest("POST", "/api/services", serviceData);
       return response.json();
     },
     onSuccess: () => {
@@ -208,7 +208,7 @@ export default function BusinessSetup() {
         ],
         discountPercentage: 10
       };
-      const response = await apiRequest("/api/memberships", "POST", membershipData);
+      const response = await apiRequest("POST", "/api/memberships", membershipData);
       return response.json();
     },
     onSuccess: () => {
@@ -229,7 +229,7 @@ export default function BusinessSetup() {
   // Patient invitation mutation
   const invitePatient = useMutation({
     mutationFn: async (data: PatientInviteData) => {
-      const response = await apiRequest("/api/patients/invite", "POST", data);
+      const response = await apiRequest("POST", "/api/patients/invite", data);
       return response.json();
     },
     onSuccess: () => {
@@ -261,7 +261,7 @@ export default function BusinessSetup() {
         pointsCost: parseInt(data.pointsCost),
         category: data.category
       };
-      const response = await apiRequest("/api/rewards", "POST", rewardData);
+      const response = await apiRequest("POST", "/api/rewards", rewardData);
       return response.json();
     },
     onSuccess: () => {
