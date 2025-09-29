@@ -1185,8 +1185,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Get organization's Stripe Connect account ID
       const organizationId = await getUserOrganizationId(req.user!);
-      const organization = await storage.getOrganization(organizationId!);
-      const stripeConnectAccountId = organization?.stripeConnectAccountId;
+      if (!organizationId) {
+        return res.status(400).json({ message: "User not associated with an organization" });
+      }
+      
+      const organization = await storage.getOrganization(organizationId);
+      if (!organization) {
+        return res.status(400).json({ message: "Organization not found" });
+      }
+      
+      const stripeConnectAccountId = organization.stripeConnectAccountId;
       
       // Create Stripe product and price for deposit if required
       let stripeProductId, stripePriceId;
@@ -1217,9 +1225,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log(`ℹ️ [STRIPE] No deposit required for service: ${serviceData.name} - skipping Stripe product creation`);
       }
 
-      // Add Stripe IDs to service data
+      // Add organization ID and Stripe IDs to service data
       const serviceWithStripe = {
         ...serviceData,
+        organizationId,
         stripeProductId,
         stripePriceId
       };
