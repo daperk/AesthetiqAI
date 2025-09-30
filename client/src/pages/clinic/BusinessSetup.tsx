@@ -26,6 +26,8 @@ interface BusinessSetupStatus {
   stripeConnected: boolean;
   hasSubscription: boolean;
   hasLocations: boolean;
+  requiresLocations: boolean;
+  maxLocations: number;
   hasServices: boolean;
   hasMemberships: boolean;
   hasRewards: boolean;
@@ -313,16 +315,18 @@ export default function BusinessSetup() {
         setCurrentStep(1);
       } else if (!setupStatus.hasSubscription) {
         setCurrentStep(2);
-      } else if (!setupStatus.hasLocations) {
+      } else if (setupStatus.requiresLocations && !setupStatus.hasLocations) {
+        // Only require location if plan supports it
         setCurrentStep(3);
       } else if (!setupStatus.hasServices) {
-        setCurrentStep(4);
+        // Skip to service step (3 or 4 depending on if locations were required)
+        setCurrentStep(setupStatus.requiresLocations ? 4 : 3);
       } else if (!setupStatus.hasMemberships) {
-        setCurrentStep(5);
+        setCurrentStep(setupStatus.requiresLocations ? 5 : 4);
       } else if (!setupStatus.hasRewards) {
-        setCurrentStep(6);
+        setCurrentStep(setupStatus.requiresLocations ? 6 : 5);
       } else if (!setupStatus.hasPatients) {
-        setCurrentStep(7);
+        setCurrentStep(setupStatus.requiresLocations ? 7 : 6);
       } else {
         // All complete, redirect to dashboard
         setLocation("/clinic");
@@ -578,7 +582,8 @@ export default function BusinessSetup() {
     );
   }
 
-  const steps = [
+  // Build steps array conditionally based on plan requirements
+  const allSteps = [
     {
       number: 1,
       title: "Payment Setup",
@@ -593,42 +598,44 @@ export default function BusinessSetup() {
       icon: <Crown className="h-5 w-5" />,
       completed: setupStatus?.hasSubscription || false
     },
-    {
+    ...(setupStatus?.requiresLocations ? [{
       number: 3,
       title: "First Location",
       description: "Set up your clinic location",
       icon: <MapPin className="h-5 w-5" />,
       completed: setupStatus?.hasLocations || false
-    },
+    }] : []),
     {
-      number: 4,
+      number: setupStatus?.requiresLocations ? 4 : 3,
       title: "First Service",
       description: "Add your first treatment",
       icon: <Sparkles className="h-5 w-5" />,
       completed: setupStatus?.hasServices || false
     },
     {
-      number: 5,
+      number: setupStatus?.requiresLocations ? 5 : 4,
       title: "Membership Plan",
       description: "Create a membership offering",
       icon: <Calendar className="h-5 w-5" />,
       completed: setupStatus?.hasMemberships || false
     },
     {
-      number: 6,
+      number: setupStatus?.requiresLocations ? 6 : 5,
       title: "Rewards Program",
       description: "Set up patient rewards",
       icon: <Gift className="h-5 w-5" />,
       completed: setupStatus?.hasRewards || false
     },
     {
-      number: 7,
+      number: setupStatus?.requiresLocations ? 7 : 6,
       title: "Patient Invitation",
       description: "Invite your first patient",
       icon: <Users className="h-5 w-5" />,
       completed: setupStatus?.hasPatients || false
     }
   ];
+  
+  const steps = allSteps;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-6">

@@ -2222,7 +2222,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const hasSubscription = !!organization.subscriptionPlanId && 
         (organization.subscriptionStatus === 'active' || organization.subscriptionStatus === 'trialing');
 
-      // Check if they have locations (required based on plan)
+      // Check if plan supports locations
+      let maxLocations = 0;
+      let requiresLocations = false;
+      if (organization.subscriptionPlanId) {
+        const plan = await storage.getSubscriptionPlan(organization.subscriptionPlanId);
+        if (plan && plan.maxLocations !== null && plan.maxLocations > 0) {
+          maxLocations = plan.maxLocations;
+          requiresLocations = true;
+        }
+      }
+
+      // Check if they have locations (only required if plan supports it)
       const locations = await storage.getLocationsByOrganization(organizationId);
       const hasLocations = locations.length > 0;
 
@@ -2242,12 +2253,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const clients = await storage.getClientsByOrganization(organizationId);
       const hasPatients = clients.length > 0;
 
-      const allComplete = stripeConnected && hasSubscription && hasLocations && hasServices && hasMemberships && hasRewards && hasPatients;
+      // allComplete should only check locations if the plan requires them
+      const locationCheck = requiresLocations ? hasLocations : true;
+      const allComplete = stripeConnected && hasSubscription && locationCheck && hasServices && hasMemberships && hasRewards && hasPatients;
 
       res.json({
         stripeConnected,
         hasSubscription,
         hasLocations,
+        requiresLocations,
+        maxLocations,
         hasServices,
         hasMemberships,
         hasRewards,
