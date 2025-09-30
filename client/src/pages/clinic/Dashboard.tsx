@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -11,14 +12,30 @@ import { useAuth } from "@/hooks/useAuth";
 import { useOrganization } from "@/hooks/useOrganization";
 import { 
   DollarSign, Calendar, Users, Crown, TrendingUp, 
-  Plus, Bell, Brain, Gift, CalendarPlus, UserPlus, Scissors
+  Plus, Bell, Brain, Gift, CalendarPlus, UserPlus, Scissors, MapPin
 } from "lucide-react";
-import type { DashboardStats, Appointment, AiInsight } from "@/types";
+import type { DashboardStats, Appointment, AiInsight, Location } from "@/types";
 
 export default function ClinicDashboard() {
   const { user } = useAuth();
   const { organization } = useOrganization();
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
+  const [selectedLocationId, setSelectedLocationId] = useState<string>("");
+
+  // Fetch locations for this organization
+  const { data: locations } = useQuery<Location[]>({
+    queryKey: ["/api/locations"],
+    staleTime: 5 * 60000, // 5 minutes
+  });
+
+  // Fetch setup status to know subscription limits
+  const { data: setupStatus } = useQuery<{
+    maxLocations: number;
+    requiresLocations: boolean;
+  }>({
+    queryKey: ["/api/clinic/setup-status"],
+    staleTime: 5 * 60000, // 5 minutes
+  });
 
   const { data: stats, isLoading: statsLoading } = useQuery<DashboardStats>({
     queryKey: ["/api/analytics/dashboard", organization?.id],
@@ -50,6 +67,13 @@ export default function ClinicDashboard() {
     staleTime: 60000, // 1 minute
   });
 
+  // Determine if user can add more locations
+  // Guard against null/undefined/0 maxLocations
+  const canAddLocation = !!setupStatus && 
+    setupStatus.maxLocations != null && 
+    setupStatus.maxLocations > 0 && 
+    (locations?.length ?? 0) < setupStatus.maxLocations;
+
   if (statsLoading || appointmentsLoading || insightsLoading || activitiesLoading || staffLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -73,15 +97,54 @@ export default function ClinicDashboard() {
               <p className="text-muted-foreground">Welcome back, {user?.firstName || user?.username}</p>
             </div>
             <div className="flex items-center space-x-4">
-              <Select defaultValue="downtown">
-                <SelectTrigger className="w-40" data-testid="select-location">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="downtown">Downtown Location</SelectItem>
-                  <SelectItem value="uptown">Uptown Branch</SelectItem>
-                </SelectContent>
-              </Select>
+              {/* Smart Location Selector */}
+              {locations && locations.length > 1 ? (
+                // Multiple locations: Show dropdown
+                <Select 
+                  value={selectedLocationId || locations[0]?.id} 
+                  onValueChange={setSelectedLocationId}
+                >
+                  <SelectTrigger className="w-48" data-testid="select-location">
+                    <MapPin className="w-4 h-4 mr-2" />
+                    <SelectValue placeholder="Select location" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {locations.map((loc) => (
+                      <SelectItem key={loc.id} value={loc.id}>
+                        {loc.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : locations && locations.length === 1 ? (
+                // Single location: Just display it
+                <div className="flex items-center px-3 py-2 rounded-md bg-muted text-sm" data-testid="text-single-location">
+                  <MapPin className="w-4 h-4 mr-2" />
+                  {locations[0].name}
+                </div>
+              ) : locations && locations.length === 0 ? (
+                // No locations: Show empty state
+                <div className="flex items-center px-3 py-2 rounded-md bg-muted/50 text-sm text-muted-foreground" data-testid="text-no-locations">
+                  <MapPin className="w-4 h-4 mr-2" />
+                  {setupStatus?.maxLocations && setupStatus.maxLocations > 0 
+                    ? "No locations yet" 
+                    : "Your plan doesn't include locations"}
+                </div>
+              ) : null}
+              
+              {/* Show Add Location button if under tier limit */}
+              {canAddLocation && (
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => setLocation("/clinic/setup")}
+                  data-testid="button-add-location"
+                >
+                  <Plus className="w-4 h-4 mr-1" />
+                  Add Location
+                </Button>
+              )}
+              
               <Button variant="outline" size="sm" data-testid="button-notifications">
                 <Bell className="w-4 h-4" />
               </Button>
