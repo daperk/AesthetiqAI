@@ -8,6 +8,7 @@ import bcrypt from "bcryptjs";
 import { storage } from "./storage";
 import { pool } from "./db";
 import * as stripeService from "./services/stripe";
+import { stripe } from "./services/stripe";
 import sgMail from "@sendgrid/mail";
 
 // Helper function to calculate reward points based on membership tier and spend
@@ -932,7 +933,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const paymentAmount = isDepositPayment ? Number(service.depositAmount) : Number(service.price);
       
       // Create Stripe customer for payment
-      const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+      if (!stripe) {
+        return res.status(500).json({ message: "Payment system not configured" });
+      }
+      
       const customer = await stripe.customers.create({
         email: client.email,
         name: `${client.firstName} ${client.lastName}`,
