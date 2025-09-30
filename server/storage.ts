@@ -50,6 +50,7 @@ export interface IStorage {
   getAllLocations(): Promise<Location[]>;
   getLocationsByOrganization(organizationId: string): Promise<Location[]>;
   getLocation(id: string): Promise<Location | undefined>;
+  getLocationBySlug(slug: string): Promise<Location | undefined>;
   createLocation(location: InsertLocation): Promise<Location>;
   updateLocation(id: string, updates: Partial<InsertLocation>): Promise<Location>;
 
@@ -245,6 +246,12 @@ export class DatabaseStorage implements IStorage {
 
   async getLocation(id: string): Promise<Location | undefined> {
     const [location] = await db.select().from(locations).where(eq(locations.id, id));
+    return location || undefined;
+  }
+
+  async getLocationBySlug(slug: string): Promise<Location | undefined> {
+    const [location] = await db.select().from(locations)
+      .where(and(eq(locations.slug, slug), eq(locations.isActive, true)));
     return location || undefined;
   }
 

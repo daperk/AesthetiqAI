@@ -1920,6 +1920,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get location by slug - public endpoint for location-specific booking
+  app.get("/api/locations/by-slug/:slug", async (req, res) => {
+    try {
+      const { slug } = req.params;
+      const location = await storage.getLocationBySlug(slug);
+      
+      if (!location) {
+        return res.status(404).json({ message: "Location not found" });
+      }
+      
+      if (!location.isActive) {
+        return res.status(404).json({ message: "Location is not currently available" });
+      }
+      
+      res.json(location);
+    } catch (error) {
+      console.error("Failed to fetch location by slug:", error);
+      res.status(500).json({ message: "Failed to fetch location" });
+    }
+  });
+
   // Create location - enforces subscription plan limits
   app.post("/api/locations", requireAuth, async (req, res) => {
     try {
