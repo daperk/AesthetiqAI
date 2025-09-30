@@ -43,79 +43,25 @@ export default function PatientMembership() {
     staleTime: 60000,
   });
 
-  const membershipTiers: MembershipTier[] = [
-    {
-      id: "bronze",
-      name: "Bronze",
-      monthlyPrice: 59,
-      yearlyPrice: 590,
-      benefits: [
-        "5% discount on all services",
-        "Priority booking",
-        "Birthday month gift",
-        "Members-only events",
-      ],
-      discountPercentage: 5,
-      monthlyCredits: 50,
-      color: "bg-orange-100 text-orange-800 border-orange-200",
-      icon: <Heart className="w-5 h-5" />
-    },
-    {
-      id: "silver",
-      name: "Silver",
-      monthlyPrice: 99,
-      yearlyPrice: 990,
-      benefits: [
-        "10% discount on all services",
-        "Complimentary consultation monthly",
-        "Member events & workshops",
-        "Flexible appointment changes",
-        "Express service lane"
-      ],
-      discountPercentage: 10,
-      monthlyCredits: 100,
-      color: "bg-gray-100 text-gray-800 border-gray-200",
-      icon: <Star className="w-5 h-5" />
-    },
-    {
-      id: "gold",
-      name: "Gold",
-      monthlyPrice: 149,
-      yearlyPrice: 1490,
-      benefits: [
-        "15% discount on all services",
-        "Monthly complimentary add-on service",
-        "VIP customer support",
-        "Early access to new treatments",
-        "Quarterly spa day experience",
-        "Guest privileges for friends"
-      ],
-      discountPercentage: 15,
-      monthlyCredits: 150,
-      color: "bg-yellow-100 text-yellow-800 border-yellow-200",
-      icon: <Crown className="w-5 h-5" />,
-      popular: true
-    },
-    {
-      id: "platinum",
-      name: "Platinum",
-      monthlyPrice: 199,
-      yearlyPrice: 1990,
-      benefits: [
-        "20% discount on all services",
-        "Unlimited complimentary consultations",
-        "Dedicated VIP coordinator",
-        "Exclusive platinum-only treatments",
-        "Monthly luxury spa package",
-        "Concierge booking service",
-        "Access to exclusive events"
-      ],
-      discountPercentage: 20,
-      monthlyCredits: 200,
-      color: "bg-purple-100 text-purple-800 border-purple-200",
-      icon: <Sparkles className="w-5 h-5" />
-    }
-  ];
+  // Fetch real membership tiers from the clinic
+  const { data: membershipTiersData, isLoading: tiersLoading } = useQuery<any[]>({
+    queryKey: ["/api/membership-tiers"],
+    staleTime: 60000,
+  });
+
+  // Map API tiers to display format
+  const membershipTiers: MembershipTier[] = (membershipTiersData || []).map((tier, index) => ({
+    id: tier.id,
+    name: tier.name,
+    monthlyPrice: parseFloat(tier.monthlyPrice || "0"),
+    yearlyPrice: parseFloat(tier.yearlyPrice || "0"),
+    benefits: Array.isArray(tier.benefits) ? tier.benefits : [],
+    discountPercentage: parseFloat(tier.discountPercentage || "0"),
+    monthlyCredits: parseFloat(tier.monthlyCredits || "0"),
+    color: tier.color || "bg-gray-100 text-gray-800 border-gray-200",
+    icon: index === 0 ? <Heart className="w-5 h-5" /> : index === 1 ? <Star className="w-5 h-5" /> : index === 2 ? <Crown className="w-5 h-5" /> : <Sparkles className="w-5 h-5" />,
+    popular: index === 2
+  }));
 
   const upgradeMembershipMutation = useMutation({
     mutationFn: async (tierData: { tierId: string, billingCycle: string }) => {
@@ -158,7 +104,7 @@ export default function PatientMembership() {
     ? (parseFloat(currentMembership.usedCredits?.toString() || "0") / parseFloat(currentMembership.monthlyCredits?.toString() || "1")) * 100
     : 0;
 
-  if (membershipLoading) {
+  if (membershipLoading || tiersLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <LoadingSpinner size="lg" />

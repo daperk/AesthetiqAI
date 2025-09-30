@@ -352,6 +352,7 @@ export default function Booking() {
             locationId: selectedLocation,
             startTime: startTime.toISOString(),
             endTime: endTime.toISOString(),
+            paymentType,
             notes
           };
 

@@ -198,7 +198,7 @@ export function BookingWithPayment({
                 <span>Duration: {getDuration()}</span>
               </div>
               
-              {isDepositOnly && (
+              {isDepositPayment && (
                 <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
                   <p className="text-sm font-medium text-blue-800 dark:text-blue-200">
                     Deposit Required
@@ -225,7 +225,7 @@ export function BookingWithPayment({
       >
         <PaymentForm
           amount={Number(service.price)}
-          isDepositOnly={isDepositPayment}
+          isDepositOnly={isDepositPayment || undefined}
           depositAmount={Number(service.depositAmount)}
           serviceName={service.name}
           onSuccess={handlePaymentSuccess}

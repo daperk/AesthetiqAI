@@ -48,6 +48,13 @@ export default function Rewards() {
     staleTime: 60000,
   });
 
+  // Fetch real reward options from the clinic
+  const { data: rewardOptionsData, isLoading: optionsLoading } = useQuery<any[]>({
+    queryKey: ["/api/reward-options"],
+    staleTime: 60000,
+  });
+
+  // Hardcoded tiers structure (these don't change per clinic)
   const rewardsTiers: RewardsTier[] = [
     {
       name: "Bronze",
@@ -83,62 +90,16 @@ export default function Rewards() {
     }
   ];
 
-  const redemptionOptions: RedemptionOption[] = [
-    {
-      id: "discount-10",
-      title: "$10 Service Credit",
-      description: "Apply $10 credit to any service",
-      pointsCost: 200,
-      type: "discount",
-      icon: <Gift className="w-5 h-5" />,
-      available: true
-    },
-    {
-      id: "discount-25",
-      title: "$25 Service Credit",
-      description: "Apply $25 credit to any service",
-      pointsCost: 500,
-      type: "discount",
-      icon: <Gift className="w-5 h-5" />,
-      available: true
-    },
-    {
-      id: "free-facial",
-      title: "Complimentary Basic Facial",
-      description: "60-minute rejuvenating facial treatment",
-      pointsCost: 800,
-      type: "service",
-      icon: <Zap className="w-5 h-5" />,
-      available: true
-    },
-    {
-      id: "discount-50",
-      title: "$50 Service Credit",
-      description: "Apply $50 credit to any premium service",
-      pointsCost: 1000,
-      type: "discount",
-      icon: <Gift className="w-5 h-5" />,
-      available: true
-    },
-    {
-      id: "spa-package",
-      title: "Mini Spa Package",
-      description: "Facial + relaxation massage combo",
-      pointsCost: 1500,
-      type: "service",
-      icon: <Heart className="w-5 h-5" />,
-      available: false
-    },
-    {
-      id: "vip-experience",
-      title: "VIP Day Experience",
-      description: "Full-day luxury spa experience",
-      pointsCost: 3000,
-      type: "service",
-      icon: <Crown className="w-5 h-5" />,
-      available: true
-    }
-  ];
+  // Map API reward options to display format
+  const redemptionOptions: RedemptionOption[] = (rewardOptionsData || []).map(option => ({
+    id: option.id,
+    title: option.name,
+    description: option.description || "",
+    pointsCost: parseInt(option.pointsRequired || "0"),
+    type: (option.rewardType as "discount" | "service" | "product") || "discount",
+    icon: option.rewardType === "service" ? <Zap className="w-5 h-5" /> : <Gift className="w-5 h-5" />,
+    available: option.isActive
+  }));
 
   const redeemPointsMutation = useMutation({
     mutationFn: async (redemptionData: { optionId: string, pointsCost: number }) => {
@@ -194,7 +155,7 @@ export default function Rewards() {
     return Math.min(progress, 100);
   };
 
-  if (rewardsLoading) {
+  if (rewardsLoading || optionsLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <LoadingSpinner size="lg" />

@@ -1882,7 +1882,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Public API endpoints for booking (before auth middleware)
   app.get("/api/locations", async (req, res) => {
     try {
-      // For public booking, we'll get all active locations
+      // If user is authenticated (patient or clinic staff), filter by their organization
+      if (req.isAuthenticated()) {
+        const orgId = await getUserOrganizationId(req.user!);
+        if (orgId) {
+          const locations = await storage.getLocationsByOrganization(orgId);
+          return res.json(locations);
+        }
+      }
+      
+      // For public booking, get all active locations
       const locations = await storage.getAllLocations();
       res.json(locations);
     } catch (error) {
