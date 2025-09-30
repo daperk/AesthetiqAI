@@ -8,6 +8,7 @@ import bcrypt from "bcryptjs";
 import { storage } from "./storage";
 import { pool } from "./db";
 import * as stripeService from "./services/stripe";
+import sgMail from "@sendgrid/mail";
 
 // Helper function to calculate reward points based on membership tier and spend
 async function calculateRewardPoints(clientId: string, organizationId: string, amountSpent: number): Promise<number> {
@@ -2046,26 +2047,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
         </div>
       `;
 
-      // Send invitation email using SendGrid
-      const sgMail = require('@sendgrid/mail');
-      sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+      // Try to send invitation email using SendGrid (non-blocking)
+      let emailSent = false;
+      try {
+        sgMail.setApiKey(process.env.SENDGRID_API_KEY!);
 
-      const msg = {
-        to: email,
-        from: {
-          email: 'noreply@aesthiq.com',
-          name: organization.name
-        },
-        subject: `You're invited to join ${organization.name}`,
-        html: emailContent
-      };
+        const msg = {
+          to: email,
+          from: {
+            email: 'noreply@aesthiq.com',
+            name: organization.name
+          },
+          subject: `You're invited to join ${organization.name}`,
+          html: emailContent
+        };
 
-      await sgMail.send(msg);
+        await sgMail.send(msg);
+        emailSent = true;
+      } catch (emailError) {
+        console.error("SendGrid email error (non-fatal):", emailError);
+        // Continue - email failure doesn't fail the invitation
+      }
 
       res.json({
         success: true,
-        message: "Invitation sent successfully",
+        message: emailSent ? "Invitation sent successfully" : "Patient invited successfully (email notification pending)",
         invitationLink,
+        emailSent,
         client: {
           id: client.id,
           firstName: client.firstName,
