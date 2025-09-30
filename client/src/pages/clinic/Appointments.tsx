@@ -463,6 +463,5 @@ export default function Appointments() {
           </div>
         </div>
       </div>
-    </div>
   );
 }
