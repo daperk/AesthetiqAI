@@ -36,6 +36,7 @@ import { RequireBusinessSetup } from "@/components/RequireBusinessSetup";
 
 // Patient Pages
 import PatientDashboard from "@/pages/patient/Dashboard";
+import PatientAppointments from "@/pages/patient/Appointments";
 import Booking from "@/pages/patient/Booking";
 import PatientMembership from "@/pages/patient/Membership";
 import Rewards from "@/pages/patient/Rewards";
@@ -98,6 +99,7 @@ function Router() {
           {user.role === "patient" && (
             <PatientBrandingProvider>
               <Route path="/patient" component={PatientDashboard} />
+              <Route path="/patient/appointments" component={PatientAppointments} />
               <Route path="/patient/booking" component={Booking} />
               <Route path="/patient/membership" component={PatientMembership} />
               <Route path="/patient/rewards" component={Rewards} />

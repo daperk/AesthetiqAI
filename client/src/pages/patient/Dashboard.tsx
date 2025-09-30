@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -17,6 +18,7 @@ import type { Appointment, Membership, Reward, Client, ChatMessage } from "@/typ
 
 export default function PatientDashboard() {
   const { user } = useAuth();
+  const [, setLocation] = useLocation();
   const [chatMessage, setChatMessage] = useState("");
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
     {
@@ -47,6 +49,17 @@ export default function PatientDashboard() {
     staleTime: 60000,
   });
 
+  // Fetch services and membership tiers for chat context
+  const { data: services } = useQuery<any[]>({
+    queryKey: ["/api/services"],
+    staleTime: 5 * 60000,
+  });
+
+  const { data: membershipTiers } = useQuery<any[]>({
+    queryKey: ["/api/membership-tiers"],
+    staleTime: 5 * 60000,
+  });
+
   const handleSendMessage = async () => {
     if (!chatMessage.trim()) return;
 
@@ -61,7 +74,7 @@ export default function PatientDashboard() {
     setChatMessage("");
 
     try {
-      // Send to AI concierge
+      // Send to AI concierge with enhanced context
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -70,9 +83,20 @@ export default function PatientDashboard() {
           message: chatMessage,
           context: {
             clientName: user?.firstName,
-            membershipStatus: membership?.tierName,
-            availableServices: [],
-            availableSlots: []
+            membershipStatus: membership?.tierName || "No membership",
+            rewardPoints: rewards?.balance || 0,
+            availableServices: services?.map(s => ({
+              name: s.name,
+              description: s.description,
+              duration: s.duration,
+              price: s.price
+            })) || [],
+            availableMemberships: membershipTiers?.map(t => ({
+              name: t.name,
+              monthlyPrice: t.monthlyPrice,
+              monthlyCredits: t.monthlyCredits,
+              discount: t.discount
+            })) || []
           }
         })
       });
@@ -219,7 +243,12 @@ export default function PatientDashboard() {
                       <Calendar className="w-5 h-5" />
                       <span>Upcoming Appointments</span>
                     </CardTitle>
-                    <Button variant="outline" size="sm" data-testid="button-book-appointment">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => setLocation("/patient/booking")}
+                      data-testid="button-book-appointment"
+                    >
                       <CalendarPlus className="w-4 h-4 mr-2" />
                       Book New
                     </Button>
@@ -232,7 +261,10 @@ export default function PatientDashboard() {
                       <p className="text-muted-foreground mb-4" data-testid="text-no-upcoming-appointments">
                         No upcoming appointments
                       </p>
-                      <Button data-testid="button-book-first-appointment">
+                      <Button 
+                        onClick={() => setLocation("/patient/booking")}
+                        data-testid="button-book-first-appointment"
+                      >
                         Book Your First Appointment
                       </Button>
                     </div>
@@ -379,7 +411,10 @@ export default function PatientDashboard() {
                     <p className="text-muted-foreground mb-4" data-testid="text-no-membership">
                       You don't have an active membership
                     </p>
-                    <Button data-testid="button-explore-memberships">
+                    <Button 
+                      onClick={() => setLocation("/patient/membership")}
+                      data-testid="button-explore-memberships"
+                    >
                       Explore Membership Plans
                     </Button>
                   </div>
@@ -402,7 +437,10 @@ export default function PatientDashboard() {
                       {rewardBalance.toLocaleString()} Points
                     </div>
                     <p className="text-muted-foreground mb-4">Available for redemption</p>
-                    <Button data-testid="button-redeem-points">
+                    <Button 
+                      onClick={() => setLocation("/patient/rewards")}
+                      data-testid="button-redeem-points"
+                    >
                       Redeem Points
                     </Button>
                   </div>

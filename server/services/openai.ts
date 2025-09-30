@@ -228,34 +228,58 @@ export async function generateGrowthRecommendations(businessData: {
 export async function generateBookingChatResponse(message: string, context: {
   clientName?: string;
   availableServices: any[];
-  availableSlots: any[];
+  availableSlots?: any[];
   membershipStatus?: string;
+  membershipDiscount?: number;
+  rewardPoints?: number;
+  availableMemberships?: any[];
 }): Promise<string> {
+  const servicesList = context.availableServices?.length > 0
+    ? context.availableServices.map(s => `- ${s.name} (${s.duration} min, $${s.price}): ${s.description || 'Luxurious treatment'}`).join('\n  ')
+    : "Please check with the spa for current service offerings";
+
+  const membershipList = (context.availableMemberships && context.availableMemberships.length > 0)
+    ? context.availableMemberships.map(m => `- ${m.name}: $${m.monthlyPrice}/month (includes $${m.monthlyCredits} credit, ${m.discount}% discount)`).join('\n  ')
+    : "No membership tiers currently available";
+
   const prompt = `You are an AI concierge for a luxury beauty and wellness spa. A client is asking: "${message}"
   
-  Context:
-  Client Name: ${context.clientName || "Guest"}
-  Available Services: ${JSON.stringify(context.availableServices)}
-  Available Slots: ${JSON.stringify(context.availableSlots)}
-  Membership: ${context.membershipStatus || "None"}
+  Client Context:
+  - Name: ${context.clientName || "Guest"}
+  - Membership Status: ${context.membershipStatus || "No active membership"}
+  - Reward Points: ${context.rewardPoints || 0} points available
   
-  Respond in a helpful, professional, and luxurious tone. If they're asking about booking, guide them through available options. If they need service recommendations, suggest based on their history or needs.
+  Available Services:
+  ${servicesList}
   
-  Keep responses concise but warm and personal.`;
+  Membership Options:
+  ${membershipList}
+  
+  Instructions for your response:
+  1. If they ask about booking, tell them to click the "Book Appointment" button in the dashboard to view available times and providers
+  2. If they ask about services, recommend specific services from the list above based on their needs
+  3. If they ask about memberships, explain the benefits and suggest upgrading if they don't have one
+  4. If they ask about rewards, explain how they can use their points or earn more
+  5. Be helpful, professional, and maintain a luxurious spa tone
+  6. Keep responses concise (2-3 sentences) but warm and personal
+  7. Always be encouraging about booking appointments or joining memberships
+  
+  Respond naturally and helpfully:`;
 
   try {
     const response = await openai.chat.completions.create({
-      model: "gpt-5",
+      model: "gpt-4",
       messages: [
         {
           role: "system",
-          content: "You are a luxury spa's AI concierge. Be helpful, knowledgeable, and maintain an elegant, professional tone."
+          content: "You are a luxury spa's AI concierge. Be helpful, knowledgeable, and maintain an elegant, professional tone. Keep responses concise and actionable."
         },
         {
           role: "user",
           content: prompt
         }
-      ]
+      ],
+      max_tokens: 200
     });
 
     return response.choices[0].message.content || "I'd be happy to help you with your booking. How may I assist you today?";
