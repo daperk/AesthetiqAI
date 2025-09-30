@@ -231,14 +231,28 @@ export default function PatientDashboard() {
           </Card>
         </div>
 
-        {/* Main Content */}
+        {/* Main Content - Responsive Tabs */}
         <Tabs defaultValue="overview" className="space-y-6">
-          <TabsList>
-            <TabsTrigger value="overview" data-testid="tab-overview">Overview</TabsTrigger>
-            <TabsTrigger value="appointments" data-testid="tab-appointments">Appointments</TabsTrigger>
-            <TabsTrigger value="membership" data-testid="tab-membership">Membership</TabsTrigger>
-            <TabsTrigger value="rewards" data-testid="tab-rewards">Rewards</TabsTrigger>
-          </TabsList>
+          <div className="overflow-x-auto -mx-6 px-6 scrollbar-hide">
+            <TabsList className="w-full sm:w-auto inline-flex">
+              <TabsTrigger value="overview" className="flex-1 sm:flex-none whitespace-nowrap" data-testid="tab-overview">
+                <Calendar className="w-4 h-4 sm:mr-2" />
+                <span className="hidden sm:inline">Overview</span>
+              </TabsTrigger>
+              <TabsTrigger value="appointments" className="flex-1 sm:flex-none whitespace-nowrap" data-testid="tab-appointments">
+                <CalendarPlus className="w-4 h-4 sm:mr-2" />
+                <span className="hidden sm:inline">Appointments</span>
+              </TabsTrigger>
+              <TabsTrigger value="membership" className="flex-1 sm:flex-none whitespace-nowrap" data-testid="tab-membership">
+                <Crown className="w-4 h-4 sm:mr-2" />
+                <span className="hidden sm:inline">Membership</span>
+              </TabsTrigger>
+              <TabsTrigger value="rewards" className="flex-1 sm:flex-none whitespace-nowrap" data-testid="tab-rewards">
+                <Gift className="w-4 h-4 sm:mr-2" />
+                <span className="hidden sm:inline">Rewards</span>
+              </TabsTrigger>
+            </TabsList>
+          </div>
 
           <TabsContent value="overview">
             <div className="grid lg:grid-cols-2 gap-8">
