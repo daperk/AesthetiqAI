@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import LoadingSpinner from "@/components/ui/loading-spinner";
 import Navigation from "@/components/Navigation";
-import { Calendar, CalendarPlus, Clock, MapPin, User } from "lucide-react";
+import { Calendar, CalendarPlus, Clock, User } from "lucide-react";
 import type { Appointment } from "@/types";
 
 export default function PatientAppointments() {
@@ -110,15 +110,9 @@ export default function PatientAppointments() {
                             <h3 className="text-lg font-semibold text-foreground" data-testid={`text-service-${appointment.id}`}>
                               Service Name
                             </h3>
-                            <div className="flex items-center space-x-4 text-sm text-muted-foreground">
-                              <div className="flex items-center space-x-2">
-                                <User className="w-4 h-4" />
-                                <span>Provider Name</span>
-                              </div>
-                              <div className="flex items-center space-x-2">
-                                <MapPin className="w-4 h-4" />
-                                <span>Location Name</span>
-                              </div>
+                            <div className="flex items-center space-x-2 text-sm text-muted-foreground">
+                              <User className="w-4 h-4" />
+                              <span>Provider Name</span>
                             </div>
                           </div>
 

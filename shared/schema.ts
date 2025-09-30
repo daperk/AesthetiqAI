@@ -80,11 +80,14 @@ export const locations = pgTable("locations", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
   organizationId: uuid("organization_id").notNull(),
   name: text("name").notNull(),
+  slug: text("slug").notNull().unique(),
   address: jsonb("address"),
   phone: text("phone"),
   email: text("email"),
   timezone: text("timezone").default("America/New_York"),
   businessHours: jsonb("business_hours"),
+  isDefault: boolean("is_default").default(false),
+  publicSettings: jsonb("public_settings"),
   settings: jsonb("settings"),
   isActive: boolean("is_active").default(true),
   createdAt: timestamp("created_at").default(sql`now()`)
@@ -226,6 +229,29 @@ export const rewardOptions = pgTable("reward_options", {
   stripePriceId: text("stripe_price_id"),
   isActive: boolean("is_active").default(true),
   sortOrder: integer("sort_order").default(0),
+  createdAt: timestamp("created_at").default(sql`now()`)
+});
+
+// Sharing tables for cross-organization resources
+export const serviceShares = pgTable("service_shares", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  serviceId: uuid("service_id").notNull(),
+  ownerOrganizationId: uuid("owner_organization_id").notNull(),
+  targetOrganizationId: uuid("target_organization_id"),
+  targetLocationId: uuid("target_location_id"),
+  priceOverride: decimal("price_override", { precision: 10, scale: 2 }),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").default(sql`now()`)
+});
+
+export const membershipTierShares = pgTable("membership_tier_shares", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  tierId: uuid("tier_id").notNull(),
+  ownerOrganizationId: uuid("owner_organization_id").notNull(),
+  targetOrganizationId: uuid("target_organization_id"),
+  targetLocationId: uuid("target_location_id"),
+  benefitOverrides: jsonb("benefit_overrides"),
+  isActive: boolean("is_active").default(true),
   createdAt: timestamp("created_at").default(sql`now()`)
 });
 
