@@ -1218,8 +1218,126 @@ export default function BusinessSetup() {
             </div>
           )}
 
-          {/* Step 6 and beyond - Coming Soon */}
-          {currentStep > 5 && (
+          {/* Step 6: Patient Invitation */}
+          {currentStep === 6 && (
+            <div className="space-y-8">
+              {/* Display invited patients count */}
+              {setupStatus?.hasPatients && (
+                <Alert className="border-green-200 bg-green-50">
+                  <CheckCircle className="h-4 w-4 text-green-600" />
+                  <AlertDescription className="text-green-700">
+                    You've invited patients! You can continue to invite more or proceed to your dashboard.
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              <div className="text-center mb-6">
+                <h3 className="text-2xl font-semibold text-gray-900 mb-2">Invite Your First Patient</h3>
+                <p className="text-gray-600">
+                  Send an invitation email to your patient. They'll receive login credentials and your clinic's booking link.
+                </p>
+              </div>
+
+              {/* Invite patient form */}
+              <Form {...patientInviteForm}>
+                <form onSubmit={patientInviteForm.handleSubmit((data) => invitePatient.mutate(data))} className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <FormField
+                      control={patientInviteForm.control}
+                      name="firstName"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>First Name</FormLabel>
+                          <FormControl>
+                            <Input placeholder="John" {...field} data-testid="input-patient-firstname" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={patientInviteForm.control}
+                      name="lastName"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Last Name</FormLabel>
+                          <FormControl>
+                            <Input placeholder="Doe" {...field} data-testid="input-patient-lastname" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={patientInviteForm.control}
+                      name="email"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Email Address</FormLabel>
+                          <FormControl>
+                            <Input type="email" placeholder="john@example.com" {...field} data-testid="input-patient-email" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={patientInviteForm.control}
+                      name="phone"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Phone Number (Optional)</FormLabel>
+                          <FormControl>
+                            <Input type="tel" placeholder="+1 (555) 123-4567" {...field} data-testid="input-patient-phone" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
+                  <Button 
+                    type="submit" 
+                    disabled={invitePatient.isPending}
+                    size="lg" 
+                    className="w-full"
+                    data-testid="button-send-invitation"
+                  >
+                    {invitePatient.isPending ? "Sending Invitation..." : "Send Invitation"}
+                  </Button>
+                </form>
+              </Form>
+
+              {/* Setup completion message */}
+              {setupStatus?.allComplete && (
+                <div className="text-center pt-6 border-t">
+                  <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-green-100 mb-4">
+                    <CheckCircle className="h-8 w-8 text-green-600" />
+                  </div>
+                  <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                    Setup Complete!
+                  </h3>
+                  <p className="text-gray-600 mb-6">
+                    Your clinic is ready to start accepting bookings and managing patients.
+                  </p>
+                  <Button
+                    onClick={() => setLocation("/clinic")}
+                    size="lg"
+                    className="px-8"
+                    data-testid="button-goto-dashboard"
+                  >
+                    Go to Dashboard
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Step 7 and beyond - Coming Soon */}
+          {currentStep > 6 && (
             <div className="text-center py-12">
               <div className="text-6xl mb-4">🚧</div>
               <h3 className="text-xl font-semibold text-gray-900 mb-2">
