@@ -1514,6 +1514,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const balance = await storage.getClientRewardBalance(client.id);
       res.json({ rewards, balance: balance || 0 });
     } catch (error) {
+      console.error("Failed to fetch rewards:", error);
       res.status(500).json({ message: "Failed to fetch rewards" });
     }
   });

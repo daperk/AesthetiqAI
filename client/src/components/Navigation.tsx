@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -11,10 +12,48 @@ import {
 import { useAuth } from "@/hooks/useAuth";
 import { Gem, ChevronDown, Menu, X } from "lucide-react";
 
+interface Organization {
+  id: string;
+  name: string;
+  slug: string;
+  whiteLabelSettings?: {
+    logo?: string;
+    portalName?: string;
+  };
+}
+
+interface ClientRecord {
+  id: string;
+  organizationId: string;
+}
+
 export default function Navigation() {
   const [location] = useLocation();
   const { user, logout } = useAuth();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  // Fetch client data for patients to get their organization
+  const { data: clientData } = useQuery<ClientRecord>({
+    queryKey: ["/api/clients/me"],
+    enabled: user?.role === "patient",
+    staleTime: 5 * 60000,
+  });
+
+  // Fetch organization data for patients
+  const { data: patientOrganization } = useQuery<Organization>({
+    queryKey: ["/api/organizations", clientData?.organizationId],
+    enabled: !!clientData?.organizationId,
+    staleTime: 5 * 60000,
+  });
+
+  // Determine branding based on user role
+  const brandName = user?.role === "patient" 
+    ? (patientOrganization?.whiteLabelSettings?.portalName || patientOrganization?.name || "Aesthiq")
+    : "Aesthiq";
+  
+  const brandLogo = user?.role === "patient" 
+    ? patientOrganization?.whiteLabelSettings?.logo 
+    : null;
 
   const handleLogout = async () => {
     await logout();
@@ -42,11 +81,17 @@ export default function Navigation() {
       <div className="container mx-auto px-6 py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-8">
-            <Link href="/" className="flex items-center space-x-3">
-              <div className="w-10 h-10 gold-shimmer rounded-lg flex items-center justify-center">
-                <Gem className="text-primary-foreground text-lg" />
-              </div>
-              <span className="text-2xl font-serif font-bold text-foreground">Aesthiq</span>
+            <Link href="/" className="flex items-center space-x-3" data-testid="link-brand">
+              {brandLogo ? (
+                <img src={brandLogo} alt={brandName} className="h-10 w-auto" />
+              ) : (
+                <div className="w-10 h-10 gold-shimmer rounded-lg flex items-center justify-center">
+                  <Gem className="text-primary-foreground text-lg" />
+                </div>
+              )}
+              <span className="text-2xl font-serif font-bold text-foreground" data-testid="text-brand-name">
+                {brandName}
+              </span>
             </Link>
             
             <div className="hidden md:flex items-center space-x-6">
