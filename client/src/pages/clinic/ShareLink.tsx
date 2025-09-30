@@ -3,7 +3,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import Navigation from "@/components/Navigation";
+import ClinicNav from "@/components/ClinicNav";
 import { useOrganization } from "@/hooks/useOrganization";
 import { useToast } from "@/hooks/use-toast";
 import LoadingSpinner from "@/components/ui/loading-spinner";
@@ -78,19 +78,15 @@ export default function ShareLink() {
 
   return (
     <div className="min-h-screen bg-background">
-      <Navigation />
-      
       <div className="container mx-auto px-6 py-8 max-w-4xl">
         <div className="mb-8">
-          <div className="flex items-center gap-3 mb-2">
-            <Share2 className="h-8 w-8 text-primary" />
-            <h1 className="text-3xl font-serif font-bold text-foreground" data-testid="text-page-title">
-              Share Your Booking Link
-            </h1>
-          </div>
-          <p className="text-muted-foreground">
+          <h1 className="text-3xl font-serif font-bold text-foreground mb-2" data-testid="text-page-title">
+            Share Your Booking Link
+          </h1>
+          <p className="text-muted-foreground mb-4">
             Share this link with your patients so they can book appointments and register with your clinic
           </p>
+          <ClinicNav />
         </div>
 
         <div className="space-y-6">

@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Link, useLocation } from "wouter";
 import { 
   LayoutDashboard, Calendar, Users, Scissors, Crown, 
-  UserPlus, TrendingUp
+  UserPlus, TrendingUp, Share2
 } from "lucide-react";
 
 export default function ClinicNav() {
@@ -86,6 +86,17 @@ export default function ClinicNav() {
           >
             <TrendingUp className="w-4 h-4 sm:mr-2" />
             <span className="hidden sm:inline">Reports</span>
+          </Button>
+        </Link>
+        <Link href="/clinic/share-link">
+          <Button
+            variant={location === "/clinic/share-link" ? "default" : "ghost"}
+            size="sm"
+            className="relative whitespace-nowrap"
+            data-testid="tab-share-link"
+          >
+            <Share2 className="w-4 h-4 sm:mr-2" />
+            <span className="hidden sm:inline">Share Link</span>
           </Button>
         </Link>
       </div>
