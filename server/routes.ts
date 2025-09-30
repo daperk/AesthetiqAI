@@ -2003,8 +2003,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Check if patient already exists with this email in this organization
-      const existingClients = await storage.getClients(organizationId);
-      const existingClient = existingClients.find(client => client.email === email);
+      const existingClients = await storage.getClientsByOrganization(organizationId);
+      const existingClient = existingClients.find((client: any) => client.email === email);
       
       if (existingClient) {
         return res.status(400).json({ message: "Patient with this email already exists" });
