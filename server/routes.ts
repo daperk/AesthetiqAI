@@ -805,6 +805,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { staffId } = req.params;
       const date = req.query.date as string;
+      const locationId = req.query.locationId as string;
       
       // Verify staff belongs to user's organization
       const userOrgId = await getUserOrganizationId(req.user!);
@@ -812,9 +813,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "No organization access" });
       }
       
+      const staff = await storage.getStaff(staffId);
+      if (!staff) {
+        return res.status(404).json({ message: "Staff not found" });
+      }
+      
       if (req.user!.role !== "super_admin") {
-        const staff = await storage.getStaff(staffId);
-        if (!staff || staff.organizationId !== userOrgId) {
+        if (staff.organizationId !== userOrgId) {
           return res.status(403).json({ message: "Staff not accessible" });
         }
       }
@@ -823,41 +828,95 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Date parameter required" });
       }
 
-      const selectedDate = new Date(date);
+      // Get location to access timezone and business hours
+      let location;
+      if (locationId) {
+        location = await storage.getLocation(locationId);
+      } else {
+        // Get default location for the organization
+        const locations = await storage.getLocationsByOrganization(staff.organizationId);
+        location = locations.find(l => l.isDefault) || locations[0];
+      }
+
+      // Use location's timezone or default to America/New_York
+      const timezone = location?.timezone || "America/New_York";
+      
+      // Parse the date string as if it's in the clinic's timezone
+      // The date comes from the frontend calendar which gives us YYYY-MM-DD
+      const [year, month, day] = date.split('T')[0].split('-').map(Number);
       
       // Get existing appointments for this staff member on this date
-      const existingAppointments = await storage.getAppointmentsByStaff(staffId, selectedDate);
+      const existingAppointments = await storage.getAppointmentsByStaff(staffId, new Date(date));
       
-      // Generate time slots (9 AM to 6 PM, 30-minute intervals)
+      // Get business hours from location or use defaults
+      const businessHours = location?.businessHours as any || {
+        monday: { open: "09:00", close: "18:00" },
+        tuesday: { open: "09:00", close: "18:00" },
+        wednesday: { open: "09:00", close: "18:00" },
+        thursday: { open: "09:00", close: "18:00" },
+        friday: { open: "09:00", close: "18:00" },
+        saturday: { open: "09:00", close: "18:00" },
+        sunday: { open: "09:00", close: "18:00" }
+      };
+      
+      // Get day of week
+      const selectedDate = new Date(year, month - 1, day);
+      const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+      const dayName = dayNames[selectedDate.getDay()];
+      const dayHours = businessHours[dayName];
+      
+      // If clinic is closed on this day, return empty slots
+      if (!dayHours || !dayHours.open || !dayHours.close) {
+        return res.json({
+          date: `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
+          timezone,
+          slots: []
+        });
+      }
+      
+      // Parse business hours
+      const [startHour, startMinute] = dayHours.open.split(':').map(Number);
+      const [endHour, endMinute] = dayHours.close.split(':').map(Number);
+      
+      // Generate time slots based on business hours (30-minute intervals)
       const slots = [];
-      const startHour = 9;
-      const endHour = 18;
       const intervalMinutes = 30;
       
-      for (let hour = startHour; hour < endHour; hour++) {
-        for (let minute = 0; minute < 60; minute += intervalMinutes) {
-          const slotTime = new Date(selectedDate);
-          slotTime.setHours(hour, minute, 0, 0);
-          
-          const timeString = slotTime.toTimeString().slice(0, 5); // HH:MM format
-          
-          // Check if this slot conflicts with existing appointments
-          const isAvailable = !existingAppointments.some(apt => {
-            const aptStart = new Date(apt.startTime);
-            const aptEnd = new Date(apt.endTime);
-            return slotTime >= aptStart && slotTime < aptEnd;
-          });
-          
-          slots.push({
-            time: timeString,
-            available: isAvailable,
-            staffId: staffId
-          });
+      let currentHour = startHour;
+      let currentMinute = startMinute;
+      
+      while (currentHour < endHour || (currentHour === endHour && currentMinute < endMinute)) {
+        // Create slot time in UTC for comparison with database times
+        const slotTime = new Date(Date.UTC(year, month - 1, day, currentHour, currentMinute, 0, 0));
+        
+        // Format time for display (HH:MM in clinic's local time)
+        const timeString = `${String(currentHour).padStart(2, '0')}:${String(currentMinute).padStart(2, '0')}`;
+        
+        // Check if this slot conflicts with existing appointments
+        const isAvailable = !existingAppointments.some(apt => {
+          const aptStart = new Date(apt.startTime);
+          const aptEnd = new Date(apt.endTime);
+          return slotTime >= aptStart && slotTime < aptEnd;
+        });
+        
+        slots.push({
+          time: timeString,
+          available: isAvailable,
+          staffId: staffId,
+          datetime: slotTime.toISOString()
+        });
+        
+        // Increment by interval
+        currentMinute += intervalMinutes;
+        if (currentMinute >= 60) {
+          currentHour += Math.floor(currentMinute / 60);
+          currentMinute = currentMinute % 60;
         }
       }
 
       res.json({
-        date: selectedDate.toISOString().split('T')[0],
+        date: `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
+        timezone,
         slots
       });
     } catch (error) {

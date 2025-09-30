@@ -37,6 +37,7 @@ export default function Booking() {
   const [selectedProvider, setSelectedProvider] = useState<Staff | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
   const [selectedTime, setSelectedTime] = useState<string>("");
+  const [selectedDateTime, setSelectedDateTime] = useState<string>("");
   const [paymentType, setPaymentType] = useState<"full" | "deposit">("full");
   const [notes, setNotes] = useState("");
   const [showPaymentFlow, setShowPaymentFlow] = useState(false);
@@ -74,8 +75,15 @@ export default function Booking() {
   });
 
   const { data: availability } = useQuery<BookingAvailability>({
-    queryKey: ["/api/availability", selectedProvider?.id, selectedDate?.toISOString()],
-    enabled: !!selectedProvider && !!selectedDate,
+    queryKey: ["/api/availability", selectedProvider?.id, selectedDate?.toISOString(), selectedLocation],
+    queryFn: () => {
+      const params = new URLSearchParams({
+        date: selectedDate!.toISOString(),
+        locationId: selectedLocation
+      });
+      return apiRequest("GET", `/api/availability/${selectedProvider!.id}?${params.toString()}`).then(res => res.json());
+    },
+    enabled: !!selectedProvider && !!selectedDate && !!selectedLocation,
     staleTime: 30000,
   });
 
@@ -145,6 +153,7 @@ export default function Booking() {
     setSelectedProvider(null);
     setSelectedDate(undefined);
     setSelectedTime("");
+    setSelectedDateTime("");
     setNotes("");
     setShowPaymentFlow(false);
     
@@ -301,7 +310,10 @@ export default function Booking() {
                         key={slot.time}
                         variant={selectedTime === slot.time ? "default" : "outline"}
                         disabled={!slot.available}
-                        onClick={() => setSelectedTime(slot.time)}
+                        onClick={() => {
+                          setSelectedTime(slot.time);
+                          setSelectedDateTime(slot.datetime || "");
+                        }}
                         className="justify-center"
                         data-testid={`time-slot-${slot.time}`}
                       >
@@ -339,12 +351,22 @@ export default function Booking() {
             return <div>Loading location data...</div>;
           }
 
-          const [hours, minutes] = selectedTime.split(':');
-          const startTime = new Date(selectedDate!);
-          startTime.setHours(parseInt(hours), parseInt(minutes));
+          // Use the datetime from availability if available, otherwise fall back to manual construction
+          let startTime: Date;
+          let endTime: Date;
           
-          const endTime = new Date(startTime);
-          endTime.setMinutes(endTime.getMinutes() + selectedService.duration);
+          if (selectedDateTime) {
+            startTime = new Date(selectedDateTime);
+            endTime = new Date(startTime);
+            endTime.setMinutes(endTime.getMinutes() + selectedService.duration);
+          } else {
+            // Fallback for backward compatibility
+            const [hours, minutes] = selectedTime.split(':');
+            startTime = new Date(selectedDate!);
+            startTime.setHours(parseInt(hours), parseInt(minutes));
+            endTime = new Date(startTime);
+            endTime.setMinutes(endTime.getMinutes() + selectedService.duration);
+          }
 
           const bookingData = {
             serviceId: selectedService.id,
