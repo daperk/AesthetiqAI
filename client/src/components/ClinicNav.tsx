@@ -11,6 +11,17 @@ export default function ClinicNav() {
   return (
     <div className="overflow-x-auto -mx-6 px-6 scrollbar-hide">
       <div className="flex space-x-1 bg-muted p-1 rounded-lg w-fit min-w-full sm:min-w-0">
+        <Link href="/clinic">
+          <Button
+            variant={location === "/clinic" || location === "/clinic/dashboard" ? "default" : "ghost"}
+            size="sm"
+            className="relative whitespace-nowrap"
+            data-testid="tab-overview"
+          >
+            <LayoutDashboard className="w-4 h-4 sm:mr-2" />
+            <span className="hidden sm:inline">Overview</span>
+          </Button>
+        </Link>
         <Link href="/clinic/appointments">
           <Button
             variant={location === "/clinic/appointments" ? "default" : "ghost"}
@@ -53,17 +64,6 @@ export default function ClinicNav() {
           >
             <Share2 className="w-4 h-4 sm:mr-2" />
             <span className="hidden sm:inline">Share Link</span>
-          </Button>
-        </Link>
-        <Link href="/clinic">
-          <Button
-            variant={location === "/clinic" || location === "/clinic/dashboard" ? "default" : "ghost"}
-            size="sm"
-            className="relative whitespace-nowrap"
-            data-testid="tab-overview"
-          >
-            <LayoutDashboard className="w-4 h-4 sm:mr-2" />
-            <span className="hidden sm:inline">Overview</span>
           </Button>
         </Link>
         <Link href="/clinic/clients">
