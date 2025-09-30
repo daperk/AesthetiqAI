@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { CheckCircle, Circle, CreditCard, Calendar, Gift, Sparkles, ArrowRight, Users, Crown } from "lucide-react";
+import { CheckCircle, Circle, CreditCard, Calendar, Gift, Sparkles, ArrowRight, Users, Crown, MapPin } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useToast } from "@/hooks/use-toast";
@@ -25,12 +25,20 @@ const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLIC_KEY!);
 interface BusinessSetupStatus {
   stripeConnected: boolean;
   hasSubscription: boolean;
+  hasLocations: boolean;
   hasServices: boolean;
   hasMemberships: boolean;
   hasRewards: boolean;
   hasPatients: boolean;
   allComplete: boolean;
 }
+
+const locationFormSchema = z.object({
+  name: z.string().min(1, "Location name is required"),
+  phone: z.string().optional(),
+  email: z.string().email("Invalid email").optional().or(z.literal("")),
+  timezone: z.string().optional()
+});
 
 const serviceFormSchema = z.object({
   name: z.string().min(1, "Service name is required"),
@@ -181,6 +189,16 @@ export default function BusinessSetup() {
   const isStripeSuccess = urlParams.get('success') === 'true';
 
   // Forms
+  const locationForm = useForm<z.infer<typeof locationFormSchema>>({
+    resolver: zodResolver(locationFormSchema),
+    defaultValues: {
+      name: "",
+      phone: "",
+      email: "",
+      timezone: "America/New_York"
+    }
+  });
+
   const serviceForm = useForm<ServiceFormData>({
     resolver: zodResolver(serviceFormSchema),
     defaultValues: {
@@ -295,20 +313,51 @@ export default function BusinessSetup() {
         setCurrentStep(1);
       } else if (!setupStatus.hasSubscription) {
         setCurrentStep(2);
-      } else if (!setupStatus.hasServices) {
+      } else if (!setupStatus.hasLocations) {
         setCurrentStep(3);
-      } else if (!setupStatus.hasMemberships) {
+      } else if (!setupStatus.hasServices) {
         setCurrentStep(4);
-      } else if (!setupStatus.hasRewards) {
+      } else if (!setupStatus.hasMemberships) {
         setCurrentStep(5);
-      } else if (!setupStatus.hasPatients) {
+      } else if (!setupStatus.hasRewards) {
         setCurrentStep(6);
+      } else if (!setupStatus.hasPatients) {
+        setCurrentStep(7);
       } else {
         // All complete, redirect to dashboard
         setLocation("/clinic");
       }
     }
   }, [setupStatus, setLocation]);
+
+  // Create location mutation
+  const createLocation = useMutation({
+    mutationFn: async (data: z.infer<typeof locationFormSchema>) => {
+      const response = await apiRequest("POST", "/api/locations", {
+        name: data.name,
+        address: "",
+        phone: data.phone || null,
+        email: data.email || null,
+        timezone: data.timezone || "America/New_York"
+      });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/clinic/setup-status'] });
+      toast({
+        title: "Location created!",
+        description: "Your first location has been added successfully.",
+      });
+      locationForm.reset();
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Failed to create location",
+        description: error.message || "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
 
   // Create service mutation
   const createService = useMutation({
@@ -546,27 +595,34 @@ export default function BusinessSetup() {
     },
     {
       number: 3,
+      title: "First Location",
+      description: "Set up your clinic location",
+      icon: <MapPin className="h-5 w-5" />,
+      completed: setupStatus?.hasLocations || false
+    },
+    {
+      number: 4,
       title: "First Service",
       description: "Add your first treatment",
       icon: <Sparkles className="h-5 w-5" />,
       completed: setupStatus?.hasServices || false
     },
     {
-      number: 4,
+      number: 5,
       title: "Membership Plan",
       description: "Create a membership offering",
       icon: <Calendar className="h-5 w-5" />,
       completed: setupStatus?.hasMemberships || false
     },
     {
-      number: 5,
+      number: 6,
       title: "Rewards Program",
       description: "Set up patient rewards",
       icon: <Gift className="h-5 w-5" />,
       completed: setupStatus?.hasRewards || false
     },
     {
-      number: 6,
+      number: 7,
       title: "Patient Invitation",
       description: "Invite your first patient",
       icon: <Users className="h-5 w-5" />,
@@ -855,8 +911,93 @@ export default function BusinessSetup() {
             </Card>
           )}
 
-          {/* Step 3: Create First Service */}
+          {/* Step 3: Create First Location */}
           {currentStep === 3 && (
+            <Form {...locationForm}>
+              <form onSubmit={locationForm.handleSubmit((data) => createLocation.mutate(data))} className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <FormField
+                    control={locationForm.control}
+                    name="name"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Location Name *</FormLabel>
+                        <FormControl>
+                          <Input placeholder="Main Office" {...field} data-testid="input-location-name" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={locationForm.control}
+                    name="phone"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Phone Number</FormLabel>
+                        <FormControl>
+                          <Input placeholder="(555) 123-4567" {...field} data-testid="input-location-phone" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={locationForm.control}
+                    name="email"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Email</FormLabel>
+                        <FormControl>
+                          <Input type="email" placeholder="contact@clinic.com" {...field} data-testid="input-location-email" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={locationForm.control}
+                    name="timezone"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Timezone</FormLabel>
+                        <Select onValueChange={field.onChange} defaultValue={field.value || "America/New_York"}>
+                          <FormControl>
+                            <SelectTrigger data-testid="select-location-timezone">
+                              <SelectValue placeholder="Select timezone" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="America/New_York">Eastern Time</SelectItem>
+                            <SelectItem value="America/Chicago">Central Time</SelectItem>
+                            <SelectItem value="America/Denver">Mountain Time</SelectItem>
+                            <SelectItem value="America/Los_Angeles">Pacific Time</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                <div className="flex justify-end space-x-4">
+                  <Button 
+                    type="submit" 
+                    disabled={createLocation.isPending}
+                    data-testid="button-create-location"
+                  >
+                    {createLocation.isPending ? "Creating..." : "Create Location"}
+                  </Button>
+                </div>
+              </form>
+            </Form>
+          )}
+
+          {/* Step 4: Create First Service */}
+          {currentStep === 4 && (
             <Form {...serviceForm}>
               <form onSubmit={serviceForm.handleSubmit((data) => createService.mutate(data))} className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -970,8 +1111,8 @@ export default function BusinessSetup() {
             </Form>
           )}
 
-          {/* Step 4: Create Membership Plan */}
-          {currentStep === 4 && (
+          {/* Step 5: Create Membership Plan */}
+          {currentStep === 5 && (
             <div className="space-y-8">
               {/* Display existing membership plans */}
               {membershipTiers && membershipTiers.length > 0 && (
@@ -1091,8 +1232,8 @@ export default function BusinessSetup() {
             </div>
           )}
 
-          {/* Step 5: Create Reward Options */}
-          {currentStep === 5 && (
+          {/* Step 6: Create Reward Options */}
+          {currentStep === 6 && (
             <div className="space-y-8">
               {/* Display existing reward options */}
               {rewardOptions && rewardOptions.length > 0 && (
@@ -1218,8 +1359,8 @@ export default function BusinessSetup() {
             </div>
           )}
 
-          {/* Step 6: Patient Invitation */}
-          {currentStep === 6 && (
+          {/* Step 7: Patient Invitation */}
+          {currentStep === 7 && (
             <div className="space-y-8">
               {/* Display invited patients count */}
               {setupStatus?.hasPatients && (

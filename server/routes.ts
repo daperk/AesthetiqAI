@@ -1920,6 +1920,69 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Create location - enforces subscription plan limits
+  app.post("/api/locations", requireAuth, async (req, res) => {
+    try {
+      const orgId = await getUserOrganizationId(req.user!);
+      if (!orgId) {
+        return res.status(400).json({ message: "User organization not found" });
+      }
+
+      // Get organization with subscription plan
+      const organization = await storage.getOrganization(orgId);
+      if (!organization) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+
+      // Get subscription plan to check limits
+      let maxLocations = 1; // Default for free/starter plans
+      if (organization.subscriptionPlanId) {
+        const plan = await storage.getSubscriptionPlan(organization.subscriptionPlanId);
+        if (plan && plan.maxLocations !== null) {
+          maxLocations = plan.maxLocations;
+        }
+      }
+
+      // Check current location count
+      const currentLocations = await storage.getLocationsByOrganization(orgId);
+      if (currentLocations.length >= maxLocations) {
+        return res.status(403).json({ 
+          message: `Your ${organization.subscriptionPlanId ? 'current plan' : 'plan'} allows ${maxLocations} location${maxLocations !== 1 ? 's' : ''}. Please upgrade to add more locations.`,
+          maxLocations,
+          currentCount: currentLocations.length
+        });
+      }
+
+      // Generate slug from name
+      const slug = req.body.name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/(^-|-$)/g, '') + '-' + Math.random().toString(36).substring(2, 8);
+
+      // Create location
+      const locationData = {
+        organizationId: orgId,
+        name: req.body.name,
+        slug,
+        address: req.body.address || null,
+        phone: req.body.phone || null,
+        email: req.body.email || null,
+        timezone: req.body.timezone || 'America/New_York',
+        businessHours: req.body.businessHours || null,
+        isDefault: currentLocations.length === 0, // First location is default
+        publicSettings: req.body.publicSettings || null,
+        settings: req.body.settings || null,
+        isActive: true
+      };
+
+      const location = await storage.createLocation(locationData);
+      res.json(location);
+    } catch (error) {
+      console.error("Failed to create location:", error);
+      res.status(500).json({ message: "Failed to create location" });
+    }
+  });
+
   app.get("/api/services", async (req, res) => {
     try {
       console.log('🔍 [GET /api/services] Request received:', {
@@ -2155,6 +2218,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check Stripe Connect status
       const stripeConnected = !!organization.stripeConnectAccountId;
 
+      // Check subscription status (include trialing subscriptions)
+      const hasSubscription = !!organization.subscriptionPlanId && 
+        (organization.subscriptionStatus === 'active' || organization.subscriptionStatus === 'trialing');
+
+      // Check if they have locations (required based on plan)
+      const locations = await storage.getLocationsByOrganization(organizationId);
+      const hasLocations = locations.length > 0;
+
       // Check if they have services
       const services = await storage.getServicesByOrganization(organizationId);
       const hasServices = services.length > 0;
@@ -2171,15 +2242,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const clients = await storage.getClientsByOrganization(organizationId);
       const hasPatients = clients.length > 0;
 
-      // Check subscription status (include trialing subscriptions)
-      const hasSubscription = !!organization.subscriptionPlanId && 
-        (organization.subscriptionStatus === 'active' || organization.subscriptionStatus === 'trialing');
-
-      const allComplete = stripeConnected && hasSubscription && hasServices && hasMemberships && hasRewards && hasPatients;
+      const allComplete = stripeConnected && hasSubscription && hasLocations && hasServices && hasMemberships && hasRewards && hasPatients;
 
       res.json({
         stripeConnected,
         hasSubscription,
+        hasLocations,
         hasServices,
         hasMemberships,
         hasRewards,
