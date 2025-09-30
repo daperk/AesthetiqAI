@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Calendar } from "@/components/ui/calendar";
 import { Textarea } from "@/components/ui/textarea";
 import LoadingSpinner from "@/components/ui/loading-spinner";
-import Navigation from "@/components/Navigation";
+import ClinicNav from "@/components/ClinicNav";
 import { useAuth } from "@/hooks/useAuth";
 import { useOrganization } from "@/hooks/useOrganization";
 import { usePaymentRequired } from "@/hooks/usePaymentRequired";
@@ -195,19 +195,18 @@ export default function Appointments() {
 
   return (
     <div className="min-h-screen bg-background">
-      <Navigation />
-      
       <div className="container mx-auto px-6 py-8">
         {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-3xl font-serif font-bold text-foreground mb-2" data-testid="text-appointments-title">
-              Appointments
-            </h1>
-            <p className="text-muted-foreground">Manage your clinic's appointment schedule</p>
-          </div>
-          
-          <div className="flex items-center space-x-4">
+        <div className="mb-8">
+          <h1 className="text-3xl font-serif font-bold text-foreground mb-2" data-testid="text-appointments-title">
+            Appointments
+          </h1>
+          <p className="text-muted-foreground mb-4">Manage your clinic's appointment schedule</p>
+          <ClinicNav />
+        </div>
+
+        {/* Actions */}
+        <div className="flex items-center space-x-4 mb-6">
             <Select value={viewMode} onValueChange={(value: "day" | "week" | "month") => setViewMode(value)}>
               <SelectTrigger className="w-32" data-testid="select-view-mode">
                 <SelectValue />

@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Calendar } from "@/components/ui/calendar";
 import { DateRange } from "react-day-picker";
 import LoadingSpinner from "@/components/ui/loading-spinner";
-import Navigation from "@/components/Navigation";
+import ClinicNav from "@/components/ClinicNav";
 import { useAuth } from "@/hooks/useAuth";
 import { useOrganization } from "@/hooks/useOrganization";
 import { usePaymentRequired } from "@/hooks/usePaymentRequired";
@@ -85,19 +85,18 @@ export default function Reports() {
 
   return (
     <div className="min-h-screen bg-background">
-      <Navigation />
-      
       <div className="container mx-auto px-6 py-8">
         {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-3xl font-serif font-bold text-foreground mb-2" data-testid="text-reports-title">
-              Reports & Analytics
-            </h1>
-            <p className="text-muted-foreground">Comprehensive business insights and performance metrics</p>
-          </div>
-          
-          <div className="flex items-center space-x-4">
+        <div className="mb-8">
+          <h1 className="text-3xl font-serif font-bold text-foreground mb-2" data-testid="text-reports-title">
+            Reports & Analytics
+          </h1>
+          <p className="text-muted-foreground mb-4">Comprehensive business insights and performance metrics</p>
+          <ClinicNav />
+        </div>
+
+        {/* Actions */}
+        <div className="flex items-center space-x-4 mb-6">
             <Select value={exportFormat} onValueChange={setExportFormat}>
               <SelectTrigger className="w-32" data-testid="select-export-format">
                 <SelectValue />

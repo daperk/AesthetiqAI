@@ -7,12 +7,12 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import LoadingSpinner from "@/components/ui/loading-spinner";
-import Navigation from "@/components/Navigation";
+import ClinicNav from "@/components/ClinicNav";
 import { useAuth } from "@/hooks/useAuth";
 import { useOrganization } from "@/hooks/useOrganization";
 import { 
   DollarSign, Calendar, Users, Crown, TrendingUp, 
-  Plus, Bell, Brain, Gift, CalendarPlus, UserPlus, Scissors, MapPin, LayoutDashboard
+  Plus, Bell, Brain, Gift, CalendarPlus, UserPlus, Scissors, MapPin
 } from "lucide-react";
 import type { DashboardStats, Appointment, AiInsight, Location } from "@/types";
 
@@ -84,8 +84,6 @@ export default function ClinicDashboard() {
 
   return (
     <div className="min-h-screen bg-background">
-      <Navigation />
-      
       <div className="container mx-auto px-6 py-8">
         {/* Header */}
         <div className="mb-8">
@@ -153,89 +151,11 @@ export default function ClinicDashboard() {
 
           {/* Navigation Tabs - Responsive */}
           <div className="mt-6">
-            <div className="overflow-x-auto -mx-6 px-6 scrollbar-hide">
-              <div className="flex space-x-1 bg-muted p-1 rounded-lg w-fit min-w-full sm:min-w-0">
-                <Link href="/clinic">
-                  <Button
-                    variant={location === "/clinic" ? "default" : "ghost"}
-                    size="sm"
-                    className="relative whitespace-nowrap"
-                    data-testid="tab-overview"
-                  >
-                    <LayoutDashboard className="w-4 h-4 sm:mr-2" />
-                    <span className="hidden sm:inline">Overview</span>
-                  </Button>
-                </Link>
-                <Link href="/clinic/appointments">
-                  <Button
-                    variant={location === "/clinic/appointments" ? "default" : "ghost"}
-                    size="sm"
-                    className="relative whitespace-nowrap"
-                    data-testid="tab-appointments"
-                  >
-                    <Calendar className="w-4 h-4 sm:mr-2" />
-                    <span className="hidden sm:inline">Appointments</span>
-                  </Button>
-                </Link>
-                <Link href="/clinic/clients">
-                  <Button
-                    variant={location === "/clinic/clients" ? "default" : "ghost"}
-                    size="sm"
-                    className="relative whitespace-nowrap"
-                    data-testid="tab-clients"
-                  >
-                    <Users className="w-4 h-4 sm:mr-2" />
-                    <span className="hidden sm:inline">Clients</span>
-                  </Button>
-                </Link>
-                <Link href="/clinic/services">
-                  <Button
-                    variant={location === "/clinic/services" ? "default" : "ghost"}
-                    size="sm"
-                    className="relative whitespace-nowrap"
-                    data-testid="tab-services"
-                  >
-                    <Scissors className="w-4 h-4 sm:mr-2" />
-                    <span className="hidden sm:inline">Services</span>
-                  </Button>
-                </Link>
-                <Link href="/clinic/memberships">
-                  <Button
-                    variant={location === "/clinic/memberships" ? "default" : "ghost"}
-                    size="sm"
-                    className="relative whitespace-nowrap"
-                    data-testid="tab-memberships"
-                  >
-                    <Crown className="w-4 h-4 sm:mr-2" />
-                    <span className="hidden sm:inline">Memberships</span>
-                  </Button>
-                </Link>
-                <Link href="/clinic/staff">
-                  <Button
-                    variant={location === "/clinic/staff" ? "default" : "ghost"}
-                    size="sm"
-                    className="relative whitespace-nowrap"
-                    data-testid="tab-staff"
-                  >
-                    <UserPlus className="w-4 h-4 sm:mr-2" />
-                    <span className="hidden sm:inline">Staff</span>
-                  </Button>
-                </Link>
-                <Link href="/clinic/reports">
-                  <Button
-                    variant={location === "/clinic/reports" ? "default" : "ghost"}
-                    size="sm"
-                    className="relative whitespace-nowrap"
-                    data-testid="tab-reports"
-                  >
-                    <TrendingUp className="w-4 h-4 sm:mr-2" />
-                    <span className="hidden sm:inline">Reports</span>
-                  </Button>
-                </Link>
-              </div>
-            </div>
+            <ClinicNav />
+          </div>
+        </div>
 
-            <div className="mt-6 space-y-6">
+        <div className="mt-6 space-y-6">
               {/* Quick Stats */}
               <div className="grid lg:grid-cols-4 gap-6">
                 <Card>
@@ -479,9 +399,7 @@ export default function ClinicDashboard() {
                 </div>
               </div>
             </div>
-          </div>
         </div>
       </div>
-    </div>
-  );
-}
+    );
+  }

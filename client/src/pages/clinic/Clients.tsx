@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import LoadingSpinner from "@/components/ui/loading-spinner";
-import Navigation from "@/components/Navigation";
+import ClinicNav from "@/components/ClinicNav";
 import { useAuth } from "@/hooks/useAuth";
 import { useOrganization } from "@/hooks/useOrganization";
 import { usePaymentRequired } from "@/hooks/usePaymentRequired";
@@ -141,18 +141,18 @@ export default function Clients() {
 
   return (
     <div className="min-h-screen bg-background">
-      <Navigation />
-      
       <div className="container mx-auto px-6 py-8">
         {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-3xl font-serif font-bold text-foreground mb-2" data-testid="text-clients-title">
-              Clients
-            </h1>
-            <p className="text-muted-foreground">Manage your client relationships and information</p>
-          </div>
-          
+        <div className="mb-8">
+          <h1 className="text-3xl font-serif font-bold text-foreground mb-2" data-testid="text-clients-title">
+            Clients
+          </h1>
+          <p className="text-muted-foreground mb-4">Manage your client relationships and information</p>
+          <ClinicNav />
+        </div>
+
+        {/* Actions */}
+        <div className="mb-6">
           <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
             <DialogTrigger asChild>
               <Button data-testid="button-create-client">

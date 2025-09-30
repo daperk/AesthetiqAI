@@ -13,7 +13,7 @@ import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { useOrganization } from "@/hooks/useOrganization";
 import { usePaymentRequired } from "@/hooks/usePaymentRequired";
-import Navigation from "@/components/Navigation";
+import ClinicNav from "@/components/ClinicNav";
 import LoadingSpinner from "@/components/ui/loading-spinner";
 import { Plus, MoreHorizontal, Edit, Trash2, Clock, DollarSign, Users } from "lucide-react";
 import { apiRequest } from "@/lib/api";
@@ -237,18 +237,18 @@ export default function Services() {
 
   return (
     <div className="min-h-screen bg-background">
-      <Navigation />
-      
       <div className="container mx-auto px-6 py-8">
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-3xl font-serif font-bold text-foreground mb-2" data-testid="text-services-title">
-              Service Catalog
-            </h1>
-            <p className="text-muted-foreground">
-              Manage your clinic's services, pricing, and availability
-            </p>
-          </div>
+        <div className="mb-8">
+          <h1 className="text-3xl font-serif font-bold text-foreground mb-2" data-testid="text-services-title">
+            Service Catalog
+          </h1>
+          <p className="text-muted-foreground mb-4">
+            Manage your clinic's services, pricing, and availability
+          </p>
+          <ClinicNav />
+        </div>
+
+        <div className="mb-6">
           <Dialog open={isCreateDialogOpen || !!editingService} onOpenChange={(open) => {
             if (!open) {
               setIsCreateDialogOpen(false);
