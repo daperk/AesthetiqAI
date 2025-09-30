@@ -172,19 +172,46 @@ export default function Navigation() {
                         Clients
                       </Link>
                       <Link
-                        href="/clinic/share-link"
+                        href="/clinic/services"
                         className={`text-muted-foreground hover:text-foreground transition-colors ${
-                          isActive("/clinic/share-link") ? "text-primary" : ""
+                          isActive("/clinic/services") ? "text-primary" : ""
                         }`}
-                        data-testid="link-share"
+                        data-testid="link-services"
                       >
-                        Share Link
+                        Services
+                      </Link>
+                      <Link
+                        href="/clinic/memberships"
+                        className={`text-muted-foreground hover:text-foreground transition-colors ${
+                          isActive("/clinic/memberships") ? "text-primary" : ""
+                        }`}
+                        data-testid="link-memberships"
+                      >
+                        Memberships
+                      </Link>
+                      <Link
+                        href="/clinic/reports"
+                        className={`text-muted-foreground hover:text-foreground transition-colors ${
+                          isActive("/clinic/reports") ? "text-primary" : ""
+                        }`}
+                        data-testid="link-reports"
+                      >
+                        Reports
                       </Link>
                     </>
                   )}
                   
                   {user.role === "patient" && (
                     <>
+                      <Link
+                        href="/patient/booking"
+                        className={`text-muted-foreground hover:text-foreground transition-colors ${
+                          isActive("/patient/booking") ? "text-primary" : ""
+                        }`}
+                        data-testid="link-book-appointment"
+                      >
+                        Book Appointment
+                      </Link>
                       <Link
                         href="/patient/appointments"
                         className={`text-muted-foreground hover:text-foreground transition-colors ${
@@ -202,6 +229,15 @@ export default function Navigation() {
                         data-testid="link-membership"
                       >
                         Membership
+                      </Link>
+                      <Link
+                        href="/patient/rewards"
+                        className={`text-muted-foreground hover:text-foreground transition-colors ${
+                          isActive("/patient/rewards") ? "text-primary" : ""
+                        }`}
+                        data-testid="link-rewards"
+                      >
+                        Rewards
                       </Link>
                     </>
                   )}
@@ -362,18 +398,42 @@ export default function Navigation() {
                         Clients
                       </Link>
                       <Link
-                        href="/clinic/share-link"
+                        href="/clinic/services"
                         className="text-muted-foreground hover:text-foreground transition-colors"
                         onClick={() => setIsMobileMenuOpen(false)}
-                        data-testid="mobile-link-share"
+                        data-testid="mobile-link-services"
                       >
-                        Share Link
+                        Services
+                      </Link>
+                      <Link
+                        href="/clinic/memberships"
+                        className="text-muted-foreground hover:text-foreground transition-colors"
+                        onClick={() => setIsMobileMenuOpen(false)}
+                        data-testid="mobile-link-memberships"
+                      >
+                        Memberships
+                      </Link>
+                      <Link
+                        href="/clinic/reports"
+                        className="text-muted-foreground hover:text-foreground transition-colors"
+                        onClick={() => setIsMobileMenuOpen(false)}
+                        data-testid="mobile-link-reports"
+                      >
+                        Reports
                       </Link>
                     </>
                   )}
                   
                   {user.role === "patient" && (
                     <>
+                      <Link
+                        href="/patient/booking"
+                        className="text-muted-foreground hover:text-foreground transition-colors"
+                        onClick={() => setIsMobileMenuOpen(false)}
+                        data-testid="mobile-link-book-appointment"
+                      >
+                        Book Appointment
+                      </Link>
                       <Link
                         href="/patient/appointments"
                         className="text-muted-foreground hover:text-foreground transition-colors"
@@ -389,6 +449,14 @@ export default function Navigation() {
                         data-testid="mobile-link-membership"
                       >
                         Membership
+                      </Link>
+                      <Link
+                        href="/patient/rewards"
+                        className="text-muted-foreground hover:text-foreground transition-colors"
+                        onClick={() => setIsMobileMenuOpen(false)}
+                        data-testid="mobile-link-rewards"
+                      >
+                        Rewards
                       </Link>
                     </>
                   )}
