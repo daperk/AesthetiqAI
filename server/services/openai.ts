@@ -51,7 +51,7 @@ export async function generateClientInsights(clientData: {
 
   try {
     const response = await openai.chat.completions.create({
-      model: "gpt-5",
+      model: "gpt-4",
       messages: [
         {
           role: "system",
@@ -104,7 +104,7 @@ export async function generateMarketingCopy(campaign: {
 
   try {
     const response = await openai.chat.completions.create({
-      model: "gpt-5",
+      model: "gpt-4",
       messages: [
         {
           role: "system",
@@ -153,7 +153,7 @@ export async function analyzePricingStrategy(serviceData: {
 
   try {
     const response = await openai.chat.completions.create({
-      model: "gpt-5",
+      model: "gpt-4",
       messages: [
         {
           role: "system",
@@ -202,7 +202,7 @@ export async function generateGrowthRecommendations(businessData: {
 
   try {
     const response = await openai.chat.completions.create({
-      model: "gpt-5",
+      model: "gpt-4",
       messages: [
         {
           role: "system",

@@ -1725,10 +1725,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Chat routes for AI concierge
   app.post("/api/chat", requireAuth, async (req, res) => {
     try {
-      const { message, context } = req.body;
-      const response = await openaiService.generateBookingChatResponse(message, context);
+      // Validate request body
+      const chatSchema = z.object({
+        message: z.string().min(1, "Message cannot be empty"),
+        context: z.object({
+          clientName: z.string().optional(),
+          membershipStatus: z.string().optional(),
+          rewardPoints: z.number().optional(),
+          availableServices: z.array(z.any()).optional(),
+          availableMemberships: z.array(z.any()).optional(),
+        }).optional()
+      });
+
+      const { message, context } = chatSchema.parse(req.body);
+      const response = await openaiService.generateBookingChatResponse(message, {
+        ...context,
+        availableServices: context?.availableServices || [],
+        availableSlots: context?.availableSlots
+      });
       res.json({ response });
     } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid request data", errors: error.errors });
+      }
+      console.error("Chat error:", error);
       res.status(500).json({ message: "Failed to process chat message" });
     }
   });

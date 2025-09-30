@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
+import { useToast } from "@/hooks/use-toast";
 import LoadingSpinner from "@/components/ui/loading-spinner";
 import Navigation from "@/components/Navigation";
 import { useAuth } from "@/hooks/useAuth";
@@ -18,6 +19,7 @@ import type { Appointment, Membership, Reward, Client, ChatMessage } from "@/typ
 
 export default function PatientDashboard() {
   const { user } = useAuth();
+  const { toast } = useToast();
   const [, setLocation] = useLocation();
   const [chatMessage, setChatMessage] = useState("");
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
@@ -113,6 +115,11 @@ export default function PatientDashboard() {
       setChatMessages(prev => [...prev, aiMessage]);
     } catch (error) {
       console.error("Failed to send message:", error);
+      toast({
+        title: "Chat Error",
+        description: "Unable to send message. Please try again.",
+        variant: "destructive"
+      });
     }
   };
 
