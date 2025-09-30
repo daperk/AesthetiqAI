@@ -126,6 +126,15 @@ export default function Navigation() {
                       >
                         Clients
                       </Link>
+                      <Link
+                        href="/clinic/share-link"
+                        className={`text-muted-foreground hover:text-foreground transition-colors ${
+                          isActive("/clinic/share-link") ? "text-primary" : ""
+                        }`}
+                        data-testid="link-share"
+                      >
+                        Share Link
+                      </Link>
                     </>
                   )}
                   
@@ -306,6 +315,14 @@ export default function Navigation() {
                         data-testid="mobile-link-clients"
                       >
                         Clients
+                      </Link>
+                      <Link
+                        href="/clinic/share-link"
+                        className="text-muted-foreground hover:text-foreground transition-colors"
+                        onClick={() => setIsMobileMenuOpen(false)}
+                        data-testid="mobile-link-share"
+                      >
+                        Share Link
                       </Link>
                     </>
                   )}
