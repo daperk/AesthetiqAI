@@ -1,10 +1,10 @@
 import {
-  users, organizations, subscriptionPlans, locations, staff, clients, services,
+  users, organizations, subscriptionPlans, locations, staff, clients, clientLocations, services,
   appointments, memberships, membershipTiers, rewards, rewardOptions, transactions, addOns, organizationAddOns,
   usageLogs, aiInsights, notifications, auditLogs, fileStorage, featureFlags,
   type User, type InsertUser, type Organization, type InsertOrganization,
   type SubscriptionPlan, type InsertSubscriptionPlan, type Location, type InsertLocation,
-  type Staff, type InsertStaff, type Client, type InsertClient, type Service, type InsertService,
+  type Staff, type InsertStaff, type Client, type InsertClient, type ClientLocation, type InsertClientLocation, type Service, type InsertService,
   type Appointment, type InsertAppointment, type Membership, type InsertMembership,
   type MembershipTier, type InsertMembershipTier, type Reward, type InsertReward,
   type RewardOption, type InsertRewardOption,
@@ -70,6 +70,10 @@ export interface IStorage {
   getClientByEmail(email: string): Promise<Client | undefined>;
   createClient(client: InsertClient): Promise<Client>;
   updateClient(id: string, updates: Partial<InsertClient>): Promise<Client>;
+  
+  // Client Locations
+  getClientLocations(clientId: string): Promise<ClientLocation[]>;
+  createClientLocation(clientLocation: InsertClientLocation): Promise<ClientLocation>;
 
   // Services
   getServicesByOrganization(organizationId: string): Promise<Service[]>;
@@ -353,6 +357,15 @@ export class DatabaseStorage implements IStorage {
   async updateClient(id: string, updates: Partial<InsertClient>): Promise<Client> {
     const [client] = await db.update(clients).set(updates).where(eq(clients.id, id)).returning();
     return client;
+  }
+
+  async getClientLocations(clientId: string): Promise<ClientLocation[]> {
+    return await db.select().from(clientLocations).where(eq(clientLocations.clientId, clientId));
+  }
+
+  async createClientLocation(insertClientLocation: InsertClientLocation): Promise<ClientLocation> {
+    const [clientLocation] = await db.insert(clientLocations).values(insertClientLocation).returning();
+    return clientLocation;
   }
 
   // Services

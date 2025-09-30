@@ -113,6 +113,7 @@ export const clients = pgTable("clients", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: uuid("user_id"),
   organizationId: uuid("organization_id").notNull(),
+  primaryLocationId: uuid("primary_location_id"),
   firstName: text("first_name").notNull(),
   lastName: text("last_name").notNull(),
   email: text("email"),
@@ -129,6 +130,13 @@ export const clients = pgTable("clients", {
   lastVisit: timestamp("last_visit"),
   status: text("status").default("active"), // "invited", "active", "inactive"
   isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").default(sql`now()`)
+});
+
+export const clientLocations = pgTable("client_locations", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  clientId: uuid("client_id").notNull(),
+  locationId: uuid("location_id").notNull(),
   createdAt: timestamp("created_at").default(sql`now()`)
 });
 
@@ -496,6 +504,11 @@ export const insertClientSchema = createInsertSchema(clients).omit({
   createdAt: true
 });
 
+export const insertClientLocationSchema = createInsertSchema(clientLocations).omit({
+  id: true,
+  createdAt: true
+});
+
 export const insertServiceSchema = createInsertSchema(services).omit({
   id: true,
   createdAt: true
@@ -582,6 +595,8 @@ export type Staff = typeof staff.$inferSelect;
 export type InsertStaff = z.infer<typeof insertStaffSchema>;
 export type Client = typeof clients.$inferSelect;
 export type InsertClient = z.infer<typeof insertClientSchema>;
+export type ClientLocation = typeof clientLocations.$inferSelect;
+export type InsertClientLocation = z.infer<typeof insertClientLocationSchema>;
 export type Service = typeof services.$inferSelect;
 export type InsertService = z.infer<typeof insertServiceSchema>;
 export type Appointment = typeof appointments.$inferSelect;

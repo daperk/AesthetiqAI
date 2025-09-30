@@ -8,6 +8,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { Gem } from "lucide-react";
 import LoadingSpinner from "@/components/ui/loading-spinner";
 import { useQuery } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 
 export default function PatientSignup() {
   const [, setLocation] = useLocation();
@@ -23,16 +24,20 @@ export default function PatientSignup() {
     organizationSlug: params?.slug || "",
   });
 
-  // Fetch clinic info to display
+  // Fetch location/clinic info to display
   const { data: clinicInfo, isLoading: isLoadingClinic, error: clinicError } = useQuery<{
     id: string;
     name: string;
     slug: string;
+    organizationId?: string;
+    organizationName?: string;
     description?: string;
     website?: string;
     whiteLabelSettings?: any;
+    isLocation?: boolean;
   }>({
-    queryKey: ["/api/organizations/by-slug", params?.slug],
+    queryKey: ["/api/signup-info", params?.slug],
+    queryFn: () => apiRequest("GET", `/api/signup-info/${params?.slug}`).then(res => res.json()),
     enabled: !!params?.slug,
     retry: false, // Don't retry on 404
   });

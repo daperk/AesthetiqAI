@@ -301,7 +301,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // SECURITY: Enforce proper registration flow separation
       if (organizationSlug) {
         // Clinic-specific registration: ONLY patients allowed
-        const organization = await storage.getOrganizationBySlug(organizationSlug);
+        // Check if slug is for a location first
+        let location = await storage.getLocationBySlug(organizationSlug);
+        let organization;
+        let primaryLocationId = null;
+        
+        if (location && location.isActive) {
+          // It's a location slug
+          organization = await storage.getOrganization(location.organizationId);
+          primaryLocationId = location.id;
+        } else {
+          // Try organization slug (backward compatibility)
+          organization = await storage.getOrganizationBySlug(organizationSlug);
+          if (organization && organization.isActive) {
+            // Get default location for this organization
+            const locations = await storage.getLocationsByOrganization(organization.id);
+            const defaultLocation = locations.find(l => l.isDefault) || locations[0];
+            if (defaultLocation) {
+              primaryLocationId = defaultLocation.id;
+            }
+          }
+        }
+        
         if (!organization || !organization.isActive) {
           return res.status(400).json({ message: "Invalid clinic" });
         }
@@ -324,17 +345,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
           password: hashedPassword
         });
 
-        // Create client record to link patient to organization
-        console.log(`Creating client record for user ${user.id} with organization ${organization.id}`);
+        // Create client record to link patient to organization with primary location
+        console.log(`Creating client record for user ${user.id} with organization ${organization.id} and location ${primaryLocationId}`);
         const client = await storage.createClient({
           userId: user.id,
           organizationId: organization.id,
+          primaryLocationId: primaryLocationId,
           firstName: user.firstName || "",
           lastName: user.lastName || "",
           email: user.email,
           phone: user.phone
         });
         console.log(`Client created successfully:`, client.id);
+
+        // Create client-location association
+        if (primaryLocationId) {
+          await storage.createClientLocation({
+            clientId: client.id,
+            locationId: primaryLocationId
+          });
+          console.log(`Client-location association created for location ${primaryLocationId}`);
+        }
 
         // Log them in
         req.logIn(user, (err) => {
@@ -511,6 +542,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/auth/me", requireAuth, (req, res) => {
     res.json({ user: { ...req.user, password: undefined } });
+  });
+
+  // Public signup info endpoint - checks if slug is location or organization
+  app.get("/api/signup-info/:slug", async (req, res) => {
+    try {
+      const { slug } = req.params;
+      
+      // First check if it's a location slug
+      const location = await storage.getLocationBySlug(slug);
+      if (location && location.isActive) {
+        // Get organization info for the location
+        const organization = await storage.getOrganization(location.organizationId);
+        if (organization && organization.isActive) {
+          return res.json({
+            id: location.id,
+            name: location.name,
+            slug: location.slug,
+            organizationId: organization.id,
+            organizationName: organization.name,
+            description: organization.description,
+            website: organization.website,
+            whiteLabelSettings: organization.whiteLabelSettings,
+            isLocation: true
+          });
+        }
+      }
+      
+      // If not a location, check if it's an organization slug (for backward compatibility)
+      const organization = await storage.getOrganizationBySlug(slug);
+      if (organization && organization.isActive) {
+        return res.json({
+          id: organization.id,
+          name: organization.name,
+          slug: organization.slug,
+          description: organization.description,
+          website: organization.website,
+          whiteLabelSettings: organization.whiteLabelSettings,
+          isLocation: false
+        });
+      }
+      
+      return res.status(404).json({ message: "Invalid signup link" });
+    } catch (error) {
+      console.error("Signup info error:", error);
+      res.status(500).json({ message: "Failed to fetch signup info" });
+    }
   });
 
   // Organization routes
@@ -1970,7 +2047,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (req.isAuthenticated()) {
         const orgId = await getUserOrganizationId(req.user!);
         if (orgId) {
-          const locations = await storage.getLocationsByOrganization(orgId);
+          let locations = await storage.getLocationsByOrganization(orgId);
+          
+          // For patients, further filter by their authorized locations
+          if (req.user!.role === "patient") {
+            const client = await storage.getClientByUser(req.user!.id);
+            if (client) {
+              // Get patient's authorized locations
+              const clientLocationLinks = await storage.getClientLocations(client.id);
+              
+              if (clientLocationLinks.length > 0) {
+                // Filter to only show authorized locations
+                const authorizedLocationIds = clientLocationLinks.map(cl => cl.locationId);
+                locations = locations.filter(loc => authorizedLocationIds.includes(loc.id));
+              } else if (client.primaryLocationId) {
+                // Fallback to primary location if no client-location links exist
+                locations = locations.filter(loc => loc.id === client.primaryLocationId);
+              }
+              // If no locations assigned, show all org locations (legacy patient handling)
+            }
+          }
+          
           return res.json(locations);
         }
       }

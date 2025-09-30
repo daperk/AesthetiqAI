@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -54,6 +54,17 @@ export default function Booking() {
     queryKey: ["/api/locations"],
     staleTime: 5 * 60000,
   });
+
+  // Auto-select location if patient has only one
+  useEffect(() => {
+    if (locations && locations.length === 1 && !selectedLocation) {
+      setSelectedLocation(locations[0].id);
+      // If only one location, skip to service selection
+      if (currentStep === 0) {
+        setCurrentStep(1);
+      }
+    }
+  }, [locations, selectedLocation, currentStep]);
 
   const { data: services } = useQuery<Service[]>({
     queryKey: ["/api/services", selectedLocation],

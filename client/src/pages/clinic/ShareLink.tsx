@@ -3,16 +3,25 @@ import { QRCodeSVG } from "qrcode.react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import ClinicNav from "@/components/ClinicNav";
 import { useOrganization } from "@/hooks/useOrganization";
 import { useToast } from "@/hooks/use-toast";
 import LoadingSpinner from "@/components/ui/loading-spinner";
 import { Copy, Download, ExternalLink, Share2, QrCode } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import type { Location } from "@shared/schema";
 
 export default function ShareLink() {
   const { organization, isLoading } = useOrganization();
   const { toast } = useToast();
   const [qrSize, setQrSize] = useState(256);
+  const [selectedLocationId, setSelectedLocationId] = useState<string>("");
+
+  const { data: locations } = useQuery<Location[]>({
+    queryKey: ["/api/locations"],
+    enabled: !!organization?.id
+  });
 
   if (isLoading) {
     return (
@@ -22,7 +31,10 @@ export default function ShareLink() {
     );
   }
 
-  const bookingUrl = `${window.location.origin}/c/${organization?.slug}`;
+  const selectedLocation = locations?.find(loc => loc.id === selectedLocationId) || locations?.[0];
+  const bookingUrl = selectedLocation 
+    ? `${window.location.origin}/c/${selectedLocation.slug}`
+    : `${window.location.origin}/c/${organization?.slug}`;
 
   const copyToClipboard = async () => {
     try {
@@ -102,6 +114,30 @@ export default function ShareLink() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              {locations && locations.length > 1 && (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Select Location</label>
+                  <Select
+                    value={selectedLocationId || locations[0]?.id}
+                    onValueChange={setSelectedLocationId}
+                  >
+                    <SelectTrigger data-testid="select-location">
+                      <SelectValue placeholder="Choose a location" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {locations.map((location) => (
+                        <SelectItem key={location.id} value={location.id}>
+                          {location.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Patients who register through this link will be associated with {selectedLocation?.name || 'this location'}
+                  </p>
+                </div>
+              )}
+              
               <div className="flex gap-2">
                 <Input
                   value={bookingUrl}
