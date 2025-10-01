@@ -2043,39 +2043,55 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Public API endpoints for booking (before auth middleware)
   app.get("/api/locations", async (req, res) => {
     try {
+      console.log("🔍 [GET /api/locations] User:", req.user?.email, "Role:", req.user?.role, "Authenticated:", req.isAuthenticated());
+      
       // If user is authenticated (patient or clinic staff), filter by their organization
       if (req.isAuthenticated()) {
         const orgId = await getUserOrganizationId(req.user!);
+        console.log("🔍 [GET /api/locations] User orgId:", orgId);
+        
         if (orgId) {
           let locations = await storage.getLocationsByOrganization(orgId);
+          console.log("🔍 [GET /api/locations] All org locations:", locations.map(l => ({ id: l.id, name: l.name, orgId: l.organizationId })));
           
           // For patients, further filter by their authorized locations
           if (req.user!.role === "patient") {
             const client = await storage.getClientByUser(req.user!.id);
+            console.log("🔍 [GET /api/locations] Client:", client?.id, "primaryLocationId:", client?.primaryLocationId, "orgId:", client?.organizationId);
+            
             if (client) {
               // Get patient's authorized locations
               const clientLocationLinks = await storage.getClientLocations(client.id);
+              console.log("🔍 [GET /api/locations] Client location links:", clientLocationLinks);
               
               if (clientLocationLinks.length > 0) {
                 // Filter to only show authorized locations
                 const authorizedLocationIds = clientLocationLinks.map(cl => cl.locationId);
                 locations = locations.filter(loc => authorizedLocationIds.includes(loc.id));
+                console.log("🔍 [GET /api/locations] Filtered to authorized locations:", locations.map(l => ({ name: l.name, id: l.id })));
               } else if (client.primaryLocationId) {
                 // Fallback to primary location if no client-location links exist
                 locations = locations.filter(loc => loc.id === client.primaryLocationId);
+                console.log("🔍 [GET /api/locations] Filtered to primary location:", locations.map(l => ({ name: l.name, id: l.id })));
+              } else {
+                console.log("🔍 [GET /api/locations] Legacy patient - showing all org locations:", locations.map(l => ({ name: l.name, id: l.id })));
               }
               // If no locations assigned, show all org locations (legacy patient handling)
             }
           }
           
+          console.log("🔍 [GET /api/locations] Final locations returned:", locations.map(l => ({ name: l.name, id: l.id, orgId: l.organizationId })));
           return res.json(locations);
         }
       }
       
       // For public booking, get all active locations
+      console.log("🔍 [GET /api/locations] Not authenticated or no orgId - returning ALL locations");
       const locations = await storage.getAllLocations();
+      console.log("🔍 [GET /api/locations] ALL locations:", locations.map(l => ({ name: l.name, id: l.id, orgId: l.organizationId })));
       res.json(locations);
     } catch (error) {
+      console.error("🔍 [GET /api/locations] Error:", error);
       res.status(500).json({ message: "Failed to fetch locations" });
     }
   });
