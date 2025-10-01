@@ -179,8 +179,10 @@ export default function Booking() {
   };
 
   const getCurrentStepContent = () => {
-    switch (currentStep) {
-      case 0: // Location
+    const currentStepId = steps[currentStep]?.id;
+    
+    switch (currentStepId) {
+      case "location":
         return (
           <div className="space-y-4">
             <h3 className="text-lg font-semibold" data-testid="text-location-step-title">Choose Location</h3>
@@ -214,7 +216,7 @@ export default function Booking() {
           </div>
         );
 
-      case 1: // Service
+      case "service":
         return (
           <div className="space-y-4">
             <h3 className="text-lg font-semibold" data-testid="text-service-step-title">Select Service</h3>
@@ -255,7 +257,7 @@ export default function Booking() {
           </div>
         );
 
-      case 2: // Provider
+      case "provider":
         return (
           <div className="space-y-4">
             <h3 className="text-lg font-semibold" data-testid="text-provider-step-title">Choose Provider</h3>
@@ -297,7 +299,7 @@ export default function Booking() {
           </div>
         );
 
-      case 3: // Date & Time
+      case "datetime":
         return (
           <div className="space-y-6">
             <h3 className="text-lg font-semibold" data-testid="text-datetime-step-title">Select Date & Time</h3>
@@ -355,7 +357,7 @@ export default function Booking() {
           </div>
         );
 
-      case 4: // Review & Pay
+      case "review":
         if (showPaymentFlow && selectedService && selectedProvider && selectedLocation) {
           // Get location object for payment component
           const selectedLocationObj = locations?.find(loc => loc.id === selectedLocation);

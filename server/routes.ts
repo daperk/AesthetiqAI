@@ -2065,72 +2065,58 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Public API endpoints for booking (before auth middleware)
   app.get("/api/locations", async (req, res) => {
     try {
-      console.log("🔍 [GET /api/locations] User:", req.user?.email, "Role:", req.user?.role, "Authenticated:", req.isAuthenticated());
-      
       // If user is authenticated (patient or clinic staff), filter by their organization
       if (req.isAuthenticated()) {
         const orgId = await getUserOrganizationId(req.user!);
-        console.log("🔍 [GET /api/locations] User orgId:", orgId);
         
         if (orgId) {
           let locations = await storage.getLocationsByOrganization(orgId);
-          console.log("🔍 [GET /api/locations] All org locations:", locations.map(l => ({ id: l.id, name: l.name, orgId: l.organizationId })));
           
           // For patients, filter based on membership and location assignments
           if (req.user!.role === "patient") {
             const client = await storage.getClientByUser(req.user!.id);
-            console.log("🔍 [GET /api/locations] Client:", client?.id, "primaryLocationId:", client?.primaryLocationId, "orgId:", client?.organizationId);
             
             if (client) {
               // Check if patient has multi-location access via membership
               const hasMultiAccess = await hasMultiLocationAccess(client.id, orgId);
-              console.log("🔍 [GET /api/locations] Has multi-location access:", hasMultiAccess);
               
               if (hasMultiAccess) {
                 // Patient with multi-location membership sees all org locations
-                console.log("🔍 [GET /api/locations] Multi-location member - showing all org locations:", locations.map(l => ({ name: l.name, id: l.id })));
+                // No filtering needed
               } else {
                 // Get patient's authorized locations from clientLocations
                 const clientLocationLinks = await storage.getClientLocations(client.id);
-                console.log("🔍 [GET /api/locations] Client location links:", clientLocationLinks);
                 
                 if (clientLocationLinks.length > 0) {
                   // Filter to only show authorized locations
                   const authorizedLocationIds = clientLocationLinks.map(cl => cl.locationId);
                   locations = locations.filter(loc => authorizedLocationIds.includes(loc.id));
-                  console.log("🔍 [GET /api/locations] Filtered to authorized locations:", locations.map(l => ({ name: l.name, id: l.id })));
                 } else if (client.primaryLocationId) {
                   // Fallback to primary location if no client-location links exist
                   locations = locations.filter(loc => loc.id === client.primaryLocationId);
-                  console.log("🔍 [GET /api/locations] Filtered to primary location:", locations.map(l => ({ name: l.name, id: l.id })));
                 } else {
                   // Legacy patient without location assignment - assign to first org location
-                  console.log("🔍 [GET /api/locations] Legacy patient - needs location assignment");
                   if (locations.length > 0) {
                     const firstLocation = locations[0];
                     // Backfill: assign patient to first location
                     await storage.updateClient(client.id, { primaryLocationId: firstLocation.id });
                     await storage.createClientLocation({ clientId: client.id, locationId: firstLocation.id });
                     locations = [firstLocation];
-                    console.log("🔍 [GET /api/locations] Assigned legacy patient to first location:", firstLocation.name);
                   }
                 }
               }
             }
           }
           
-          console.log("🔍 [GET /api/locations] Final locations returned:", locations.map(l => ({ name: l.name, id: l.id, orgId: l.organizationId })));
           return res.json(locations);
         }
       }
       
       // For public booking, get all active locations
-      console.log("🔍 [GET /api/locations] Not authenticated or no orgId - returning ALL locations");
       const locations = await storage.getAllLocations();
-      console.log("🔍 [GET /api/locations] ALL locations:", locations.map(l => ({ name: l.name, id: l.id, orgId: l.organizationId })));
       res.json(locations);
     } catch (error) {
-      console.error("🔍 [GET /api/locations] Error:", error);
+      console.error("Failed to fetch locations:", error);
       res.status(500).json({ message: "Failed to fetch locations" });
     }
   });
