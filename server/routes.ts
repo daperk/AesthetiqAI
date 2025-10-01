@@ -1171,7 +1171,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Verify payment with Stripe
-      const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
       const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
       
       if (paymentIntent.status !== 'succeeded') {
