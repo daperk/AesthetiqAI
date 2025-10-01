@@ -248,6 +248,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
     return null;
   };
 
+  // Helper to check if patient has active multi-location membership
+  const hasMultiLocationAccess = async (clientId: string, organizationId: string): Promise<boolean> => {
+    try {
+      // Get patient's active membership
+      const memberships = await storage.getMembershipsByClient(clientId);
+      const activeMembership = memberships.find(m => m.status === "active");
+      
+      if (!activeMembership) {
+        return false;
+      }
+
+      // Get all membership tiers for the organization and find the matching one
+      const tiers = await storage.getMembershipTiersByOrganization(organizationId);
+      const tier = tiers.find(t => t.name === activeMembership.tierName);
+      
+      return tier?.allowsMultiLocationAccess === true;
+    } catch (error) {
+      console.error("Error checking multi-location access:", error);
+      return false;
+    }
+  };
+
   const auditLog = async (req: Request, action: string, resource: string, resourceId?: string, changes?: any) => {
     if (req.user) {
       try {
@@ -2054,29 +2076,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
           let locations = await storage.getLocationsByOrganization(orgId);
           console.log("🔍 [GET /api/locations] All org locations:", locations.map(l => ({ id: l.id, name: l.name, orgId: l.organizationId })));
           
-          // For patients, further filter by their authorized locations
+          // For patients, filter based on membership and location assignments
           if (req.user!.role === "patient") {
             const client = await storage.getClientByUser(req.user!.id);
             console.log("🔍 [GET /api/locations] Client:", client?.id, "primaryLocationId:", client?.primaryLocationId, "orgId:", client?.organizationId);
             
             if (client) {
-              // Get patient's authorized locations
-              const clientLocationLinks = await storage.getClientLocations(client.id);
-              console.log("🔍 [GET /api/locations] Client location links:", clientLocationLinks);
+              // Check if patient has multi-location access via membership
+              const hasMultiAccess = await hasMultiLocationAccess(client.id, orgId);
+              console.log("🔍 [GET /api/locations] Has multi-location access:", hasMultiAccess);
               
-              if (clientLocationLinks.length > 0) {
-                // Filter to only show authorized locations
-                const authorizedLocationIds = clientLocationLinks.map(cl => cl.locationId);
-                locations = locations.filter(loc => authorizedLocationIds.includes(loc.id));
-                console.log("🔍 [GET /api/locations] Filtered to authorized locations:", locations.map(l => ({ name: l.name, id: l.id })));
-              } else if (client.primaryLocationId) {
-                // Fallback to primary location if no client-location links exist
-                locations = locations.filter(loc => loc.id === client.primaryLocationId);
-                console.log("🔍 [GET /api/locations] Filtered to primary location:", locations.map(l => ({ name: l.name, id: l.id })));
+              if (hasMultiAccess) {
+                // Patient with multi-location membership sees all org locations
+                console.log("🔍 [GET /api/locations] Multi-location member - showing all org locations:", locations.map(l => ({ name: l.name, id: l.id })));
               } else {
-                console.log("🔍 [GET /api/locations] Legacy patient - showing all org locations:", locations.map(l => ({ name: l.name, id: l.id })));
+                // Get patient's authorized locations from clientLocations
+                const clientLocationLinks = await storage.getClientLocations(client.id);
+                console.log("🔍 [GET /api/locations] Client location links:", clientLocationLinks);
+                
+                if (clientLocationLinks.length > 0) {
+                  // Filter to only show authorized locations
+                  const authorizedLocationIds = clientLocationLinks.map(cl => cl.locationId);
+                  locations = locations.filter(loc => authorizedLocationIds.includes(loc.id));
+                  console.log("🔍 [GET /api/locations] Filtered to authorized locations:", locations.map(l => ({ name: l.name, id: l.id })));
+                } else if (client.primaryLocationId) {
+                  // Fallback to primary location if no client-location links exist
+                  locations = locations.filter(loc => loc.id === client.primaryLocationId);
+                  console.log("🔍 [GET /api/locations] Filtered to primary location:", locations.map(l => ({ name: l.name, id: l.id })));
+                } else {
+                  // Legacy patient without location assignment - assign to first org location
+                  console.log("🔍 [GET /api/locations] Legacy patient - needs location assignment");
+                  if (locations.length > 0) {
+                    const firstLocation = locations[0];
+                    // Backfill: assign patient to first location
+                    await storage.updateClient(client.id, { primaryLocationId: firstLocation.id });
+                    await storage.createClientLocation({ clientId: client.id, locationId: firstLocation.id });
+                    locations = [firstLocation];
+                    console.log("🔍 [GET /api/locations] Assigned legacy patient to first location:", firstLocation.name);
+                  }
+                }
               }
-              // If no locations assigned, show all org locations (legacy patient handling)
             }
           }
           

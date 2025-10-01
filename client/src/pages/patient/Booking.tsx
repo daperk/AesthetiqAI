@@ -42,14 +42,6 @@ export default function Booking() {
   const [notes, setNotes] = useState("");
   const [showPaymentFlow, setShowPaymentFlow] = useState(false);
 
-  const steps: BookingStep[] = [
-    { id: "location", title: "Choose Location", completed: !!selectedLocation },
-    { id: "service", title: "Select Service", completed: !!selectedService },
-    { id: "provider", title: "Choose Provider", completed: !!selectedProvider },
-    { id: "datetime", title: "Date & Time", completed: !!selectedDate && !!selectedTime },
-    { id: "review", title: "Review & Pay", completed: false }
-  ];
-
   const { data: locations } = useQuery<Location[]>({
     queryKey: ["/api/locations"],
     staleTime: 5 * 60000,
@@ -59,12 +51,22 @@ export default function Booking() {
   useEffect(() => {
     if (locations && locations.length === 1 && !selectedLocation) {
       setSelectedLocation(locations[0].id);
-      // If only one location, skip to service selection
-      if (currentStep === 0) {
-        setCurrentStep(1);
-      }
     }
-  }, [locations, selectedLocation, currentStep]);
+  }, [locations, selectedLocation]);
+
+  // Dynamically build steps based on whether location selection is needed
+  const allSteps: BookingStep[] = [
+    { id: "location", title: "Choose Location", completed: !!selectedLocation },
+    { id: "service", title: "Select Service", completed: !!selectedService },
+    { id: "provider", title: "Choose Provider", completed: !!selectedProvider },
+    { id: "datetime", title: "Date & Time", completed: !!selectedDate && !!selectedTime },
+    { id: "review", title: "Review & Pay", completed: false }
+  ];
+
+  // Hide location step if patient has only one location (no multi-location access)
+  const steps = locations && locations.length === 1 
+    ? allSteps.filter(step => step.id !== "location")
+    : allSteps;
 
   const { data: services } = useQuery<Service[]>({
     queryKey: ["/api/services", selectedLocation],

@@ -186,6 +186,7 @@ export const membershipTiers = pgTable("membership_tiers", {
   benefits: jsonb("benefits"),
   discountPercentage: decimal("discount_percentage", { precision: 5, scale: 2 }),
   monthlyCredits: decimal("monthly_credits", { precision: 10, scale: 2 }),
+  allowsMultiLocationAccess: boolean("allows_multi_location_access").default(false),
   color: text("color").default("gold"),
   stripePriceIdMonthly: text("stripe_price_id_monthly"),
   stripePriceIdYearly: text("stripe_price_id_yearly"),
