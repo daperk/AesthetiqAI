@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import ClinicNav from "@/components/ClinicNav";
 import LoadingSpinner from "@/components/ui/loading-spinner";
 import { useOrganization } from "@/hooks/useOrganization";
 import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { 
   Gift, Star, Trophy, TrendingUp, Users, Plus,
   Award, Crown, CheckCircle, DollarSign, Target
@@ -47,6 +48,12 @@ export default function Rewards() {
   const { toast } = useToast();
   const [isAddOptionOpen, setIsAddOptionOpen] = useState(false);
   const [isAwardPointsOpen, setIsAwardPointsOpen] = useState(false);
+  
+  // Reward option form state
+  const [optionName, setOptionName] = useState("");
+  const [optionDescription, setOptionDescription] = useState("");
+  const [optionPointsCost, setOptionPointsCost] = useState("");
+  const [optionCategory, setOptionCategory] = useState("");
 
   const { data: statsData, isLoading: statsLoading } = useQuery<RewardStats>({
     queryKey: ["/api/rewards/stats", organization?.id],
@@ -58,8 +65,13 @@ export default function Rewards() {
     enabled: !!organization?.id,
   });
 
-  const { data: rewardOptions, isLoading: optionsLoading } = useQuery<RewardOption[]>({
+  const { data: rewardOptions, isLoading: optionsLoading} = useQuery<RewardOption[]>({
     queryKey: ["/api/reward-options", organization?.id],
+    queryFn: async () => {
+      const res = await fetch("/api/reward-options", { credentials: "include" });
+      if (!res.ok) throw new Error(`${res.status}: ${res.statusText}`);
+      return res.json();
+    },
     enabled: !!organization?.id,
   });
 
@@ -67,6 +79,53 @@ export default function Rewards() {
     queryKey: ["/api/clients", organization?.id],
     enabled: !!organization?.id,
   });
+
+  // Mutation for creating reward option
+  const createRewardOption = useMutation({
+    mutationFn: async (data: any) => {
+      const res = await apiRequest("POST", "/api/reward-options", data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/reward-options", organization?.id] });
+      toast({
+        title: "Reward option created",
+        description: "The reward option has been added successfully.",
+      });
+      setIsAddOptionOpen(false);
+      // Reset form
+      setOptionName("");
+      setOptionDescription("");
+      setOptionPointsCost("");
+      setOptionCategory("");
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Failed to create reward option",
+        description: error.message || "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleCreateRewardOption = () => {
+    if (!optionName || !optionPointsCost || !optionCategory) {
+      toast({
+        title: "Missing fields",
+        description: "Please fill in all required fields.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    createRewardOption.mutate({
+      name: optionName,
+      description: optionDescription,
+      pointsCost: parseInt(optionPointsCost),
+      category: optionCategory,
+      isActive: true,
+    });
+  };
 
   const isLoading = orgLoading || statsLoading;
 
@@ -304,6 +363,8 @@ export default function Rewards() {
                       <Label>Name</Label>
                       <Input
                         placeholder="e.g., $10 Off Next Service"
+                        value={optionName}
+                        onChange={(e) => setOptionName(e.target.value)}
                         data-testid="input-reward-name"
                       />
                     </div>
@@ -311,6 +372,8 @@ export default function Rewards() {
                       <Label>Description</Label>
                       <Textarea
                         placeholder="Describe the reward benefit"
+                        value={optionDescription}
+                        onChange={(e) => setOptionDescription(e.target.value)}
                         data-testid="input-reward-description"
                       />
                     </div>
@@ -320,12 +383,14 @@ export default function Rewards() {
                         <Input
                           type="number"
                           placeholder="500"
+                          value={optionPointsCost}
+                          onChange={(e) => setOptionPointsCost(e.target.value)}
                           data-testid="input-points-cost"
                         />
                       </div>
                       <div className="space-y-2">
                         <Label>Category</Label>
-                        <Select>
+                        <Select value={optionCategory} onValueChange={setOptionCategory}>
                           <SelectTrigger data-testid="select-category">
                             <SelectValue placeholder="Select" />
                           </SelectTrigger>
@@ -342,8 +407,12 @@ export default function Rewards() {
                     <Button variant="outline" onClick={() => setIsAddOptionOpen(false)} data-testid="button-cancel-option">
                       Cancel
                     </Button>
-                    <Button data-testid="button-save-option">
-                      Save Option
+                    <Button 
+                      onClick={handleCreateRewardOption}
+                      disabled={createRewardOption.isPending}
+                      data-testid="button-save-option"
+                    >
+                      {createRewardOption.isPending ? "Saving..." : "Save Option"}
                     </Button>
                   </div>
                 </DialogContent>
