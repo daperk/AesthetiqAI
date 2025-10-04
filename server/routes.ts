@@ -462,61 +462,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return;
           
         } else if (user.role === "clinic_admin") {
-          // Get enterprise plan for testing (all features enabled)
-          const plans = await storage.getSubscriptionPlans();
-          const enterprisePlan = plans.find(p => p.tier === 'enterprise') || plans[0];
-          
-          if (!enterprisePlan) {
-            throw new Error("No subscription plans available");
-          }
-          
-          // Create organization for the business
+          // Create organization for the business (no plan assigned yet)
+          // User will select plan during onboarding flow
           const organizationData = {
             name: userData.businessName || `${user.firstName || ''} ${user.lastName || ''} Clinic`.trim(),
             slug: (userData.businessName || user.email).toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, ''),
-            subscriptionPlanId: enterprisePlan.id,
+            subscriptionPlanId: null, // No auto-assignment - user chooses during onboarding
             whiteLabelSettings: {},
             isActive: true
           };
           
           const organization = await storage.createOrganization(organizationData);
-          
-          // Create Stripe customer and subscription with 30-day trial
-          if (userData.paymentMethod) {
-            try {
-              // Create Stripe customer
-              const customer = await stripeService.createCustomer(
-                user.email,
-                `${user.firstName || ''} ${user.lastName || ''}`.trim(),
-                organization.id
-              );
-              
-              // Note: Payment method attachment will need to be handled separately
-              // The stripeService doesn't currently have attach/update methods
-              // TODO: Add these methods to stripeService or handle differently
-              
-              // Create subscription with 30-day trial
-              const priceId = userData.billingCycle === 'yearly' ? 
-                enterprisePlan.stripePriceIdYearly : enterprisePlan.stripePriceIdMonthly;
-              
-              const subscription = await stripeService.createSubscription(
-                customer.id,
-                priceId,
-                30 // trial_period_days
-              );
-              
-              // Store Stripe IDs in organization
-              await storage.updateOrganization(organization.id, {
-                stripeCustomerId: customer.id,
-                stripeSubscriptionId: subscription.subscriptionId
-              });
-              
-              console.log(`Created Stripe subscription ${subscription.subscriptionId} with 30-day trial for organization ${organization.id}`);
-            } catch (stripeError) {
-              console.error("Stripe setup error:", stripeError);
-              // Continue without subscription setup - user can add payment later
-            }
-          }
           
           // Create staff record linking admin to organization
           await storage.createStaff({
@@ -527,7 +483,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             isActive: true
           });
           
-          console.log(`Created organization ${organization.id} for clinic admin ${user.id} with ${enterprisePlan.name} plan`);
+          console.log(`Created organization ${organization.id} for clinic admin ${user.id} - no plan assigned yet`);
         }
 
         // Log them in
