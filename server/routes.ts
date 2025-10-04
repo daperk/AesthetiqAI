@@ -2497,77 +2497,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Subscription routes  
-  app.post("/api/subscriptions/create", requireAuth, async (req, res) => {
-    try {
-      const { planId, billingCycle = 'monthly' } = req.body;
-      const userId = req.user!.id;
-      
-      // Get user's organization
-      const organizationId = await getUserOrganizationId(req.user!);
-      if (!organizationId) {
-        return res.status(400).json({ message: "No organization found for user" });
-      }
-      
-      const organization = await storage.getOrganization(organizationId);
-      if (!organization) {
-        return res.status(404).json({ message: "Organization not found" });
-      }
-      
-      // Get subscription plan
-      const plan = await storage.getSubscriptionPlan(planId);
-      if (!plan) {
-        return res.status(404).json({ message: "Subscription plan not found" });
-      }
-      
-      // Initialize Stripe
-      const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
-      
-      let customerId = organization.stripeCustomerId;
-      
-      // Create Stripe customer if doesn't exist
-      if (!customerId) {
-        const customer = await stripe.customers.create({
-          email: req.user!.email,
-          name: `${req.user!.firstName || ''} ${req.user!.lastName || ''}`.trim(),
-          metadata: {
-            organizationId: organization.id,
-            userId: userId
-          }
-        });
-        customerId = customer.id;
-        
-        // Update organization with customer ID
-        await storage.updateOrganization(organization.id, {
-          stripeCustomerId: customerId
-        });
-      }
-      
-      // Create setup intent for payment method collection
-      const setupIntent = await stripe.setupIntents.create({
-        customer: customerId,
-        usage: 'off_session',
-        metadata: {
-          organizationId: organization.id,
-          planId: plan.id,
-          billingCycle: billingCycle
-        }
-      });
-      
-      res.json({
-        setupIntent,
-        planDetails: {
-          name: plan.name,
-          price: billingCycle === 'yearly' ? plan.yearlyPrice : plan.monthlyPrice,
-          billingCycle: billingCycle
-        }
-      });
-      
-    } catch (error) {
-      console.error("Subscription creation error:", error);
-      res.status(500).json({ message: "Failed to create subscription" });
-    }
-  });
+  // Subscription routes (old endpoint removed - duplicate with line 3019)
   
   app.post("/api/subscriptions/confirm", requireAuth, async (req, res) => {
     try {
