@@ -213,9 +213,9 @@ export default function Subscribe() {
 
   const selectedPlan = plans?.find(plan => plan.tier === selectedPlanId);
 
-  const handlePlanSelect = (planId: string) => {
-    setSelectedPlanId(planId);
-    createSubscriptionMutation.mutate({ planId, billingCycle });
+  const handleProceedToCheckout = () => {
+    if (!selectedPlanId) return;
+    createSubscriptionMutation.mutate({ planId: selectedPlanId, billingCycle });
   };
 
   const calculateYearlySavings = (monthlyPrice: number, yearlyPrice: number) => {
@@ -377,30 +377,67 @@ export default function Subscribe() {
                         )}
                       </div>
                       
-                      <Button 
-                        className={`w-full ${features.popular ? 'bg-primary text-primary-foreground' : ''}`}
-                        variant={features.popular ? "default" : "outline"}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handlePlanSelect(plan.tier);
-                        }}
-                        disabled={createSubscriptionMutation.isPending}
-                        data-testid={`button-select-${plan.tier}`}
-                      >
-                        {createSubscriptionMutation.isPending && selectedPlanId === plan.tier ? (
-                          <LoadingSpinner size="sm" />
-                        ) : (
-                          <>
-                            Start Free Trial
-                            <ArrowRight className="w-4 h-4 ml-2" />
-                          </>
-                        )}
-                      </Button>
+                      {selectedPlanId === plan.tier ? (
+                        <Badge className="w-full text-center py-2 bg-primary text-primary-foreground" data-testid={`badge-selected-${plan.tier}`}>
+                          Selected ✓
+                        </Badge>
+                      ) : (
+                        <Button 
+                          className={`w-full ${features.popular ? 'bg-primary text-primary-foreground' : ''}`}
+                          variant={features.popular ? "default" : "outline"}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedPlanId(plan.tier);
+                          }}
+                          data-testid={`button-select-${plan.tier}`}
+                        >
+                          Select Plan
+                        </Button>
+                      )}
                     </CardContent>
                   </Card>
                 );
               })}
             </div>
+
+            {/* Proceed to Checkout Button */}
+            {selectedPlanId && selectedPlan && !showCheckout && (
+              <div className="max-w-2xl mx-auto mb-12">
+                <Card className="border-2 border-primary shadow-lg">
+                  <CardContent className="p-6">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className="font-semibold text-lg">Selected: {selectedPlan.name}</h3>
+                        <p className="text-sm text-muted-foreground">
+                          {billingCycle === "yearly" ? "Annual" : "Monthly"} billing - 
+                          ${billingCycle === "yearly" ? selectedPlan.yearlyPrice : selectedPlan.monthlyPrice}
+                          {billingCycle === "yearly" ? "/year" : "/month"}
+                        </p>
+                      </div>
+                      <Button
+                        onClick={handleProceedToCheckout}
+                        disabled={createSubscriptionMutation.isPending}
+                        className="bg-primary text-primary-foreground"
+                        data-testid="button-proceed-to-checkout"
+                        size="lg"
+                      >
+                        {createSubscriptionMutation.isPending ? (
+                          <div className="flex items-center space-x-2">
+                            <LoadingSpinner size="sm" />
+                            <span>Processing...</span>
+                          </div>
+                        ) : (
+                          <>
+                            Continue to Checkout
+                            <ArrowRight className="w-4 h-4 ml-2" />
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
 
             {/* Trust Indicators */}
             <div className="max-w-4xl mx-auto">
