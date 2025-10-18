@@ -2314,57 +2314,180 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Prepare invitation email
       const invitationLink = `${req.protocol}://${req.get('host')}/c/${organization.slug}/register`;
+      
+      // Get first location for contact info (if available)
+      const locations = await storage.getLocationsByOrganization(organizationId);
+      const primaryLocation = locations[0];
+      
       const emailContent = `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <h2 style="color: #B8860B;">You're Invited to ${organization.name}</h2>
-          <p>Hi ${firstName},</p>
-          <p>${organization.name} has invited you to join their patient portal where you can:</p>
-          <ul>
-            <li>Book appointments online</li>
-            <li>Manage your membership</li>
-            <li>Track your rewards points</li>
-            <li>View your treatment history</li>
-          </ul>
-          <p>
-            <a href="${invitationLink}" 
-               style="background-color: #B8860B; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; display: inline-block;">
-              Accept Invitation
-            </a>
-          </p>
-          <p style="font-size: 12px; color: #666;">
-            This invitation is specifically for ${organization.name}. 
-            Click the button above to create your secure patient account.
-          </p>
-        </div>
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>You're Invited to ${organization.name}</title>
+        </head>
+        <body style="margin: 0; padding: 0; font-family: 'Arial', 'Helvetica', sans-serif; background-color: #f5f5f5;">
+          <div style="max-width: 600px; margin: 40px auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+            <!-- Header -->
+            <div style="background: linear-gradient(135deg, #B8860B 0%, #DAA520 100%); padding: 40px 30px; text-align: center;">
+              <h1 style="color: #ffffff; margin: 0; font-size: 32px; font-weight: 300; letter-spacing: 1px;">
+                ${organization.name}
+              </h1>
+              <p style="color: #fff; margin: 10px 0 0 0; font-size: 14px; opacity: 0.95;">
+                Exclusive Invitation to Our Patient Portal
+              </p>
+            </div>
+            
+            <!-- Content -->
+            <div style="padding: 40px 30px;">
+              <h2 style="color: #333333; font-size: 24px; margin: 0 0 20px 0;">
+                Welcome, ${firstName}!
+              </h2>
+              
+              <p style="color: #666666; font-size: 16px; line-height: 1.6; margin: 0 0 25px 0;">
+                You've been personally invited to join <strong>${organization.name}</strong>'s exclusive patient portal. 
+                Experience premium aesthetic care with our state-of-the-art services and personalized treatment plans.
+              </p>
+              
+              <!-- Features Section -->
+              <div style="background-color: #f9f9f9; border-left: 4px solid #B8860B; padding: 20px; margin: 25px 0;">
+                <h3 style="color: #333333; font-size: 18px; margin: 0 0 15px 0;">
+                  Your Member Benefits:
+                </h3>
+                <ul style="color: #666666; font-size: 14px; line-height: 1.8; margin: 0; padding-left: 20px;">
+                  <li><strong>Online Booking</strong> - Schedule appointments at your convenience</li>
+                  <li><strong>Exclusive Memberships</strong> - Access to VIP treatment packages</li>
+                  <li><strong>Rewards Program</strong> - Earn points with every visit and purchase</li>
+                  <li><strong>Treatment History</strong> - Track your aesthetic journey</li>
+                  <li><strong>Special Offers</strong> - Member-only promotions and discounts</li>
+                  <li><strong>Priority Access</strong> - First access to new treatments and services</li>
+                </ul>
+              </div>
+              
+              <!-- CTA Button -->
+              <div style="text-align: center; margin: 35px 0;">
+                <a href="${invitationLink}" 
+                   style="display: inline-block; background: linear-gradient(135deg, #B8860B 0%, #DAA520 100%); 
+                          color: white; text-decoration: none; padding: 16px 40px; border-radius: 30px; 
+                          font-size: 16px; font-weight: 600; letter-spacing: 0.5px; 
+                          box-shadow: 0 4px 15px rgba(184, 134, 11, 0.3);
+                          transition: all 0.3s ease;">
+                  Accept Your Invitation
+                </a>
+              </div>
+              
+              <p style="color: #999999; font-size: 13px; text-align: center; margin: 20px 0;">
+                Or copy and paste this link into your browser:<br>
+                <span style="color: #B8860B; word-break: break-all;">${invitationLink}</span>
+              </p>
+            </div>
+            
+            <!-- Contact Information -->
+            <div style="background-color: #f9f9f9; padding: 25px 30px; border-top: 1px solid #e0e0e0;">
+              <h3 style="color: #333333; font-size: 16px; margin: 0 0 15px 0;">
+                Contact Information
+              </h3>
+              <div style="color: #666666; font-size: 14px; line-height: 1.6;">
+                ${primaryLocation ? `
+                  <p style="margin: 5px 0;"><strong>${primaryLocation.name}</strong></p>
+                  ${primaryLocation.phone ? `<p style="margin: 5px 0;">📞 ${primaryLocation.phone}</p>` : ''}
+                  ${primaryLocation.email ? `<p style="margin: 5px 0;">✉️ ${primaryLocation.email}</p>` : ''}
+                  ${primaryLocation.address ? `<p style="margin: 5px 0;">📍 ${primaryLocation.address}</p>` : ''}
+                ` : `
+                  <p style="margin: 5px 0;"><strong>${organization.name}</strong></p>
+                  ${organization.phone ? `<p style="margin: 5px 0;">📞 ${organization.phone}</p>` : ''}
+                  ${organization.email ? `<p style="margin: 5px 0;">✉️ ${organization.email}</p>` : ''}
+                `}
+                ${organization.website ? `<p style="margin: 5px 0;">🌐 <a href="${organization.website}" style="color: #B8860B; text-decoration: none;">${organization.website}</a></p>` : ''}
+              </div>
+            </div>
+            
+            <!-- Footer -->
+            <div style="background-color: #333333; padding: 20px 30px; text-align: center;">
+              <p style="color: #ffffff; font-size: 12px; margin: 0;">
+                © ${new Date().getFullYear()} ${organization.name}. All rights reserved.
+              </p>
+              <p style="color: #999999; font-size: 11px; margin: 10px 0 0 0;">
+                This invitation was sent to ${email}.<br>
+                If you believe this was sent in error, please disregard this email.
+              </p>
+            </div>
+          </div>
+        </body>
+        </html>
       `;
 
-      // Try to send invitation email using SendGrid (non-blocking)
+      // Try to send invitation email using SendGrid
       let emailSent = false;
-      try {
-        sgMail.setApiKey(process.env.SENDGRID_API_KEY!);
+      let emailError: any = null;
+      
+      if (process.env.SENDGRID_API_KEY) {
+        try {
+          // Initialize SendGrid with API key
+          sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
-        const msg = {
-          to: email,
-          from: {
-            email: 'noreply@aesthiq.com',
-            name: organization.name
-          },
-          subject: `You're invited to join ${organization.name}`,
-          html: emailContent
-        };
+          // Use environment variable for from email or fallback to a default
+          const fromEmail = process.env.SENDGRID_FROM_EMAIL || 'notifications@aesthiq.app';
+          
+          const msg = {
+            to: email,
+            from: {
+              email: fromEmail,
+              name: organization.name
+            },
+            subject: `Exclusive Invitation from ${organization.name}`,
+            html: emailContent,
+            text: `You're invited to join ${organization.name}!\n\n` +
+                  `Hi ${firstName},\n\n` +
+                  `${organization.name} has invited you to join their exclusive patient portal.\n\n` +
+                  `Accept your invitation: ${invitationLink}\n\n` +
+                  `Your Member Benefits:\n` +
+                  `- Online appointment booking\n` +
+                  `- Exclusive memberships\n` +
+                  `- Rewards program\n` +
+                  `- Treatment history tracking\n` +
+                  `- Special member-only offers\n` +
+                  `- Priority access to new services\n\n` +
+                  `Contact Information:\n` +
+                  `${primaryLocation ? primaryLocation.name : organization.name}\n` +
+                  `${primaryLocation?.phone || organization.phone || 'Contact us for more info'}\n` +
+                  `${primaryLocation?.email || organization.email || ''}\n` +
+                  `${organization.website || ''}\n\n` +
+                  `© ${new Date().getFullYear()} ${organization.name}. All rights reserved.`
+          };
 
-        await sgMail.send(msg);
-        emailSent = true;
-      } catch (emailError) {
-        console.error("SendGrid email error (non-fatal):", emailError);
-        // Continue - email failure doesn't fail the invitation
+          await sgMail.send(msg);
+          emailSent = true;
+          console.log(`✅ Invitation email sent successfully to ${email} for ${organization.name}`);
+        } catch (error: any) {
+          emailError = error;
+          console.error("❌ SendGrid email error:", {
+            message: error.message,
+            code: error.code,
+            response: error.response?.body,
+            email: email,
+            organization: organization.name
+          });
+        }
+      } else {
+        console.warn("⚠️ SENDGRID_API_KEY not configured - email not sent");
+        emailError = new Error("SendGrid not configured");
       }
 
       res.json({
         success: true,
-        message: emailSent ? "Invitation sent successfully" : "Patient invited successfully (email notification pending)",
+        message: emailSent 
+          ? "Invitation email sent successfully!" 
+          : emailError?.message === "SendGrid not configured"
+            ? "Patient invited successfully (email service not configured)"
+            : "Patient invited successfully (email will be sent shortly)",
         invitationLink,
         emailSent,
+        emailError: emailSent ? null : {
+          message: emailError?.message || "Unknown email error",
+          code: emailError?.code || null
+        },
         client: {
           id: client.id,
           firstName: client.firstName,
