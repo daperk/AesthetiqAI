@@ -8,16 +8,24 @@ async function testPatientInvitation() {
   
   // Check SendGrid configuration
   const hasSendGrid = !!process.env.SENDGRID_API_KEY;
-  const sendGridFromEmail = process.env.SENDGRID_FROM_EMAIL || 'notifications@aesthiq.app';
+  const sendGridFromEmail = process.env.SENDGRID_FROM_EMAIL || process.env.FROM_EMAIL || 'no-reply@aesthiq.app';
+  const sendGridFromName = process.env.SENDGRID_FROM_NAME || 'Aesthiq';
   
   console.log('📧 SendGrid Configuration:');
   console.log(`   - API Key: ${hasSendGrid ? '✅ Configured' : '❌ Missing'}`);
   console.log(`   - From Email: ${sendGridFromEmail}`);
+  console.log(`   - From Name: ${sendGridFromName}`);
+  console.log(`   - Debug Mode: ${process.env.NODE_ENV === 'development' ? 'Enabled' : 'Disabled'}`);
   console.log('');
   
   if (!hasSendGrid) {
     console.warn('⚠️  Warning: SENDGRID_API_KEY is not configured.');
-    console.log('   Emails will not be sent, but invitations will still be created.\n');
+    console.log('   Patient records will still be created, but emails will not be sent.');
+    console.log('   To enable emails, set the SENDGRID_API_KEY environment variable.');
+    console.log('   Optionally, set SENDGRID_FROM_EMAIL for a custom sender address.\n');
+  } else {
+    console.log('✅ SendGrid is configured and ready to send emails.');
+    console.log('   NOTE: Ensure the sender email is verified in SendGrid.\n');
   }
   
   // Test data
@@ -76,34 +84,58 @@ async function testPatientInvitation() {
     
     console.log('\n📋 Invitation Response:');
     console.log('   Success:', inviteData.success ? '✅' : '❌');
-    console.log('   Message:', inviteData.message);
-    console.log('   Email Sent:', inviteData.emailSent ? '✅' : '❌');
     
-    if (inviteData.emailError) {
-      console.log('   Email Error:', inviteData.emailError.message);
+    // Patient Information
+    if (inviteData.patient) {
+      console.log('\n👤 Patient Record Created:');
+      console.log('   - ID:', inviteData.patient.id);
+      console.log('   - Name:', `${inviteData.patient.firstName} ${inviteData.patient.lastName}`);
+      console.log('   - Email:', inviteData.patient.email);
+      console.log('   - Phone:', inviteData.patient.phone || 'Not provided');
+      console.log('   - Status:', inviteData.patient.status);
+      console.log('   - Created:', inviteData.patient.createdAt);
     }
     
-    if (inviteData.invitationLink) {
-      console.log('   Invitation Link:', inviteData.invitationLink);
+    // Invitation Details
+    if (inviteData.invitation) {
+      console.log('\n🎫 Invitation Details:');
+      console.log('   - Link:', inviteData.invitation.link);
+      console.log('   - Sent To:', inviteData.invitation.sentTo);
     }
     
-    if (inviteData.client) {
-      console.log('\n👤 Created Client Record:');
-      console.log('   - ID:', inviteData.client.id);
-      console.log('   - Name:', `${inviteData.client.firstName} ${inviteData.client.lastName}`);
-      console.log('   - Email:', inviteData.client.email);
-      console.log('   - Status:', inviteData.client.status);
+    // Email Status
+    if (inviteData.emailStatus) {
+      console.log('\n📧 Email Status:');
+      console.log('   - Sent:', inviteData.emailStatus.sent ? '✅ Yes' : '❌ No');
+      console.log('   - Message:', inviteData.emailStatus.message);
+      
+      if (inviteData.emailStatus.error) {
+        console.log('   - Error Code:', inviteData.emailStatus.error.code);
+        console.log('   - Error Details:', inviteData.emailStatus.error.details);
+      }
+      
+      if (inviteData.emailStatus.debugInfo) {
+        console.log('   - Debug Info:', JSON.stringify(inviteData.emailStatus.debugInfo, null, 2));
+      }
     }
     
-    console.log('\n');
+    console.log('\n=====================================');
     
-    if (inviteData.emailSent) {
-      console.log('✅ SUCCESS: Email invitation was sent successfully!');
-      console.log('   Check the patient\'s email inbox for the invitation.');
+    // Final Summary
+    if (inviteData.emailStatus?.sent) {
+      console.log('✅ COMPLETE SUCCESS: Patient invited and email sent!');
+      console.log('   The patient should receive the invitation email shortly.');
     } else if (inviteData.success) {
-      console.log('⚠️  PARTIAL SUCCESS: Patient was invited but email was not sent.');
-      console.log('   This could be due to SendGrid configuration issues.');
-      console.log('   The patient can still register using the invitation link.');
+      console.log('⚠️  PARTIAL SUCCESS: Patient invited but email not sent.');
+      if (inviteData.emailStatus?.error?.code === 'NO_CONFIG') {
+        console.log('   Reason: SendGrid is not configured.');
+        console.log('   Action: Set SENDGRID_API_KEY to enable email sending.');
+      } else {
+        console.log('   Reason:', inviteData.emailStatus?.error?.message || 'Unknown email error');
+        console.log('   Action: Check SendGrid configuration and sender verification.');
+      }
+      console.log('   Note: The patient record was created successfully.');
+      console.log('   Share this link with the patient:', inviteData.invitation?.link);
     } else {
       console.log('❌ FAILED: Could not create patient invitation.');
     }

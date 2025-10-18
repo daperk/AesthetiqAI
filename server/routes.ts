@@ -11,6 +11,34 @@ import * as stripeService from "./services/stripe";
 import { stripe } from "./services/stripe";
 import sgMail from "@sendgrid/mail";
 
+// Initialize SendGrid globally with better configuration
+const SENDGRID_CONFIG = {
+  apiKey: process.env.SENDGRID_API_KEY,
+  fromEmail: process.env.SENDGRID_FROM_EMAIL || process.env.FROM_EMAIL || 'no-reply@aesthiq.app',
+  fromName: process.env.SENDGRID_FROM_NAME || 'Aesthiq',
+  isConfigured: !!process.env.SENDGRID_API_KEY,
+  debugMode: process.env.NODE_ENV === 'development'
+};
+
+// Initialize SendGrid if API key is available
+if (SENDGRID_CONFIG.apiKey) {
+  try {
+    sgMail.setApiKey(SENDGRID_CONFIG.apiKey);
+    console.log('✅ SendGrid initialized successfully');
+    console.log(`📧 Default sender: ${SENDGRID_CONFIG.fromEmail}`);
+    if (SENDGRID_CONFIG.debugMode) {
+      console.log('🔍 SendGrid Debug Mode: Enabled');
+    }
+  } catch (error) {
+    console.error('❌ Failed to initialize SendGrid:', error);
+    SENDGRID_CONFIG.isConfigured = false;
+  }
+} else {
+  console.warn('⚠️ SendGrid API key not configured. Email sending will be disabled.');
+  console.log('   Set SENDGRID_API_KEY environment variable to enable email sending.');
+  console.log('   Optionally set SENDGRID_FROM_EMAIL for custom sender address.');
+}
+
 // Helper function to calculate reward points based on membership tier and spend
 async function calculateRewardPoints(clientId: string, organizationId: string, amountSpent: number): Promise<number> {
   try {
@@ -2279,10 +2307,96 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
 
+  // Helper function to send emails with better error handling
+  const sendEmail = async (emailData: {
+    to: string;
+    subject: string;
+    html: string;
+    text: string;
+    fromName?: string;
+  }) => {
+    const result = {
+      sent: false,
+      error: null as any,
+      debugInfo: {} as any
+    };
+
+    // Check if SendGrid is configured
+    if (!SENDGRID_CONFIG.isConfigured) {
+      result.error = {
+        message: 'Email service not configured',
+        code: 'NO_CONFIG',
+        details: 'SENDGRID_API_KEY environment variable is not set'
+      };
+      console.warn('📧 Email not sent - SendGrid not configured');
+      return result;
+    }
+
+    try {
+      // Prepare the message with fallback values
+      const msg = {
+        to: emailData.to,
+        from: {
+          email: SENDGRID_CONFIG.fromEmail,
+          name: emailData.fromName || SENDGRID_CONFIG.fromName
+        },
+        subject: emailData.subject,
+        html: emailData.html,
+        text: emailData.text,
+      };
+
+      // Log email attempt in debug mode
+      if (SENDGRID_CONFIG.debugMode) {
+        console.log('📧 Attempting to send email:', {
+          to: msg.to,
+          from: msg.from,
+          subject: msg.subject,
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      // Send the email
+      const [response] = await sgMail.send(msg);
+      
+      result.sent = true;
+      result.debugInfo = {
+        statusCode: response.statusCode,
+        messageId: response.headers['x-message-id'],
+        timestamp: new Date().toISOString()
+      };
+
+      console.log('✅ Email sent successfully:', {
+        to: emailData.to,
+        subject: emailData.subject,
+        messageId: result.debugInfo.messageId
+      });
+
+    } catch (error: any) {
+      result.error = {
+        message: error.message || 'Failed to send email',
+        code: error.code || 'SEND_FAILED',
+        details: error.response?.body?.errors?.[0]?.message || error.toString()
+      };
+
+      // Enhanced error logging
+      console.error('❌ Email sending failed:', {
+        to: emailData.to,
+        error: result.error,
+        timestamp: new Date().toISOString(),
+        // Include SendGrid-specific error details if available
+        sendgridError: error.response?.body || null
+      });
+    }
+
+    return result;
+  };
+
   // Patient invitation endpoint
   app.post("/api/patients/invite", requireAuth, async (req, res) => {
     try {
       const { email, firstName, lastName, phone } = req.body;
+      
+      console.log(`📋 Processing patient invitation for: ${email}`);
       
       const organizationId = await getUserOrganizationId(req.user!);
       if (!organizationId) {
@@ -2299,26 +2413,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const existingClient = existingClients.find((client: any) => client.email === email);
       
       if (existingClient) {
-        return res.status(400).json({ message: "Patient with this email already exists" });
+        return res.status(400).json({ 
+          message: "Patient with this email already exists",
+          existingPatient: {
+            id: existingClient.id,
+            name: `${existingClient.firstName} ${existingClient.lastName}`,
+            status: existingClient.status
+          }
+        });
       }
 
-      // Create a temporary client record (they'll complete registration later)
-      const client = await storage.createClient({
-        organizationId,
-        firstName,
-        lastName,
-        email,
-        phone: phone || null,
-        status: "invited" // Mark as invited until they complete registration
-      });
+      // IMPORTANT: Create patient record first - this should always succeed
+      let client;
+      try {
+        client = await storage.createClient({
+          organizationId,
+          firstName,
+          lastName,
+          email,
+          phone: phone || null,
+          status: "invited" // Mark as invited until they complete registration
+        });
+        
+        console.log(`✅ Patient record created successfully: ${client.id}`);
+      } catch (dbError) {
+        console.error('❌ Failed to create patient record:', dbError);
+        return res.status(500).json({ 
+          message: "Failed to create patient record",
+          error: dbError instanceof Error ? dbError.message : 'Unknown database error'
+        });
+      }
 
-      // Prepare invitation email
+      // Prepare invitation link
       const invitationLink = `${req.protocol}://${req.get('host')}/c/${organization.slug}/register`;
       
       // Get first location for contact info (if available)
       const locations = await storage.getLocationsByOrganization(organizationId);
       const primaryLocation = locations[0];
       
+      // Prepare email content
       const emailContent = `
         <!DOCTYPE html>
         <html lang="en">
@@ -2418,84 +2551,79 @@ export async function registerRoutes(app: Express): Promise<Server> {
         </html>
       `;
 
-      // Try to send invitation email using SendGrid
-      let emailSent = false;
-      let emailError: any = null;
-      
-      if (process.env.SENDGRID_API_KEY) {
-        try {
-          // Initialize SendGrid with API key
-          sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+      // Prepare plain text version of the email
+      const textContent = `You're invited to join ${organization.name}!\n\n` +
+        `Hi ${firstName},\n\n` +
+        `${organization.name} has invited you to join their exclusive patient portal.\n\n` +
+        `Accept your invitation: ${invitationLink}\n\n` +
+        `Your Member Benefits:\n` +
+        `- Online appointment booking\n` +
+        `- Exclusive memberships\n` +
+        `- Rewards program\n` +
+        `- Treatment history tracking\n` +
+        `- Special member-only offers\n` +
+        `- Priority access to new services\n\n` +
+        `Contact Information:\n` +
+        `${primaryLocation ? primaryLocation.name : organization.name}\n` +
+        `${primaryLocation?.phone || organization.phone || 'Contact us for more info'}\n` +
+        `${primaryLocation?.email || organization.email || ''}\n` +
+        `${organization.website || ''}\n\n` +
+        `© ${new Date().getFullYear()} ${organization.name}. All rights reserved.`;
 
-          // Use environment variable for from email or fallback to a default
-          const fromEmail = process.env.SENDGRID_FROM_EMAIL || 'notifications@aesthiq.app';
-          
-          const msg = {
-            to: email,
-            from: {
-              email: fromEmail,
-              name: organization.name
-            },
-            subject: `Exclusive Invitation from ${organization.name}`,
-            html: emailContent,
-            text: `You're invited to join ${organization.name}!\n\n` +
-                  `Hi ${firstName},\n\n` +
-                  `${organization.name} has invited you to join their exclusive patient portal.\n\n` +
-                  `Accept your invitation: ${invitationLink}\n\n` +
-                  `Your Member Benefits:\n` +
-                  `- Online appointment booking\n` +
-                  `- Exclusive memberships\n` +
-                  `- Rewards program\n` +
-                  `- Treatment history tracking\n` +
-                  `- Special member-only offers\n` +
-                  `- Priority access to new services\n\n` +
-                  `Contact Information:\n` +
-                  `${primaryLocation ? primaryLocation.name : organization.name}\n` +
-                  `${primaryLocation?.phone || organization.phone || 'Contact us for more info'}\n` +
-                  `${primaryLocation?.email || organization.email || ''}\n` +
-                  `${organization.website || ''}\n\n` +
-                  `© ${new Date().getFullYear()} ${organization.name}. All rights reserved.`
-          };
+      // Send invitation email using the improved email helper
+      const emailResult = await sendEmail({
+        to: email,
+        subject: `Exclusive Invitation from ${organization.name}`,
+        html: emailContent,
+        text: textContent,
+        fromName: organization.name
+      });
 
-          await sgMail.send(msg);
-          emailSent = true;
-          console.log(`✅ Invitation email sent successfully to ${email} for ${organization.name}`);
-        } catch (error: any) {
-          emailError = error;
-          console.error("❌ SendGrid email error:", {
-            message: error.message,
-            code: error.code,
-            response: error.response?.body,
-            email: email,
-            organization: organization.name
-          });
-        }
-      } else {
-        console.warn("⚠️ SENDGRID_API_KEY not configured - email not sent");
-        emailError = new Error("SendGrid not configured");
-      }
-
-      res.json({
+      // Prepare response with clear status messages
+      const response: any = {
         success: true,
-        message: emailSent 
-          ? "Invitation email sent successfully!" 
-          : emailError?.message === "SendGrid not configured"
-            ? "Patient invited successfully (email service not configured)"
-            : "Patient invited successfully (email will be sent shortly)",
-        invitationLink,
-        emailSent,
-        emailError: emailSent ? null : {
-          message: emailError?.message || "Unknown email error",
-          code: emailError?.code || null
-        },
-        client: {
+        patient: {
           id: client.id,
           firstName: client.firstName,
           lastName: client.lastName,
           email: client.email,
-          status: client.status
+          phone: client.phone,
+          status: client.status,
+          createdAt: new Date().toISOString()
+        },
+        invitation: {
+          link: invitationLink,
+          sentTo: email
+        },
+        emailStatus: {
+          sent: emailResult.sent,
+          message: emailResult.sent 
+            ? '✅ Invitation email sent successfully'
+            : emailResult.error?.code === 'NO_CONFIG'
+              ? '⚠️ Email service not configured - patient invited but email not sent'
+              : `⚠️ Patient invited but email failed to send: ${emailResult.error?.message}`,
+          error: emailResult.error,
+          debugInfo: SENDGRID_CONFIG.debugMode ? emailResult.debugInfo : undefined
         }
-      });
+      };
+
+      // Log the final status
+      if (emailResult.sent) {
+        console.log(`✅ Full invitation completed for ${email}:`, {
+          patientId: client.id,
+          organization: organization.name,
+          emailSent: true
+        });
+      } else {
+        console.warn(`⚠️ Partial invitation completed for ${email}:`, {
+          patientId: client.id,
+          organization: organization.name,
+          emailSent: false,
+          emailError: emailResult.error
+        });
+      }
+
+      res.json(response);
 
     } catch (error) {
       console.error("Patient invitation error:", error);
