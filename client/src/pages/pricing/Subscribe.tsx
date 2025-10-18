@@ -5,8 +5,6 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
 import LoadingSpinner from "@/components/ui/loading-spinner";
 import Navigation from "@/components/Navigation";
 import { useAuth } from "@/hooks/useAuth";
@@ -14,8 +12,8 @@ import { apiRequest } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 import { 
-  Check, Crown, ArrowRight, Shield, Headset, Zap,
-  CreditCard, Calendar, Users, Building2, Sparkles
+  Check, Crown, ArrowRight, Shield, Headset,
+  CreditCard, Calendar, Users, Sparkles, MapPin, TrendingUp
 } from "lucide-react";
 import type { SubscriptionPlan } from "@/types";
 
@@ -24,38 +22,6 @@ if (!import.meta.env.VITE_STRIPE_PUBLIC_KEY) {
 }
 
 const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLIC_KEY);
-
-interface PlanFeatures {
-  [key: string]: {
-    icon: React.ReactNode;
-    popular?: boolean;
-    highlight?: string;
-  };
-}
-
-const planFeatures: PlanFeatures = {
-  starter: {
-    icon: <Building2 className="w-5 h-5" />,
-    highlight: "Perfect for solo practitioners"
-  },
-  professional: {
-    icon: <Users className="w-5 h-5" />,
-    highlight: "Great for growing practices"
-  },
-  business: {
-    icon: <Crown className="w-5 h-5" />,
-    popular: true,
-    highlight: "Most popular choice"
-  },
-  enterprise: {
-    icon: <Sparkles className="w-5 h-5" />,
-    highlight: "Advanced features included"
-  },
-  medical_chain: {
-    icon: <Zap className="w-5 h-5" />,
-    highlight: "Unlimited scalability"
-  }
-};
 
 function CheckoutForm({ selectedPlan, billingCycle }: { selectedPlan: SubscriptionPlan | null, billingCycle: "monthly" | "yearly" }) {
   const stripe = useStripe();
@@ -166,7 +132,6 @@ export default function Subscribe() {
   const [clientSecret, setClientSecret] = useState<string>("");
   const [showCheckout, setShowCheckout] = useState(false);
 
-  // Get plan from URL params
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const planFromUrl = urlParams.get('plan');
@@ -180,9 +145,11 @@ export default function Subscribe() {
     staleTime: 5 * 60000,
   });
 
+  const activePlans = plans?.filter(p => p.isActive) || [];
+
   const createSubscriptionMutation = useMutation({
     mutationFn: async (data: { planId: string, billingCycle: string }) => {
-      const plan = plans?.find(p => p.tier === data.planId);
+      const plan = activePlans.find(p => p.tier === data.planId);
       if (!plan) throw new Error("Plan not found");
 
       const priceId = data.billingCycle === "yearly" ? plan.stripePriceIdYearly : plan.stripePriceIdMonthly;
@@ -205,13 +172,12 @@ export default function Subscribe() {
     },
   });
 
-  // Redirect if not logged in
   if (!user) {
     setLocation("/login");
     return null;
   }
 
-  const selectedPlan = plans?.find(plan => plan.tier === selectedPlanId);
+  const selectedPlan = activePlans.find(plan => plan.tier === selectedPlanId);
 
   const handleProceedToCheckout = () => {
     if (!selectedPlanId) return;
@@ -236,14 +202,14 @@ export default function Subscribe() {
     <div className="min-h-screen bg-background">
       <Navigation />
       
-      <div className="container mx-auto px-6 py-8">
+      <div className="container mx-auto px-6 py-12">
         {/* Header */}
-        <div className="text-center mb-12">
-          <h1 className="text-4xl lg:text-5xl font-serif font-bold text-foreground mb-6" data-testid="text-subscribe-title">
-            Choose Your Plan
+        <div className="text-center mb-16">
+          <h1 className="text-5xl lg:text-6xl font-serif font-bold text-foreground mb-6" data-testid="text-subscribe-title">
+            Simple, Transparent Pricing
           </h1>
           <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
-            Start your 14-day free trial and transform your beauty practice with Aesthiq's AI-powered platform.
+            Choose the plan that fits your practice. Start with a 14-day free trial, no credit card required.
           </p>
         </div>
 
@@ -263,7 +229,7 @@ export default function Subscribe() {
         ) : (
           <>
             {/* Billing Toggle */}
-            <Card className="max-w-md mx-auto mb-12">
+            <Card className="max-w-md mx-auto mb-16">
               <CardContent className="p-6">
                 <div className="flex items-center justify-center space-x-4">
                   <span className={`text-sm ${billingCycle === 'monthly' ? 'font-medium' : 'text-muted-foreground'}`}>
@@ -286,16 +252,16 @@ export default function Subscribe() {
                     Yearly
                   </span>
                   {billingCycle === 'yearly' && (
-                    <Badge className="bg-green-100 text-green-800">Save up to 17%</Badge>
+                    <Badge className="bg-green-100 text-green-800">Save 17%</Badge>
                   )}
                 </div>
               </CardContent>
             </Card>
 
             {/* Pricing Cards */}
-            <div className="grid lg:grid-cols-3 xl:grid-cols-5 gap-6 max-w-7xl mx-auto mb-12">
-              {plans?.map((plan) => {
-                const features = planFeatures[plan.tier] || { icon: <Building2 className="w-5 h-5" /> };
+            <div className="grid lg:grid-cols-2 gap-8 max-w-5xl mx-auto mb-16">
+              {activePlans.map((plan) => {
+                const isEnterprise = plan.tier === 'enterprise';
                 const price = billingCycle === 'yearly' && plan.yearlyPrice 
                   ? Math.round(parseFloat(plan.yearlyPrice.toString()) / 12)
                   : parseFloat(plan.monthlyPrice.toString());
@@ -303,36 +269,51 @@ export default function Subscribe() {
                   ? calculateYearlySavings(parseFloat(plan.monthlyPrice.toString()), parseFloat(plan.yearlyPrice.toString()))
                   : 0;
 
+                const commissionRate = plan.limits && typeof plan.limits === 'object' && 'platformCommissionRate' in plan.limits 
+                  ? (plan.limits as any).platformCommissionRate 
+                  : null;
+
+                const planFeatures = plan.features && Array.isArray(plan.features) 
+                  ? (plan.features as string[]) 
+                  : [];
+
                 return (
                   <Card 
                     key={plan.id}
-                    className={`relative cursor-pointer transition-all hover:shadow-lg ${
-                      features.popular ? 'ring-2 ring-primary scale-105' : ''
+                    className={`relative cursor-pointer transition-all hover:shadow-xl ${
+                      isEnterprise ? 'border-2 border-primary scale-105' : ''
                     } ${selectedPlanId === plan.tier ? 'ring-2 ring-primary' : ''}`}
                     onClick={() => setSelectedPlanId(plan.tier)}
                     data-testid={`plan-card-${plan.tier}`}
                   >
-                    {features.popular && (
-                      <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
-                        <Badge className="bg-primary text-primary-foreground">Most Popular</Badge>
+                    {isEnterprise && (
+                      <div className="absolute -top-4 left-1/2 transform -translate-x-1/2">
+                        <Badge className="bg-primary text-primary-foreground px-4 py-1">
+                          <Crown className="w-3 h-3 mr-1 inline" />
+                          Most Popular
+                        </Badge>
                       </div>
                     )}
                     
-                    <CardHeader className="text-center">
-                      <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mx-auto mb-3">
-                        {features.icon}
+                    <CardHeader className="text-center pb-6">
+                      <div className={`w-16 h-16 ${isEnterprise ? 'bg-primary' : 'bg-primary/10'} rounded-2xl flex items-center justify-center mx-auto mb-4`}>
+                        {isEnterprise ? (
+                          <Sparkles className="w-8 h-8 text-primary-foreground" />
+                        ) : (
+                          <Users className="w-8 h-8 text-primary" />
+                        )}
                       </div>
-                      <CardTitle className="text-lg">{plan.name}</CardTitle>
-                      {features.highlight && (
-                        <p className="text-xs text-muted-foreground">{features.highlight}</p>
-                      )}
-                      <div className="space-y-1">
-                        <div className="text-3xl font-bold">
+                      
+                      <CardTitle className="text-2xl mb-2">{plan.name}</CardTitle>
+                      <p className="text-sm text-muted-foreground mb-4">{plan.description}</p>
+                      
+                      <div className="space-y-2">
+                        <div className="text-5xl font-bold">
                           ${Math.round(price)}
-                          <span className="text-sm font-normal text-muted-foreground">/month</span>
+                          <span className="text-lg font-normal text-muted-foreground">/mo</span>
                         </div>
                         {billingCycle === 'yearly' && plan.yearlyPrice && (
-                          <div className="text-xs text-muted-foreground">
+                          <div className="text-sm text-muted-foreground">
                             Billed ${plan.yearlyPrice} annually
                             {savings > 0 && (
                               <Badge className="ml-2 bg-green-100 text-green-800">
@@ -342,67 +323,89 @@ export default function Subscribe() {
                           </div>
                         )}
                       </div>
+
+                      {/* Commission Rate Badge */}
+                      {commissionRate && (
+                        <div className="mt-4 pt-4 border-t">
+                          <div className="flex items-center justify-center space-x-2">
+                            <TrendingUp className="w-4 h-4 text-muted-foreground" />
+                            <span className="text-sm font-medium">
+                              {commissionRate}% platform commission
+                            </span>
+                          </div>
+                        </div>
+                      )}
                     </CardHeader>
                     
-                    <CardContent>
-                      <div className="space-y-3 mb-6">
-                        <div className="flex items-center space-x-2">
-                          <Check className="w-4 h-4 text-green-500" />
-                          <span className="text-sm">
-                            {plan.maxLocations ? `Up to ${plan.maxLocations} locations` : "Unlimited locations"}
-                          </span>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <Check className="w-4 h-4 text-green-500" />
-                          <span className="text-sm">
-                            {plan.maxStaff ? `Up to ${plan.maxStaff} staff` : "Unlimited staff"}
-                          </span>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <Check className="w-4 h-4 text-green-500" />
-                          <span className="text-sm">
-                            {plan.maxClients ? `Up to ${plan.maxClients} clients` : "Unlimited clients"}
-                          </span>
-                        </div>
-                        
-                        {plan.features && Array.isArray(plan.features) && (
-                          <>
-                            {(plan.features as string[]).slice(0, 2).map((feature, index) => (
-                              <div key={index} className="flex items-center space-x-2">
-                                <Check className="w-4 h-4 text-green-500" />
-                                <span className="text-sm">{feature}</span>
-                              </div>
-                            ))}
-                          </>
+                    <CardContent className="space-y-6">
+                      {/* Features List */}
+                      <div className="space-y-3">
+                        {planFeatures.map((feature, index) => (
+                          <div key={index} className="flex items-start space-x-3">
+                            <div className="flex-shrink-0 w-5 h-5 bg-primary rounded-full flex items-center justify-center mt-0.5">
+                              <Check className="w-3 h-3 text-primary-foreground" />
+                            </div>
+                            <span className="text-sm">{feature}</span>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Select/Selected Button */}
+                      <div className="pt-4">
+                        {selectedPlanId === plan.tier ? (
+                          <Badge className="w-full text-center py-3 bg-primary text-primary-foreground" data-testid={`badge-selected-${plan.tier}`}>
+                            <Check className="w-4 h-4 mr-1 inline" />
+                            Selected
+                          </Badge>
+                        ) : (
+                          <Button 
+                            className={`w-full ${isEnterprise ? 'bg-primary text-primary-foreground hover:bg-primary/90' : ''}`}
+                            variant={isEnterprise ? "default" : "outline"}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedPlanId(plan.tier);
+                            }}
+                            data-testid={`button-select-${plan.tier}`}
+                          >
+                            Select {plan.name}
+                          </Button>
                         )}
                       </div>
-                      
-                      {selectedPlanId === plan.tier ? (
-                        <Badge className="w-full text-center py-2 bg-primary text-primary-foreground" data-testid={`badge-selected-${plan.tier}`}>
-                          Selected ✓
-                        </Badge>
-                      ) : (
-                        <Button 
-                          className={`w-full ${features.popular ? 'bg-primary text-primary-foreground' : ''}`}
-                          variant={features.popular ? "default" : "outline"}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedPlanId(plan.tier);
-                          }}
-                          data-testid={`button-select-${plan.tier}`}
-                        >
-                          Select Plan
-                        </Button>
-                      )}
                     </CardContent>
                   </Card>
                 );
               })}
             </div>
 
-            {/* Proceed to Checkout Button */}
+            {/* Add-ons Section */}
+            <div className="max-w-5xl mx-auto mb-16">
+              <Card className="border-2">
+                <CardHeader>
+                  <CardTitle className="flex items-center">
+                    <MapPin className="w-5 h-5 mr-2 text-primary" />
+                    Additional Locations
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-lg font-semibold mb-1">Expand to multiple locations</p>
+                      <p className="text-sm text-muted-foreground">
+                        Each plan includes 1 location. Add more as your business grows.
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-3xl font-bold text-primary">$60</div>
+                      <div className="text-sm text-muted-foreground">per location/month</div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Proceed to Checkout */}
             {selectedPlanId && selectedPlan && !showCheckout && (
-              <div className="max-w-2xl mx-auto mb-12">
+              <div className="max-w-2xl mx-auto mb-16">
                 <Card className="border-2 border-primary shadow-lg">
                   <CardContent className="p-6">
                     <div className="flex items-center justify-between">
@@ -447,15 +450,15 @@ export default function Subscribe() {
                     <Calendar className="w-8 h-8 text-primary" />
                   </div>
                   <h3 className="text-lg font-semibold mb-2">14-Day Free Trial</h3>
-                  <p className="text-muted-foreground">No credit card required to start your trial</p>
+                  <p className="text-muted-foreground">No credit card required to start</p>
                 </div>
                 
                 <div>
                   <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
                     <Headset className="w-8 h-8 text-primary" />
                   </div>
-                  <h3 className="text-lg font-semibold mb-2">24/7 Support</h3>
-                  <p className="text-muted-foreground">Dedicated support team ready to help</p>
+                  <h3 className="text-lg font-semibold mb-2">Priority Support</h3>
+                  <p className="text-muted-foreground">Dedicated team ready to help you succeed</p>
                 </div>
                 
                 <div>
@@ -469,7 +472,7 @@ export default function Subscribe() {
               
               <div className="text-center mt-12">
                 <p className="text-muted-foreground">
-                  Questions about our pricing? <a href="#contact" className="text-primary hover:underline">Contact our sales team</a>
+                  Questions about pricing? <a href="#contact" className="text-primary hover:underline font-medium">Contact our sales team</a>
                 </p>
               </div>
             </div>
