@@ -9,8 +9,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { CheckCircle, Circle, CreditCard, Calendar, Gift, Sparkles, ArrowRight, Users, Crown, MapPin } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { CheckCircle, Circle, CreditCard, Calendar, Gift, Sparkles, ArrowRight, Users, Crown, MapPin, Mail, AlertTriangle, Copy } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useToast } from "@/hooks/use-toast";
@@ -186,6 +186,9 @@ export default function BusinessSetup() {
   const [showPaymentForm, setShowPaymentForm] = useState(false);
   const [clientSecret, setClientSecret] = useState<string>("");
 
+  // Patient invitation states
+  const [lastInvitationLink, setLastInvitationLink] = useState<string | null>(null);
+
   // Check for success parameter from Stripe redirect
   const urlParams = new URLSearchParams(window.location.search);
   const isStripeSuccess = urlParams.get('success') === 'true';
@@ -289,6 +292,18 @@ export default function BusinessSetup() {
     isActive: boolean;
   }>>({
     queryKey: ['/api/reward-options'],
+  });
+
+  // Get email configuration status
+  const { data: emailStatus } = useQuery<{
+    configured: boolean;
+    fromEmail: string;
+    fromName: string;
+    debugMode: boolean;
+    configurationHelp: string | null;
+    verificationRequired: boolean;
+  }>({
+    queryKey: ['/api/email/status'],
   });
 
 
@@ -532,23 +547,64 @@ export default function BusinessSetup() {
     },
   });
 
-  // Invite patient mutation
+  // Invite patient mutation with detailed email status handling
   const invitePatient = useMutation({
     mutationFn: async (data: PatientInviteData) => {
       const response = await apiRequest("POST", "/api/patients/invite", data);
+      if (!response.ok) {
+        const error = await response.json();
+        throw error;
+      }
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['/api/clinic/setup-status'] });
-      toast({
-        title: "Patient invited!",
-        description: "Invitation email has been sent successfully.",
-      });
+      
+      // Check email status and provide appropriate feedback
+      if (data.emailStatus) {
+        if (data.emailStatus.sent) {
+          // Email sent successfully
+          toast({
+            title: "✅ Patient invited successfully!",
+            description: `Invitation email sent to ${data.invitation?.sentTo || data.patient?.email}`,
+          });
+          setLastInvitationLink(null); // Clear the link since email was sent
+        } else {
+          // Email failed but patient created
+          toast({
+            title: "⚠️ Patient invited (Email not sent)",
+            description: data.emailStatus.message || "Patient record created but email failed to send.",
+            variant: "default",
+          });
+          
+          // Store the invitation link for display
+          if (data.invitation?.link) {
+            setLastInvitationLink(data.invitation.link);
+            toast({
+              title: "📋 Share this invitation link:",
+              description: data.invitation.link,
+              duration: 10000, // Show for 10 seconds
+            });
+          }
+        }
+        
+        // If there's a specific error, show it
+        if (data.emailStatus.error && !data.emailStatus.sent) {
+          console.error("Email error details:", data.emailStatus.error);
+        }
+      } else {
+        // Fallback for older response format
+        toast({
+          title: "Patient invited!",
+          description: "Patient has been added to the system.",
+        });
+      }
+      
       patientInviteForm.reset();
     },
     onError: (error: any) => {
       toast({
-        title: "Failed to send invitation",
+        title: "Failed to invite patient",
         description: error.message || "Please try again.",
         variant: "destructive",
       });
@@ -1385,6 +1441,65 @@ export default function BusinessSetup() {
                   Send an invitation email to your patient. They'll receive login credentials and your clinic's booking link.
                 </p>
               </div>
+
+              {/* Email Configuration Status */}
+              {emailStatus && (
+                <Alert className={emailStatus.configured ? "border-blue-200 bg-blue-50 mb-6" : "border-yellow-200 bg-yellow-50 mb-6"}>
+                  <Mail className={`h-4 w-4 ${emailStatus.configured ? "text-blue-600" : "text-yellow-600"}`} />
+                  <AlertTitle className={emailStatus.configured ? "text-blue-800" : "text-yellow-800"}>
+                    Email Service {emailStatus.configured ? "Configured" : "Not Configured"}
+                  </AlertTitle>
+                  <AlertDescription className={emailStatus.configured ? "text-blue-700" : "text-yellow-700"}>
+                    {emailStatus.configurationHelp}
+                    {emailStatus.configured && (
+                      <div className="mt-2 text-sm">
+                        <strong>Sender:</strong> {emailStatus.fromName} &lt;{emailStatus.fromEmail}&gt;
+                      </div>
+                    )}
+                    {!emailStatus.configured && (
+                      <div className="mt-3 p-3 bg-white rounded border border-yellow-300">
+                        <p className="font-semibold mb-2">⚠️ Email Notifications Disabled</p>
+                        <p className="text-sm mb-2">Patient invitations will still be created, but emails won't be sent automatically.</p>
+                        <p className="text-sm">You'll receive a shareable invitation link to send manually to your patients.</p>
+                      </div>
+                    )}
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {/* Display last invitation link if email failed */}
+              {lastInvitationLink && (
+                <Alert className="border-blue-200 bg-blue-50 mb-6">
+                  <AlertTriangle className="h-4 w-4 text-blue-600" />
+                  <AlertTitle className="text-blue-800">Manual Invitation Required</AlertTitle>
+                  <AlertDescription className="text-blue-700">
+                    <p className="mb-2">Email couldn't be sent automatically. Please share this link with your patient:</p>
+                    <div className="flex items-center gap-2 mt-2">
+                      <Input 
+                        value={lastInvitationLink} 
+                        readOnly 
+                        className="font-mono text-sm"
+                        data-testid="input-invitation-link"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          navigator.clipboard.writeText(lastInvitationLink);
+                          toast({
+                            title: "Link copied!",
+                            description: "Invitation link copied to clipboard",
+                          });
+                        }}
+                        data-testid="button-copy-link"
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </AlertDescription>
+                </Alert>
+              )}
 
               {/* Invite patient form */}
               <Form {...patientInviteForm}>

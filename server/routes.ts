@@ -325,6 +325,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   };
 
+  // Email configuration status endpoint
+  app.get("/api/email/status", requireAuth, async (req, res) => {
+    try {
+      const status = {
+        configured: SENDGRID_CONFIG.isConfigured,
+        fromEmail: SENDGRID_CONFIG.fromEmail,
+        fromName: SENDGRID_CONFIG.fromName,
+        debugMode: SENDGRID_CONFIG.debugMode,
+        configurationHelp: null as string | null,
+        verificationRequired: false
+      };
+
+      if (!SENDGRID_CONFIG.isConfigured) {
+        status.configurationHelp = "SendGrid is not configured. Please set the SENDGRID_API_KEY environment variable to enable email sending.";
+      } else {
+        status.verificationRequired = true;
+        status.configurationHelp = `Email sending is configured. Make sure ${SENDGRID_CONFIG.fromEmail} is verified in your SendGrid account.`;
+      }
+
+      res.json(status);
+    } catch (error) {
+      console.error("Email status check error:", error);
+      res.status(500).json({ message: "Failed to check email status" });
+    }
+  });
+
   // Organization lookup by slug (for patient signup)
   app.get("/api/organizations/by-slug/:slug", async (req, res) => {
     try {
