@@ -12,7 +12,7 @@ export default function Login() {
   const [, setLocation] = useLocation();
   const { login, isLoginPending } = useAuth();
   const [formData, setFormData] = useState({
-    email: "",
+    emailOrUsername: "",
     password: "",
   });
 
@@ -52,13 +52,13 @@ export default function Login() {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="emailOrUsername">Email or Username</Label>
               <Input
-                id="email"
-                name="email"
-                type="email"
-                placeholder="Enter your email"
-                value={formData.email}
+                id="emailOrUsername"
+                name="emailOrUsername"
+                type="text"
+                placeholder="Enter your email or username"
+                value={formData.emailOrUsername}
                 onChange={handleChange}
                 required
                 data-testid="input-email"

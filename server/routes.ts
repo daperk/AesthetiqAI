@@ -86,17 +86,24 @@ const pgSession = connectPgSimple(session);
 
 // Authentication setup
 passport.use(new LocalStrategy(
-  { usernameField: "email" },
-  async (email, password, done) => {
+  { usernameField: "emailOrUsername" },
+  async (emailOrUsername, password, done) => {
     try {
-      const user = await storage.getUserByEmail(email);
+      // Try to find user by email first, then by username
+      let user = await storage.getUserByEmail(emailOrUsername);
+      
       if (!user) {
-        return done(null, false, { message: "Invalid email or password" });
+        // If not found by email, try username
+        user = await storage.getUserByUsername(emailOrUsername);
+      }
+      
+      if (!user) {
+        return done(null, false, { message: "Invalid credentials" });
       }
 
       const isValid = await bcrypt.compare(password, user.password);
       if (!isValid) {
-        return done(null, false, { message: "Invalid email or password" });
+        return done(null, false, { message: "Invalid credentials" });
       }
 
       if (!user.isActive) {
