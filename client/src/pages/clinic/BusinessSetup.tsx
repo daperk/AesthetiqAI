@@ -1295,8 +1295,8 @@ export default function BusinessSetup() {
             </div>
           )}
 
-          {/* Step 6: Create Reward Options */}
-          {currentStep === 6 && (
+          {/* Step 6: Create Reward Options (for location plans) or Patient Invitation (for non-location plans) */}
+          {currentStep === 6 && setupStatus?.requiresLocations && (
             <div className="space-y-8">
               {/* Display existing reward options */}
               {rewardOptions && rewardOptions.length > 0 && (
@@ -1422,8 +1422,8 @@ export default function BusinessSetup() {
             </div>
           )}
 
-          {/* Step 7: Patient Invitation */}
-          {currentStep === 7 && (
+          {/* Step 6: Patient Invitation (for non-location plans) */}
+          {currentStep === 6 && !setupStatus?.requiresLocations && (
             <div className="space-y-8">
               {/* Display invited patients count */}
               {setupStatus?.hasPatients && (
@@ -1599,26 +1599,183 @@ export default function BusinessSetup() {
             </div>
           )}
 
-          {/* Step 7 and beyond - Coming Soon */}
-          {currentStep > 6 && (
-            <div className="text-center py-12">
-              <div className="text-6xl mb-4">🚧</div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                Step {currentStep} Coming Soon
-              </h3>
-              <p className="text-gray-600 mb-6">
-                This step is being built. For now, you can continue to your dashboard.
-              </p>
-              <Button
-                onClick={() => setLocation("/clinic")}
-                size="lg"
-                className="px-8"
-                data-testid="button-go-to-dashboard"
-              >
-                Go to Dashboard
-              </Button>
+          {/* Step 7: Patient Invitation (for location plans) */}
+          {currentStep === 7 && setupStatus?.requiresLocations && (
+            <div className="space-y-8">
+              {/* Display invited patients count */}
+              {setupStatus?.hasPatients && (
+                <Alert className="border-green-200 bg-green-50">
+                  <CheckCircle className="h-4 w-4 text-green-600" />
+                  <AlertDescription className="text-green-700">
+                    You've invited patients! You can continue to invite more or proceed to your dashboard.
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              <div className="text-center mb-6">
+                <h3 className="text-2xl font-semibold text-gray-900 mb-2">Invite Your First Patient</h3>
+                <p className="text-gray-600">
+                  Send an invitation email to your patient. They'll receive login credentials and your clinic's booking link.
+                </p>
+              </div>
+
+              {/* Email Configuration Status */}
+              {emailStatus && (
+                <Alert className={emailStatus.configured ? "border-blue-200 bg-blue-50 mb-6" : "border-yellow-200 bg-yellow-50 mb-6"}>
+                  <Mail className={`h-4 w-4 ${emailStatus.configured ? "text-blue-600" : "text-yellow-600"}`} />
+                  <AlertTitle className={emailStatus.configured ? "text-blue-800" : "text-yellow-800"}>
+                    Email Service {emailStatus.configured ? "Configured" : "Not Configured"}
+                  </AlertTitle>
+                  <AlertDescription className={emailStatus.configured ? "text-blue-700" : "text-yellow-700"}>
+                    {emailStatus.configurationHelp}
+                    {emailStatus.configured && (
+                      <div className="mt-2 text-sm">
+                        <strong>Sender:</strong> {emailStatus.fromName} &lt;{emailStatus.fromEmail}&gt;
+                      </div>
+                    )}
+                    {!emailStatus.configured && (
+                      <div className="mt-3 p-3 bg-white rounded border border-yellow-300">
+                        <p className="font-semibold mb-2">⚠️ Email Notifications Disabled</p>
+                        <p className="text-sm mb-2">Patient invitations will still be created, but emails won't be sent automatically.</p>
+                        <p className="text-sm">You'll receive a shareable invitation link to send manually to your patients.</p>
+                      </div>
+                    )}
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {/* Display last invitation link if email failed */}
+              {lastInvitationLink && (
+                <Alert className="border-blue-200 bg-blue-50 mb-6">
+                  <AlertTriangle className="h-4 w-4 text-blue-600" />
+                  <AlertTitle className="text-blue-800">Manual Invitation Required</AlertTitle>
+                  <AlertDescription className="text-blue-700">
+                    <p className="mb-2">Email couldn't be sent automatically. Please share this link with your patient:</p>
+                    <div className="flex items-center gap-2 mt-2">
+                      <Input 
+                        value={lastInvitationLink} 
+                        readOnly 
+                        className="font-mono text-sm"
+                        data-testid="input-invitation-link"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          navigator.clipboard.writeText(lastInvitationLink);
+                          toast({
+                            title: "Link copied!",
+                            description: "Invitation link copied to clipboard",
+                          });
+                        }}
+                        data-testid="button-copy-link"
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {/* Invite patient form */}
+              <Form {...patientInviteForm}>
+                <form onSubmit={patientInviteForm.handleSubmit((data) => invitePatient.mutate(data))} className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <FormField
+                      control={patientInviteForm.control}
+                      name="firstName"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>First Name</FormLabel>
+                          <FormControl>
+                            <Input placeholder="John" {...field} data-testid="input-patient-firstname" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={patientInviteForm.control}
+                      name="lastName"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Last Name</FormLabel>
+                          <FormControl>
+                            <Input placeholder="Doe" {...field} data-testid="input-patient-lastname" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={patientInviteForm.control}
+                      name="email"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Email Address</FormLabel>
+                          <FormControl>
+                            <Input type="email" placeholder="john@example.com" {...field} data-testid="input-patient-email" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={patientInviteForm.control}
+                      name="phone"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Phone Number (Optional)</FormLabel>
+                          <FormControl>
+                            <Input type="tel" placeholder="+1 (555) 123-4567" {...field} data-testid="input-patient-phone" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
+                  <Button 
+                    type="submit" 
+                    disabled={invitePatient.isPending}
+                    size="lg" 
+                    className="w-full"
+                    data-testid="button-send-invitation"
+                  >
+                    {invitePatient.isPending ? "Sending Invitation..." : "Send Invitation"}
+                  </Button>
+                </form>
+              </Form>
+
+              {/* Setup completion message */}
+              {setupStatus?.allComplete && (
+                <div className="text-center pt-6 border-t">
+                  <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-green-100 mb-4">
+                    <CheckCircle className="h-8 w-8 text-green-600" />
+                  </div>
+                  <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                    Setup Complete!
+                  </h3>
+                  <p className="text-gray-600 mb-6">
+                    Your clinic is ready to start accepting bookings and managing patients.
+                  </p>
+                  <Button
+                    onClick={() => setLocation("/clinic")}
+                    size="lg"
+                    className="px-8"
+                    data-testid="button-goto-dashboard"
+                  >
+                    Go to Dashboard
+                  </Button>
+                </div>
+              )}
             </div>
           )}
+
         </div>
       </div>
     </div>
