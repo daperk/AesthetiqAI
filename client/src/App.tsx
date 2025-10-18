@@ -93,6 +93,7 @@ function Router() {
               <Route path="/clinic/reports" component={() => (<RequireBusinessSetup><Reports /></RequireBusinessSetup>)} />
               <Route path="/clinic/share-link" component={() => (<RequireBusinessSetup><ShareLink /></RequireBusinessSetup>)} />
               <Route path="/clinic/setup" component={BusinessSetup} />
+              <Route path="/clinic/business-setup" component={BusinessSetup} />
               <Route path="/clinic/payment-setup" component={PaymentSetup} />
             </>
           )}

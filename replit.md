@@ -4,7 +4,7 @@
 
 Aesthiq is a comprehensive AI-powered SaaS platform designed for luxury beauty and wellness practices. Inspired by RepeatMD but enhanced with advanced features, it combines a premium marketing site with multi-tenant clinic management capabilities. The platform serves three distinct user types: super administrators (Aesthiq HQ), clinic administrators/staff, and patients, each with their own dedicated dashboard and feature set.
 
-The system enables beauty clinics to manage appointments, memberships, rewards programs, and client relationships while providing patients with booking capabilities, membership management, and rewards tracking. The platform includes sophisticated pricing tiers from Starter ($79) to Medical Chain ($1,299), with AI-powered insights, Stripe integration for payments, and white-label branding options for enterprise clients.
+The system enables beauty clinics to manage appointments, memberships, rewards programs, and client relationships while providing patients with booking capabilities, membership management, and rewards tracking. The platform features a simplified 2-tier pricing model: Professional ($79/month or $790/year with 12% commission) for core features, and Enterprise ($149/month or $1,490/year with 10% commission) for premium features including AI insights, white-label branding, and advanced analytics. Additional locations are available for $60/month or $600/year. All plans include a 30-day free trial.
 
 ## User Preferences
 

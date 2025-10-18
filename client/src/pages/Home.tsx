@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import Navigation from "@/components/Navigation";
+import { useQuery } from "@tanstack/react-query";
 import { 
   Gem, Calendar, Crown, Brain, Settings, Waves, Smartphone, 
   ArrowUp, ArrowDown, Rocket, Headset, Shield, Twitter, 
@@ -16,6 +17,19 @@ export default function Home() {
       element.scrollIntoView({ behavior: 'smooth' });
     }
   };
+
+  const { data: subscriptionPlans } = useQuery<Array<{
+    id: string;
+    name: string;
+    tier: string;
+    description: string;
+    monthlyPrice: number;
+    yearlyPrice: number;
+    features: string[];
+    limits: { platformCommissionRate: number };
+  }>>({
+    queryKey: ['/api/subscription-plans'],
+  });
 
   return (
     <div className="bg-background font-sans text-foreground">
@@ -215,187 +229,73 @@ export default function Home() {
               Choose Your Growth Plan
             </h2>
             <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
-              Scalable pricing designed to grow with your practice, from solo practitioners to medical chains.
+              Simple, transparent pricing to grow your practice. Professional for core features, Enterprise for premium capabilities.
             </p>
           </div>
 
-          <div className="grid lg:grid-cols-5 gap-6 max-w-7xl mx-auto">
-            {/* Starter Plan */}
-            <Card className="bg-card rounded-xl shadow-sm border border-border">
-              <CardContent className="p-6">
-                <div className="text-center mb-6">
-                  <h3 className="text-xl font-semibold text-foreground mb-2" data-testid="text-plan-starter">Starter</h3>
-                  <div className="text-3xl font-bold text-foreground mb-1">$79</div>
-                  <div className="text-muted-foreground text-sm">/month</div>
-                </div>
-                <ul className="space-y-3 text-sm text-muted-foreground mb-6">
-                  <li className="flex items-center space-x-2">
-                    <Check className="text-primary text-xs" />
-                    <span>1 Location</span>
-                  </li>
-                  <li className="flex items-center space-x-2">
-                    <Check className="text-primary text-xs" />
-                    <span>Basic Scheduling</span>
-                  </li>
-                  <li className="flex items-center space-x-2">
-                    <Check className="text-primary text-xs" />
-                    <span>Client Management</span>
-                  </li>
-                  <li className="flex items-center space-x-2">
-                    <Check className="text-primary text-xs" />
-                    <span>Basic Reports</span>
-                  </li>
-                </ul>
-                <Link href="/subscribe?plan=starter">
-                  <Button variant="outline" className="w-full text-sm" data-testid="button-plan-starter">
-                    Get Started
-                  </Button>
-                </Link>
-              </CardContent>
-            </Card>
-
-            {/* Professional Plan */}
-            <Card className="bg-card rounded-xl shadow-sm border border-border">
-              <CardContent className="p-6">
-                <div className="text-center mb-6">
-                  <h3 className="text-xl font-semibold text-foreground mb-2" data-testid="text-plan-professional">Professional</h3>
-                  <div className="text-3xl font-bold text-foreground mb-1">$149</div>
-                  <div className="text-muted-foreground text-sm">/month</div>
-                </div>
-                <ul className="space-y-3 text-sm text-muted-foreground mb-6">
-                  <li className="flex items-center space-x-2">
-                    <Check className="text-primary text-xs" />
-                    <span>Everything in Starter</span>
-                  </li>
-                  <li className="flex items-center space-x-2">
-                    <Check className="text-primary text-xs" />
-                    <span>Membership Tiers</span>
-                  </li>
-                  <li className="flex items-center space-x-2">
-                    <Check className="text-primary text-xs" />
-                    <span>Rewards System</span>
-                  </li>
-                  <li className="flex items-center space-x-2">
-                    <Check className="text-primary text-xs" />
-                    <span>Advanced Reports</span>
-                  </li>
-                </ul>
-                <Link href="/subscribe?plan=professional">
-                  <Button variant="outline" className="w-full text-sm" data-testid="button-plan-professional">
-                    Get Started
-                  </Button>
-                </Link>
-              </CardContent>
-            </Card>
-
-            {/* Business Plan (Most Popular) */}
-            <Card className="bg-card rounded-xl shadow-lg border-2 border-primary relative">
-              <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
-                <Badge className="bg-primary text-primary-foreground px-4 py-1 rounded-full text-xs font-medium">
-                  Most Popular
-                </Badge>
-              </div>
-              <CardContent className="p-6">
-                <div className="text-center mb-6">
-                  <h3 className="text-xl font-semibold text-foreground mb-2" data-testid="text-plan-business">Business</h3>
-                  <div className="text-3xl font-bold text-foreground mb-1">$299</div>
-                  <div className="text-muted-foreground text-sm">/month</div>
-                </div>
-                <ul className="space-y-3 text-sm text-muted-foreground mb-6">
-                  <li className="flex items-center space-x-2">
-                    <Check className="text-primary text-xs" />
-                    <span>Up to 3 Locations</span>
-                  </li>
-                  <li className="flex items-center space-x-2">
-                    <Check className="text-primary text-xs" />
-                    <span>Staff Management</span>
-                  </li>
-                  <li className="flex items-center space-x-2">
-                    <Check className="text-primary text-xs" />
-                    <span>AI Insights</span>
-                  </li>
-                  <li className="flex items-center space-x-2">
-                    <Check className="text-primary text-xs" />
-                    <span>Premium Support</span>
-                  </li>
-                </ul>
-                <Link href="/subscribe?plan=business">
-                  <Button className="w-full bg-primary text-primary-foreground hover:bg-primary/90 text-sm font-medium" data-testid="button-plan-business">
-                    Get Started
-                  </Button>
-                </Link>
-              </CardContent>
-            </Card>
-
-            {/* Enterprise Plan */}
-            <Card className="bg-card rounded-xl shadow-sm border border-border">
-              <CardContent className="p-6">
-                <div className="text-center mb-6">
-                  <h3 className="text-xl font-semibold text-foreground mb-2" data-testid="text-plan-enterprise">Enterprise</h3>
-                  <div className="text-3xl font-bold text-foreground mb-1">$599</div>
-                  <div className="text-muted-foreground text-sm">/month</div>
-                </div>
-                <ul className="space-y-3 text-sm text-muted-foreground mb-6">
-                  <li className="flex items-center space-x-2">
-                    <Check className="text-primary text-xs" />
-                    <span>Up to 10 Locations</span>
-                  </li>
-                  <li className="flex items-center space-x-2">
-                    <Check className="text-primary text-xs" />
-                    <span>White-labeling</span>
-                  </li>
-                  <li className="flex items-center space-x-2">
-                    <Check className="text-primary text-xs" />
-                    <span>API Access</span>
-                  </li>
-                  <li className="flex items-center space-x-2">
-                    <Check className="text-primary text-xs" />
-                    <span>Priority Support</span>
-                  </li>
-                </ul>
-                <Link href="/subscribe?plan=enterprise">
-                  <Button variant="outline" className="w-full text-sm" data-testid="button-plan-enterprise">
-                    Get Started
-                  </Button>
-                </Link>
-              </CardContent>
-            </Card>
-
-            {/* Medical Chain Plan */}
-            <Card className="bg-card rounded-xl shadow-sm border border-border">
-              <CardContent className="p-6">
-                <div className="text-center mb-6">
-                  <h3 className="text-xl font-semibold text-foreground mb-2" data-testid="text-plan-medical">Medical Chain</h3>
-                  <div className="text-3xl font-bold text-foreground mb-1">$1,299</div>
-                  <div className="text-muted-foreground text-sm">/month</div>
-                </div>
-                <ul className="space-y-3 text-sm text-muted-foreground mb-6">
-                  <li className="flex items-center space-x-2">
-                    <Check className="text-primary text-xs" />
-                    <span>Unlimited Locations</span>
-                  </li>
-                  <li className="flex items-center space-x-2">
-                    <Check className="text-primary text-xs" />
-                    <span>Custom Integrations</span>
-                  </li>
-                  <li className="flex items-center space-x-2">
-                    <Check className="text-primary text-xs" />
-                    <span>Priority AI Features</span>
-                  </li>
-                  <li className="flex items-center space-x-2">
-                    <Check className="text-primary text-xs" />
-                    <span>Dedicated Support</span>
-                  </li>
-                </ul>
-                <Button variant="outline" className="w-full text-sm" data-testid="button-contact-sales">
-                  Contact Sales
-                </Button>
-              </CardContent>
-            </Card>
+          <div className="grid lg:grid-cols-2 gap-8 max-w-4xl mx-auto">{subscriptionPlans && subscriptionPlans.map((plan) => {
+              const isPopular = plan.tier === 'enterprise';
+              const commission = plan.limits?.platformCommissionRate || 0;
+              
+              return (
+                <Card
+                  key={plan.id}
+                  className={`rounded-xl ${
+                    isPopular
+                      ? 'bg-card shadow-lg border-2 border-primary relative'
+                      : 'bg-card shadow-sm border border-border'
+                  }`}
+                >
+                  {isPopular && (
+                    <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
+                      <Badge className="bg-primary text-primary-foreground px-4 py-1 rounded-full text-xs font-medium">
+                        Most Popular
+                      </Badge>
+                    </div>
+                  )}
+                  <CardContent className="p-8">
+                    <div className="text-center mb-8">
+                      <h3 className="text-2xl font-semibold text-foreground mb-2" data-testid={`text-plan-${plan.tier}`}>
+                        {plan.name}
+                      </h3>
+                      <div className="text-4xl font-bold text-foreground mb-1">
+                        ${plan.monthlyPrice}
+                      </div>
+                      <div className="text-muted-foreground text-sm mb-2">/month</div>
+                      <div className="text-sm text-primary font-medium">
+                        {commission}% platform commission
+                      </div>
+                    </div>
+                    
+                    <ul className="space-y-3 mb-8">
+                      {plan.features.slice(0, 6).map((feature, index) => (
+                        <li key={index} className="flex items-start space-x-3">
+                          <Check className="text-primary mt-0.5 flex-shrink-0" size={18} />
+                          <span className="text-muted-foreground">{feature}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    
+                    <Link href={`/subscribe?plan=${plan.tier}`}>
+                      <Button
+                        className={`w-full ${
+                          isPopular
+                            ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                            : 'bg-background text-foreground border-2 border-border hover:bg-accent'
+                        }`}
+                        data-testid={`button-plan-${plan.tier}`}
+                      >
+                        Get Started
+                      </Button>
+                    </Link>
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
 
           <div className="text-center mt-8">
-            <p className="text-muted-foreground">All plans include 14-day free trial • No setup fees • Cancel anytime</p>
+            <p className="text-muted-foreground">All plans include 30-day free trial • No setup fees • Cancel anytime</p>
           </div>
         </div>
       </section>
