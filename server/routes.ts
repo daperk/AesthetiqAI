@@ -1669,30 +1669,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Rewards routes
+  // Get current user's rewards - MUST come before parameterized route
+  app.get("/api/rewards/my-rewards", requireAuth, async (req, res) => {
+    try {
+      console.log("🔍 [GET /api/rewards/my-rewards] User:", req.user?.id, "Role:", req.user?.role);
+      
+      // Get client record for current user
+      const client = await storage.getClientByUser(req.user!.id);
+      if (!client) {
+        console.log("🔍 [GET /api/rewards/my-rewards] Client profile not found for user:", req.user!.id);
+        return res.status(404).json({ message: "Client profile not found" });
+      }
+      
+      console.log("🔍 [GET /api/rewards/my-rewards] Found client:", client.id);
+
+      const rewards = await storage.getRewardsByClient(client.id);
+      console.log("🔍 [GET /api/rewards/my-rewards] Found rewards count:", rewards?.length || 0);
+      
+      const balance = await storage.getClientRewardBalance(client.id);
+      console.log("🔍 [GET /api/rewards/my-rewards] Calculated balance:", balance);
+      
+      res.json({ rewards, balance: balance || 0 });
+    } catch (error) {
+      console.error("❌ [GET /api/rewards/my-rewards] Failed to fetch rewards:", error);
+      console.error("❌ [GET /api/rewards/my-rewards] Error details:", (error as any)?.message, (error as any)?.stack);
+      res.status(500).json({ message: "Failed to fetch rewards" });
+    }
+  });
+
+  // Get rewards by client ID - parameterized route (must come after specific routes)
   app.get("/api/rewards/:clientId", requireAuth, async (req, res) => {
     try {
       const rewards = await storage.getRewardsByClient(req.params.clientId);
       const balance = await storage.getClientRewardBalance(req.params.clientId);
       res.json({ rewards, balance });
     } catch (error) {
-      res.status(500).json({ message: "Failed to fetch rewards" });
-    }
-  });
-
-  // Get current user's rewards
-  app.get("/api/rewards/my-rewards", requireAuth, async (req, res) => {
-    try {
-      // Get client record for current user
-      const client = await storage.getClientByUser(req.user!.id);
-      if (!client) {
-        return res.status(404).json({ message: "Client profile not found" });
-      }
-
-      const rewards = await storage.getRewardsByClient(client.id);
-      const balance = await storage.getClientRewardBalance(client.id);
-      res.json({ rewards, balance: balance || 0 });
-    } catch (error) {
-      console.error("Failed to fetch rewards:", error);
       res.status(500).json({ message: "Failed to fetch rewards" });
     }
   });

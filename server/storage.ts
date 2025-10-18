@@ -517,9 +517,14 @@ export class DatabaseStorage implements IStorage {
 
   // Rewards
   async getRewardsByClient(clientId: string): Promise<Reward[]> {
-    return await db.select().from(rewards)
-      .where(eq(rewards.clientId, clientId))
-      .orderBy(desc(rewards.createdAt));
+    try {
+      return await db.select().from(rewards)
+        .where(eq(rewards.clientId, clientId))
+        .orderBy(desc(rewards.createdAt));
+    } catch (error) {
+      console.error("❌ getRewardsByClient error:", error);
+      return [];
+    }
   }
 
   async getRewardsByOrganization(organizationId: string): Promise<Reward[]> {
@@ -529,13 +534,23 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getClientRewardBalance(clientId: string): Promise<number> {
-    const result = await db.select({ 
-      total: sql<number>`COALESCE(SUM(${rewards.points}), 0)` 
-    })
-    .from(rewards)
-    .where(eq(rewards.clientId, clientId));
-    
-    return result[0]?.total || 0;
+    try {
+      const result = await db.select({ 
+        total: sql<number>`COALESCE(SUM(${rewards.points}), 0)::integer` 
+      })
+      .from(rewards)
+      .where(eq(rewards.clientId, clientId));
+      
+      return Number(result[0]?.total) || 0;
+    } catch (error) {
+      console.error("❌ getClientRewardBalance error:", error);
+      // If there's an error, try a simpler approach
+      const rewardsList = await db.select().from(rewards)
+        .where(eq(rewards.clientId, clientId));
+      
+      const total = rewardsList.reduce((sum, reward) => sum + (reward.points || 0), 0);
+      return total;
+    }
   }
 
   async createReward(insertReward: InsertReward): Promise<Reward> {
