@@ -1735,6 +1735,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "User organization not found" });
       }
 
+      console.log("📋 [POST /api/reward-options] Request body:", JSON.stringify(req.body, null, 2));
+
       const optionData = insertRewardOptionSchema.parse({
         ...req.body,
         organizationId: orgId

@@ -120,8 +120,9 @@ export default function Rewards() {
 
     createRewardOption.mutate({
       name: optionName,
-      description: optionDescription,
+      description: optionDescription || "",
       pointsCost: parseInt(optionPointsCost),
+      discountValue: null,
       category: optionCategory,
       isActive: true,
     });
