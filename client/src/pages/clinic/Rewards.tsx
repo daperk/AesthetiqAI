@@ -29,11 +29,17 @@ interface RewardActivity {
 
 interface RewardOption {
   id: string;
+  organizationId?: string;
   name: string;
   description: string;
   pointsCost: number;
+  discountValue?: string | number;
   category: string;
+  stripeProductId?: string;
+  stripePriceId?: string;
   isActive: boolean;
+  sortOrder?: number;
+  createdAt?: string;
 }
 
 interface RewardStats {
@@ -65,12 +71,13 @@ export default function Rewards() {
     enabled: !!organization?.id,
   });
 
-  const { data: rewardOptions, isLoading: optionsLoading} = useQuery<RewardOption[]>({
-    queryKey: ["/api/reward-options", organization?.id],
+  const { data: rewardOptions, isLoading: optionsLoading, error: optionsError } = useQuery<RewardOption[]>({
+    queryKey: ["/api/reward-options"],
     queryFn: async () => {
       const res = await fetch("/api/reward-options", { credentials: "include" });
       if (!res.ok) throw new Error(`${res.status}: ${res.statusText}`);
-      return res.json();
+      const data = await res.json();
+      return data;
     },
     enabled: !!organization?.id,
   });
@@ -87,7 +94,7 @@ export default function Rewards() {
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/reward-options", organization?.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/reward-options"] });
       toast({
         title: "Reward option created",
         description: "The reward option has been added successfully.",

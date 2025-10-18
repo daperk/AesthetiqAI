@@ -1722,12 +1722,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Reward Options API (catalog items)
   app.get("/api/reward-options", requireAuth, async (req, res) => {
     try {
+      console.log("🔍 [GET /api/reward-options] User:", req.user?.email, "Role:", req.user?.role);
+      
       const orgId = await getUserOrganizationId(req.user!);
+      console.log("🔍 [GET /api/reward-options] Organization ID:", orgId);
+      
       if (!orgId) {
         return res.status(400).json({ message: "User organization not found" });
       }
 
       const options = await storage.getRewardOptionsByOrganization(orgId);
+      console.log("🔍 [GET /api/reward-options] Found options:", options.length);
+      
       res.json(options);
     } catch (error) {
       console.error('Error fetching reward options:', error);
