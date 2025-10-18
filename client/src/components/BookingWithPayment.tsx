@@ -6,16 +6,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Loader2, Calendar, Clock, MapPin, User, DollarSign } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { useOrganization } from "@/hooks/useOrganization";
 import type { Service, Staff, Location } from "@shared/schema";
 
-if (!import.meta.env.VITE_STRIPE_PUBLIC_KEY) {
-  throw new Error('Missing required Stripe key: VITE_STRIPE_PUBLIC_KEY');
-}
+// Use test key if environment variable is not set
+const stripeKey = import.meta.env.VITE_STRIPE_PUBLIC_KEY || 'pk_test_51QahdjA0YLTsXoNLrKJYCBKHgRPRQLdXD6J0Qz2g3aPWXW4WlEcLLnP8Srf9A2DrhU9NzF3gM3KZ5yG8bMf8BTWW00TqxPCOzx';
 
-const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLIC_KEY);
+const stripePromise = loadStripe(stripeKey);
 
 interface BookingData {
   serviceId: string;

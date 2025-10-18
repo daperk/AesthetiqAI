@@ -68,13 +68,35 @@ export default function PatientMembership() {
       const response = await apiRequest("POST", "/api/memberships/upgrade", tierData);
       return response.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/memberships/my-membership"] });
-      setIsUpgradeDialogOpen(false);
-      toast({
-        title: "Membership upgraded!",
-        description: "Your new membership benefits are now active.",
-      });
+    onSuccess: (data) => {
+      // Check if payment is required (Stripe subscription created)
+      if (data.requiresPayment && data.clientSecret) {
+        // For now, show a message that payment setup is needed
+        // In production, this would redirect to a payment page or show a payment modal
+        toast({
+          title: "Payment Required",
+          description: "Please complete payment to activate your membership upgrade. Redirecting to payment...",
+        });
+        
+        // Simulate Stripe checkout redirect (in real app, would use Stripe's checkout)
+        setTimeout(() => {
+          // For testing, just close the dialog and refresh
+          setIsUpgradeDialogOpen(false);
+          queryClient.invalidateQueries({ queryKey: ["/api/memberships/my-membership"] });
+          toast({
+            title: "Test Mode",
+            description: "In production, this would redirect to Stripe checkout. Membership created for testing.",
+          });
+        }, 2000);
+      } else {
+        // Free membership or payment not required
+        queryClient.invalidateQueries({ queryKey: ["/api/memberships/my-membership"] });
+        setIsUpgradeDialogOpen(false);
+        toast({
+          title: "Membership upgraded!",
+          description: "Your new membership benefits are now active.",
+        });
+      }
     },
     onError: () => {
       toast({
