@@ -1737,10 +1737,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       console.log("📋 [POST /api/reward-options] Request body:", JSON.stringify(req.body, null, 2));
 
-      const optionData = insertRewardOptionSchema.parse({
-        ...req.body,
-        organizationId: orgId
-      });
+      let optionData;
+      try {
+        optionData = insertRewardOptionSchema.parse({
+          ...req.body,
+          organizationId: orgId
+        });
+      } catch (parseError: any) {
+        console.error("❌ [REWARD-OPTIONS] Validation failed:", JSON.stringify(parseError.errors, null, 2));
+        throw parseError;
+      }
 
       // Get organization and Stripe Connect account
       const organization = await storage.getOrganization(orgId);
