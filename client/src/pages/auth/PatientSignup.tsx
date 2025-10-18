@@ -13,7 +13,11 @@ import { apiRequest } from "@/lib/queryClient";
 export default function PatientSignup() {
   const [, setLocation] = useLocation();
   const [match, params] = useRoute("/c/:slug");
+  const [matchRegister, paramsRegister] = useRoute("/c/:slug/register");
   const { register, isRegisterPending } = useAuth();
+  const activeParams = paramsRegister || params;
+  const isMatch = matchRegister || match;
+  
   const [formData, setFormData] = useState({
     email: "",
     username: "",
@@ -21,7 +25,7 @@ export default function PatientSignup() {
     firstName: "",
     lastName: "",
     role: "patient",
-    organizationSlug: params?.slug || "",
+    organizationSlug: activeParams?.slug || "",
   });
 
   // Fetch location/clinic info to display
@@ -36,22 +40,22 @@ export default function PatientSignup() {
     whiteLabelSettings?: any;
     isLocation?: boolean;
   }>({
-    queryKey: ["/api/signup-info", params?.slug],
-    queryFn: () => apiRequest("GET", `/api/signup-info/${params?.slug}`).then(res => res.json()),
-    enabled: !!params?.slug,
+    queryKey: ["/api/signup-info", activeParams?.slug],
+    queryFn: () => apiRequest("GET", `/api/signup-info/${activeParams?.slug}`).then(res => res.json()),
+    enabled: !!activeParams?.slug,
     retry: false, // Don't retry on 404
   });
 
   useEffect(() => {
-    if (params?.slug) {
+    if (activeParams?.slug) {
       setFormData(prev => ({
         ...prev,
-        organizationSlug: params.slug
+        organizationSlug: activeParams.slug
       }));
     }
-  }, [params?.slug]);
+  }, [activeParams?.slug]);
 
-  if (!match || !params?.slug) {
+  if (!isMatch || !activeParams?.slug) {
     return (
       <div className="min-h-screen luxury-gradient flex items-center justify-center p-6">
         <Card className="w-full max-w-md">
@@ -209,7 +213,7 @@ export default function PatientSignup() {
 
             {/* Hidden fields for clinic association */}
             <input type="hidden" name="role" value="patient" />
-            <input type="hidden" name="organizationSlug" value={params.slug} />
+            <input type="hidden" name="organizationSlug" value={activeParams?.slug || ""} />
 
             <Button 
               type="submit" 
