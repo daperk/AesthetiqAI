@@ -541,6 +541,11 @@ export const insertRewardSchema = createInsertSchema(rewards).omit({
 export const insertRewardOptionSchema = createInsertSchema(rewardOptions).omit({
   id: true,
   createdAt: true
+}).extend({
+  discountValue: z.union([z.string(), z.number(), z.null()]).optional().transform(val => {
+    if (val === null || val === undefined) return null;
+    return String(val);
+  })
 });
 
 export const insertTransactionSchema = createInsertSchema(transactions).omit({
