@@ -14,7 +14,7 @@ import sgMail from "@sendgrid/mail";
 // Initialize SendGrid globally with better configuration
 const SENDGRID_CONFIG = {
   apiKey: process.env.SENDGRID_API_KEY,
-  fromEmail: process.env.SENDGRID_FROM_EMAIL || process.env.FROM_EMAIL || 'no-reply@aesthiq.com',
+  fromEmail: process.env.SENDGRID_FROM_EMAIL || process.env.FROM_EMAIL || 'aesthiqhere@gmail.com',
   fromName: process.env.SENDGRID_FROM_NAME || 'Aesthiq',
   isConfigured: !!process.env.SENDGRID_API_KEY,
   debugMode: process.env.NODE_ENV === 'development'
