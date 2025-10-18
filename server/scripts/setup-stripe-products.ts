@@ -123,7 +123,7 @@ async function setupStripeProducts() {
       },
     });
 
-    const locationPrice = await stripe.prices.create({
+    const locationMonthlyPrice = await stripe.prices.create({
       product: locationProduct.id,
       unit_amount: 6000, // $60.00
       currency: "usd",
@@ -132,14 +132,31 @@ async function setupStripeProducts() {
       },
       metadata: {
         type: "addon",
+        billingCycle: "monthly",
+      },
+    });
+
+    const locationYearlyPrice = await stripe.prices.create({
+      product: locationProduct.id,
+      unit_amount: 60000, // $600.00 (10 months for the price of 12 - 17% savings)
+      currency: "usd",
+      recurring: {
+        interval: "year",
+      },
+      metadata: {
+        type: "addon",
+        billingCycle: "yearly",
       },
     });
 
     console.log(`✅ Additional Location product created: ${locationProduct.id}`);
-    console.log(`💵 Additional Location price: ${locationPrice.id} ($60/month)\n`);
+    console.log(`💵 Monthly price: ${locationMonthlyPrice.id} ($60/month)`);
+    console.log(`💵 Yearly price: ${locationYearlyPrice.id} ($600/year)\n`);
 
     // Note: You may want to save this to an add_ons table
-    console.log(`📝 Save this price ID for additional locations: ${locationPrice.id}`);
+    console.log(`📝 Save these price IDs for additional locations:`);
+    console.log(`   Monthly: ${locationMonthlyPrice.id}`);
+    console.log(`   Yearly: ${locationYearlyPrice.id}`);
   } catch (error) {
     console.error("❌ Error setting up Additional Location product:", error);
     throw error;
@@ -147,9 +164,10 @@ async function setupStripeProducts() {
 
   console.log("✅ Stripe product setup complete!");
   console.log("\n📋 Summary:");
-  console.log("- Professional: $79/month (12% commission)");
-  console.log("- Enterprise: $149/month (10% commission)");
-  console.log("- Additional Location: $60/month");
+  console.log("- Professional: $79/month or $790/year (12% commission)");
+  console.log("- Enterprise: $149/month or $1,490/year (10% commission)");
+  console.log("- Additional Location: $60/month or $600/year");
+  console.log("- 30-day free trial included for all plans");
   console.log("\n✨ Database has been updated with new Stripe price IDs");
 }
 

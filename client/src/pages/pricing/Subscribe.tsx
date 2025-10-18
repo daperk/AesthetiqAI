@@ -155,7 +155,7 @@ export default function Subscribe() {
       const priceId = data.billingCycle === "yearly" ? plan.stripePriceIdYearly : plan.stripePriceIdMonthly;
       const response = await apiRequest("POST", "/api/subscriptions/create", {
         priceId,
-        trialDays: 14
+        trialDays: 30
       });
       return response.json();
     },
@@ -209,7 +209,7 @@ export default function Subscribe() {
             Simple, Transparent Pricing
           </h1>
           <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
-            Choose the plan that fits your practice. Start with a 14-day free trial, no credit card required.
+            Choose the plan that fits your practice. Start with a 30-day free trial, no credit card required.
           </p>
         </div>
 
@@ -449,7 +449,7 @@ export default function Subscribe() {
                   <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
                     <Calendar className="w-8 h-8 text-primary" />
                   </div>
-                  <h3 className="text-lg font-semibold mb-2">14-Day Free Trial</h3>
+                  <h3 className="text-lg font-semibold mb-2">30-Day Free Trial</h3>
                   <p className="text-muted-foreground">No credit card required to start</p>
                 </div>
                 

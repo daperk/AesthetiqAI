@@ -787,10 +787,10 @@ export default function BusinessSetup() {
               
               <CardContent>
                 {subscriptionPlans ? (
-                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                  <div className="grid gap-4 md:grid-cols-2">
                     {subscriptionPlans.map((plan) => {
                       const price = billingCycle === 'monthly' ? plan.monthlyPrice : plan.yearlyPrice;
-                      const isPopular = plan.tier === 'business';
+                      const isPopular = plan.tier === 'enterprise';
                       const isSelected = selectedPlan === plan.id;
                       
                       return (
