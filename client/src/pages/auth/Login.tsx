@@ -44,9 +44,9 @@ export default function Login() {
             </div>
             <span className="text-2xl font-serif font-bold text-foreground">Aesthiq</span>
           </div>
-          <CardTitle className="text-2xl font-serif" data-testid="text-login-title">Sign In</CardTitle>
+          <CardTitle className="text-2xl font-serif" data-testid="text-login-title">Clinic Sign In</CardTitle>
           <CardDescription>
-            Welcome back! Please sign in to your account.
+            For beauty clinics and staff only. Patients please use your clinic's login link.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -98,10 +98,17 @@ export default function Login() {
 
           <div className="mt-6 text-center">
             <p className="text-sm text-muted-foreground">
-              Don't have an account?{" "}
+              Don't have a clinic account?{" "}
               <Link href="/register" className="text-primary hover:underline" data-testid="link-register">
-                Sign up
+                Start your clinic
               </Link>
+            </p>
+          </div>
+          
+          <div className="mt-4 p-3 bg-muted/50 rounded-lg">
+            <p className="text-xs text-muted-foreground text-center">
+              <strong>Patients:</strong> Please use the login link provided by your clinic, or scan their QR code. 
+              You cannot sign in from this page.
             </p>
           </div>
 

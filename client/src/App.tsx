@@ -12,6 +12,7 @@ import Home from "@/pages/Home";
 import Login from "@/pages/auth/Login";
 import Register from "@/pages/auth/Register";
 import PatientSignup from "@/pages/auth/PatientSignup";
+import PatientLogin from "@/pages/auth/PatientLogin";
 import ClinicRegister from "@/pages/auth/ClinicRegister";
 import Subscribe from "@/pages/pricing/Subscribe";
 
@@ -62,6 +63,7 @@ function Router() {
       <Route path="/" component={Home} />
       <Route path="/login" component={Login} />
       <Route path="/register" component={Register} />
+      <Route path="/c/:slug/login" component={PatientLogin} />
       <Route path="/c/:slug/register" component={PatientSignup} />
       <Route path="/c/:slug" component={PatientSignup} />
       <Route path="/register/clinic/:slug" component={ClinicRegister} />

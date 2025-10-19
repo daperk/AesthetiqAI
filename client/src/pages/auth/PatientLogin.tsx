@@ -7,25 +7,19 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useAuth } from "@/hooks/useAuth";
 import { Gem } from "lucide-react";
 import LoadingSpinner from "@/components/ui/loading-spinner";
-import { useQuery } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
-export default function PatientSignup() {
+export default function PatientLogin() {
   const [, setLocation] = useLocation();
-  const [match, params] = useRoute("/c/:slug");
-  const [matchRegister, paramsRegister] = useRoute("/c/:slug/register");
-  const { register, isRegisterPending } = useAuth();
-  const activeParams = paramsRegister || params;
-  const isMatch = matchRegister || match;
+  const [match, params] = useRoute("/c/:slug/login");
+  const { toast } = useToast();
   
   const [formData, setFormData] = useState({
-    email: "",
-    username: "",
+    emailOrUsername: "",
     password: "",
-    firstName: "",
-    lastName: "",
-    role: "patient",
-    organizationSlug: activeParams?.slug || "",
+    organizationSlug: params?.slug || "",
   });
 
   // Fetch location/clinic info to display
@@ -40,29 +34,71 @@ export default function PatientSignup() {
     whiteLabelSettings?: any;
     isLocation?: boolean;
   }>({
-    queryKey: ["/api/signup-info", activeParams?.slug],
-    queryFn: () => apiRequest("GET", `/api/signup-info/${activeParams?.slug}`).then(res => res.json()),
-    enabled: !!activeParams?.slug,
+    queryKey: ["/api/signup-info", params?.slug],
+    queryFn: () => apiRequest("GET", `/api/signup-info/${params?.slug}`).then(res => res.json()),
+    enabled: !!params?.slug,
     retry: false, // Don't retry on 404
   });
 
   useEffect(() => {
-    if (activeParams?.slug) {
+    if (params?.slug) {
       setFormData(prev => ({
         ...prev,
-        organizationSlug: activeParams.slug
+        organizationSlug: params.slug
       }));
     }
-  }, [activeParams?.slug]);
+  }, [params?.slug]);
 
-  if (!isMatch || !activeParams?.slug) {
+  // Use patient-specific login endpoint
+  const loginMutation = useMutation({
+    mutationFn: async (data: typeof formData) => {
+      const response = await apiRequest("POST", "/api/auth/patient-login", data);
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "Login failed");
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      toast({
+        title: "Welcome back!",
+        description: "You have been successfully signed in.",
+      });
+      setLocation("/patient"); // Redirect to patient dashboard
+    },
+    onError: (error: any) => {
+      // Check if it's a wrong clinic error
+      if (error.message?.includes("not associated with this clinic")) {
+        toast({
+          title: "Wrong Clinic",
+          description: "Your account is not associated with this clinic. Please use your clinic's login page.",
+          variant: "destructive",
+        });
+      } else if (error.message?.includes("This login is for patient accounts only")) {
+        toast({
+          title: "Wrong Login Page",
+          description: "Clinic staff should use the main login page.",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Sign in failed",
+          description: error.message || "Please check your credentials and try again.",
+          variant: "destructive",
+        });
+      }
+    },
+  });
+
+  if (!match || !params?.slug) {
     return (
       <div className="min-h-screen luxury-gradient flex items-center justify-center p-6">
         <Card className="w-full max-w-md">
           <CardHeader className="text-center">
             <CardTitle className="text-2xl font-serif text-destructive">Invalid Link</CardTitle>
             <CardDescription>
-              This patient signup link is invalid. Please contact your clinic for a valid invitation link.
+              This patient login link is invalid. Please contact your clinic for a valid login link.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -77,13 +113,7 @@ export default function PatientSignup() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    try {
-      await register(formData);
-      setLocation("/patient"); // Redirect to patient dashboard
-    } catch (error) {
-      // Error is handled by the useAuth hook
-    }
+    loginMutation.mutate(formData);
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -107,9 +137,9 @@ export default function PatientSignup() {
       <div className="min-h-screen luxury-gradient flex items-center justify-center p-6">
         <Card className="w-full max-w-md">
           <CardHeader className="text-center">
-            <CardTitle className="text-2xl font-serif text-destructive">Invalid Link</CardTitle>
+            <CardTitle className="text-2xl font-serif text-destructive">Clinic Not Found</CardTitle>
             <CardDescription>
-              This patient signup link is invalid. Please contact your clinic for a valid invitation link.
+              We couldn't find this clinic. Please check your login link or contact your clinic.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -134,66 +164,26 @@ export default function PatientSignup() {
               {clinicInfo?.name || "Beauty Clinic"}
             </span>
           </div>
-          <CardTitle className="text-2xl font-serif" data-testid="text-patient-signup-title">
-            Join {clinicInfo?.name || "Our Clinic"}
+          <CardTitle className="text-2xl font-serif" data-testid="text-patient-login-title">
+            Patient Sign In
           </CardTitle>
           <CardDescription>
-            Create your account to book appointments and manage your beauty journey.
+            Sign in to book appointments and manage your beauty journey at {clinicInfo?.name}.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="firstName">First Name</Label>
-                <Input
-                  id="firstName"
-                  name="firstName"
-                  placeholder="First name"
-                  value={formData.firstName}
-                  onChange={handleChange}
-                  required
-                  data-testid="input-first-name"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="lastName">Last Name</Label>
-                <Input
-                  id="lastName"
-                  name="lastName"
-                  placeholder="Last name"
-                  value={formData.lastName}
-                  onChange={handleChange}
-                  required
-                  data-testid="input-last-name"
-                />
-              </div>
-            </div>
-            
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="emailOrUsername">Email or Username</Label>
               <Input
-                id="email"
-                name="email"
-                type="email"
-                placeholder="Enter your email"
-                value={formData.email}
+                id="emailOrUsername"
+                name="emailOrUsername"
+                type="text"
+                placeholder="Enter your email or username"
+                value={formData.emailOrUsername}
                 onChange={handleChange}
                 required
                 data-testid="input-email"
-              />
-            </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="username">Username</Label>
-              <Input
-                id="username"
-                name="username"
-                placeholder="Choose a username"
-                value={formData.username}
-                onChange={handleChange}
-                required
-                data-testid="input-username"
               />
             </div>
             
@@ -203,7 +193,7 @@ export default function PatientSignup() {
                 id="password"
                 name="password"
                 type="password"
-                placeholder="Create a password"
+                placeholder="Enter your password"
                 value={formData.password}
                 onChange={handleChange}
                 required
@@ -211,32 +201,35 @@ export default function PatientSignup() {
               />
             </div>
 
-            {/* Hidden fields for clinic association */}
-            <input type="hidden" name="role" value="patient" />
-            <input type="hidden" name="organizationSlug" value={activeParams?.slug || ""} />
+            {/* Hidden field for clinic association */}
+            <input type="hidden" name="organizationSlug" value={params?.slug || ""} />
 
             <Button 
               type="submit" 
               className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
-              disabled={isRegisterPending}
-              data-testid="button-create-account"
+              disabled={loginMutation.isPending}
+              data-testid="button-sign-in"
             >
-              {isRegisterPending ? (
+              {loginMutation.isPending ? (
                 <div className="flex items-center space-x-2">
                   <LoadingSpinner size="sm" />
-                  <span>Creating Account...</span>
+                  <span>Signing in...</span>
                 </div>
               ) : (
-                "Join Clinic"
+                "Sign In"
               )}
             </Button>
           </form>
 
           <div className="mt-6 text-center">
             <p className="text-sm text-muted-foreground">
-              Already have an account?{" "}
-              <Link href={`/c/${activeParams?.slug}/login`} className="text-primary hover:underline" data-testid="link-login">
-                Sign in
+              Don't have an account?{" "}
+              <Link 
+                href={`/c/${params?.slug}/register`} 
+                className="text-primary hover:underline" 
+                data-testid="link-register"
+              >
+                Join {clinicInfo?.name}
               </Link>
             </p>
           </div>
