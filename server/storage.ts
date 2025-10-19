@@ -613,7 +613,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateTransactionByPaymentIntent(paymentIntentId: string, updates: Partial<InsertTransaction>): Promise<void> {
-    await db.update(transactions).set(updates).where(eq(transactions.paymentIntentId, paymentIntentId));
+    await db.update(transactions).set(updates).where(eq(transactions.stripePaymentIntentId, paymentIntentId));
   }
 
   // AI Insights

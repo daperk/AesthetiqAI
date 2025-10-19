@@ -1167,25 +1167,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const isDepositPayment = paymentType === 'deposit' && service.depositRequired;
       const paymentAmount = isDepositPayment ? Number(service.depositAmount) : Number(service.price);
       
-      // Create Stripe customer for payment
+      // Get or create Stripe customer for payment
       if (!stripe) {
         return res.status(500).json({ message: "Payment system not configured" });
       }
       
-      const customer = await stripe.customers.create({
-        email: client.email,
-        name: `${client.firstName} ${client.lastName}`,
-        metadata: {
-          organizationId: service.organizationId,
-          clientId: client.id
+      let stripeCustomerId = client.stripeCustomerId;
+      
+      // If client doesn't have a Stripe customer ID, check if the user has one
+      if (!stripeCustomerId && client.userId) {
+        const user = await storage.getUser(client.userId);
+        stripeCustomerId = user?.stripeCustomerId || null;
+      }
+      
+      // Create new Stripe customer if none exists
+      if (!stripeCustomerId) {
+        const customer = await stripe.customers.create({
+          email: client.email,
+          name: `${client.firstName} ${client.lastName}`,
+          metadata: {
+            organizationId: service.organizationId,
+            clientId: client.id
+          }
+        });
+        
+        stripeCustomerId = customer.id;
+        
+        // IMPORTANT: Save the Stripe customer ID to the client record
+        await storage.updateClient(client.id, { stripeCustomerId });
+        
+        // If user is logged in, also update the user's stripeCustomerId
+        if (req.user && client.userId) {
+          await storage.updateUser(client.userId, { stripeCustomerId });
         }
-      });
+      }
       
       // Create Stripe PaymentIntent
       const paymentIntent = await stripe.paymentIntents.create({
         amount: Math.round(paymentAmount * 100), // Convert to cents
         currency: 'usd',
-        customer: customer.id,
+        customer: stripeCustomerId,
         metadata: {
           serviceId: service.id,
           organizationId: service.organizationId,
@@ -1697,6 +1718,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           
           // Update user with Stripe customer ID
           await storage.updateUser(req.user!.id, { stripeCustomerId });
+          
+          // IMPORTANT: Also update the client record with Stripe customer ID
+          await storage.updateClient(client.id, { stripeCustomerId });
         }
 
         // Create Stripe subscription

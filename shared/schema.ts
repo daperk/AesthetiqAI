@@ -130,6 +130,7 @@ export const clients = pgTable("clients", {
   lastVisit: timestamp("last_visit"),
   status: text("status").default("active"), // "invited", "active", "inactive"
   isActive: boolean("is_active").default(true),
+  stripeCustomerId: text("stripe_customer_id"),
   createdAt: timestamp("created_at").default(sql`now()`)
 });
 
