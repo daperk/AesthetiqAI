@@ -1,9 +1,11 @@
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import Navigation from "@/components/Navigation";
 import { useQuery } from "@tanstack/react-query";
+import { useAuth } from "@/hooks/useAuth";
+import { useEffect } from "react";
 import { 
   Gem, Calendar, Crown, Brain, Settings, Waves, Smartphone, 
   ArrowUp, ArrowDown, Rocket, Headset, Shield, Twitter, 
@@ -11,6 +13,22 @@ import {
 } from "lucide-react";
 
 export default function Home() {
+  const { user, isLoading } = useAuth();
+  const [, navigate] = useLocation();
+  
+  // Redirect logged-in users to their dashboards
+  useEffect(() => {
+    if (!isLoading && user) {
+      if (user.role === 'super_admin') {
+        navigate('/super-admin');
+      } else if (user.role === 'clinic_admin' || user.role === 'staff') {
+        navigate('/clinic/dashboard');
+      } else if (user.role === 'patient') {
+        navigate('/patient/dashboard');
+      }
+    }
+  }, [user, isLoading, navigate]);
+
   const scrollToSection = (id: string) => {
     const element = document.getElementById(id);
     if (element) {
