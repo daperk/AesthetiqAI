@@ -566,7 +566,67 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/auth/login", passport.authenticate("local"), (req, res) => {
+  app.post("/api/auth/login", passport.authenticate("local"), async (req, res) => {
+    // Check if a patient is trying to login through the main login page
+    if (req.user && req.user.role === 'patient') {
+      // Log out the patient immediately
+      req.logout((err) => {
+        if (err) {
+          console.error("Failed to logout patient during clinic-only login:", err);
+        }
+      });
+      
+      return res.status(403).json({ 
+        message: "Patient accounts cannot log in here. Please use your clinic's login page.",
+        type: "patient_wrong_login"
+      });
+    }
+    
+    res.json({ user: { ...req.user, password: undefined } });
+  });
+
+  // Patient-specific login endpoint for clinic URL logins
+  app.post("/api/auth/patient-login", passport.authenticate("local"), async (req, res) => {
+    const { organizationSlug } = req.body;
+    
+    // Ensure this is a patient account
+    if (!req.user || req.user.role !== 'patient') {
+      req.logout((err) => {
+        if (err) {
+          console.error("Failed to logout non-patient during patient login:", err);
+        }
+      });
+      
+      return res.status(403).json({ 
+        message: "This login is for patient accounts only. Clinic staff should use the main login page.",
+        type: "wrong_user_type"
+      });
+    }
+    
+    // Verify patient belongs to the clinic they're trying to login through
+    if (organizationSlug) {
+      try {
+        const client = await storage.getClientByUser(req.user.id);
+        if (client) {
+          const organization = await storage.getOrganizationBySlug(organizationSlug);
+          if (!organization || client.organizationId !== organization.id) {
+            req.logout((err) => {
+              if (err) {
+                console.error("Failed to logout patient with wrong clinic:", err);
+              }
+            });
+            
+            return res.status(403).json({ 
+              message: "Your account is not associated with this clinic. Please use your clinic's login page.",
+              type: "wrong_clinic"
+            });
+          }
+        }
+      } catch (error) {
+        console.error("Error validating patient clinic association:", error);
+      }
+    }
+    
     res.json({ user: { ...req.user, password: undefined } });
   });
 
