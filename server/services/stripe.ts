@@ -1,5 +1,19 @@
 import Stripe from "stripe";
 
+/**
+ * IMPORTANT: PAYMENT AMOUNT CONVENTIONS
+ * =====================================
+ * All amount parameters in this file should be provided in CENTS (smallest currency unit).
+ * For USD: $10.00 = 1000 cents
+ * 
+ * Examples:
+ * - createPaymentIntent(1000, "usd") = charges $10.00
+ * - transferFunds(500, ...) = transfers $5.00
+ * 
+ * Callers are responsible for converting dollar amounts to cents before calling these functions.
+ * DO NOT multiply by 100 in these functions - amounts are already expected to be in cents.
+ */
+
 // Use only the secret key - never use publishable key for server-side calls
 const secretKey = process.env.STRIPE_SECRET_KEY;
 if (!secretKey) {
@@ -25,45 +39,83 @@ export interface PaymentIntentResult {
   paymentIntentId: string;
 }
 
-export async function createCustomer(email: string, name: string, organizationId: string): Promise<Stripe.Customer> {
+export async function createCustomer(email: string, name: string, organizationId: string, connectAccountId?: string): Promise<Stripe.Customer> {
   if (!stripe) throw new Error("Stripe not configured");
-  return await stripe.customers.create({
+  
+  const customerData = {
     email,
     name,
     metadata: {
       organizationId
     }
-  });
+  };
+  
+  // Create customer on connected account if provided
+  if (connectAccountId) {
+    return await stripe.customers.create(customerData, {
+      stripeAccount: connectAccountId
+    });
+  }
+  
+  // Otherwise create on platform account
+  return await stripe.customers.create(customerData);
 }
 
-export async function createSetupIntent(customerId: string): Promise<Stripe.SetupIntent> {
+export async function createSetupIntent(customerId: string, connectAccountId?: string): Promise<Stripe.SetupIntent> {
   if (!stripe) throw new Error("Stripe not configured");
-  return await stripe.setupIntents.create({
+  
+  const setupIntentData = {
     customer: customerId,
-    usage: 'off_session',
+    usage: 'off_session' as const,
     payment_method_types: ['card'],
-  });
+  };
+  
+  // Create setup intent on connected account if provided
+  if (connectAccountId) {
+    return await stripe.setupIntents.create(setupIntentData, {
+      stripeAccount: connectAccountId
+    });
+  }
+  
+  return await stripe.setupIntents.create(setupIntentData);
 }
 
 export async function attachPaymentMethodToCustomer(
   paymentMethodId: string,
   customerId: string,
-  setAsDefault: boolean = true
+  setAsDefault: boolean = true,
+  connectAccountId?: string
 ): Promise<Stripe.PaymentMethod> {
   if (!stripe) throw new Error("Stripe not configured");
   
   // Attach payment method to customer
-  const paymentMethod = await stripe.paymentMethods.attach(paymentMethodId, {
-    customer: customerId,
-  });
+  const paymentMethod = connectAccountId
+    ? await stripe.paymentMethods.attach(paymentMethodId, {
+        customer: customerId,
+      }, {
+        stripeAccount: connectAccountId
+      })
+    : await stripe.paymentMethods.attach(paymentMethodId, {
+        customer: customerId,
+      });
 
   // Set as default payment method if requested
   if (setAsDefault) {
-    await stripe.customers.update(customerId, {
-      invoice_settings: {
-        default_payment_method: paymentMethodId,
-      },
-    });
+    if (connectAccountId) {
+      await stripe.customers.update(customerId, {
+        invoice_settings: {
+          default_payment_method: paymentMethodId,
+        },
+      }, {
+        stripeAccount: connectAccountId
+      });
+    } else {
+      await stripe.customers.update(customerId, {
+        invoice_settings: {
+          default_payment_method: paymentMethodId,
+        },
+      });
+    }
   }
 
   return paymentMethod;
@@ -72,7 +124,8 @@ export async function attachPaymentMethodToCustomer(
 export async function createSubscription(
   customerId: string,
   priceId: string,
-  trialDays?: number
+  trialDays?: number,
+  connectAccountId?: string
 ): Promise<SubscriptionResult> {
   if (!stripe) throw new Error("Stripe not configured");
   const subscriptionData: Stripe.SubscriptionCreateParams = {
@@ -86,7 +139,11 @@ export async function createSubscription(
     subscriptionData.trial_period_days = trialDays;
   }
 
-  const subscription = await stripe.subscriptions.create(subscriptionData);
+  const subscription = connectAccountId 
+    ? await stripe.subscriptions.create(subscriptionData, {
+        stripeAccount: connectAccountId
+      })
+    : await stripe.subscriptions.create(subscriptionData);
 
   return {
     subscriptionId: subscription.id,
@@ -276,21 +333,29 @@ export async function checkAccountStatus(accountId: string): Promise<{
 }
 
 export async function createPaymentIntent(
-  amount: number,
+  amount: number, // Amount should be in CENTS (e.g., $10.00 = 1000)
   currency: string = "usd",
   customerId?: string,
-  metadata?: Record<string, string>
+  metadata?: Record<string, string>,
+  connectAccountId?: string
 ): Promise<PaymentIntentResult> {
   if (!stripe) throw new Error("Stripe not configured");
-  const paymentIntent = await stripe.paymentIntents.create({
-    amount: Math.round(amount * 100), // Convert to cents
+  
+  const paymentIntentData = {
+    amount: Math.round(amount), // Amount is already in cents, just round for safety
     currency,
     customer: customerId,
     metadata,
     automatic_payment_methods: {
       enabled: true,
     },
-  });
+  };
+  
+  const paymentIntent = connectAccountId
+    ? await stripe.paymentIntents.create(paymentIntentData, {
+        stripeAccount: connectAccountId
+      })
+    : await stripe.paymentIntents.create(paymentIntentData);
 
   return {
     clientSecret: paymentIntent.client_secret!,
@@ -300,13 +365,13 @@ export async function createPaymentIntent(
 
 
 export async function transferFunds(
-  amount: number,
+  amount: number, // Amount should be in CENTS (e.g., $10.00 = 1000)
   destinationAccount: string,
   sourceTransaction?: string
 ): Promise<Stripe.Transfer> {
   if (!stripe) throw new Error("Stripe not configured");
   return await stripe.transfers.create({
-    amount: Math.round(amount * 100),
+    amount: Math.round(amount), // Amount is already in cents, just round for safety
     currency: "usd",
     destination: destinationAccount,
     source_transaction: sourceTransaction,

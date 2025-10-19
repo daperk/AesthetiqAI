@@ -1343,6 +1343,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "No remaining balance to charge" });
       }
 
+      // Get organization to access Stripe Connect account
+      const organization = await storage.getOrganization(appointment.organizationId);
+      
       // Create off-session payment for remaining balance
       const paymentIntent = await stripeService.createPaymentIntent(
         Math.round(remainingBalance * 100),
@@ -1353,7 +1356,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           paymentType: "remaining_balance",
           confirm: "true",
           off_session: "true"
-        }
+        },
+        organization?.stripeConnectAccountId
       );
 
       // Update appointment final total
@@ -1677,13 +1681,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
       } else {
         // Full Stripe integration flow
+        // Get organization to access Stripe Connect account
+        const organization = await storage.getOrganization(client.organizationId);
+        
         // Get or create Stripe customer
         let stripeCustomerId = req.user!.stripeCustomerId;
         if (!stripeCustomerId) {
           const customer = await stripeService.createCustomer(
             req.user!.email,
             `${req.user!.firstName} ${req.user!.lastName}`,
-            client.organizationId
+            client.organizationId,
+            organization?.stripeConnectAccountId
           );
           stripeCustomerId = customer.id;
           
@@ -1694,7 +1702,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Create Stripe subscription
         const subscriptionResult = await stripeService.createSubscription(
           stripeCustomerId,
-          priceId
+          priceId,
+          undefined,
+          organization?.stripeConnectAccountId
         );
 
         // Create inactive membership record until payment confirmed
@@ -3255,14 +3265,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Stripe payment routes
+  // NOTE: This endpoint expects amount in CENTS (e.g., $10.00 = 1000)
   app.post("/api/payments/create-payment-intent", requireAuth, async (req, res) => {
     try {
-      const { amount, metadata } = req.body;
+      const { amount, metadata, organizationId } = req.body; // amount should be in cents
+      
+      // Get organization if organizationId is provided to use its connected account
+      let connectAccountId: string | undefined;
+      if (organizationId) {
+        const organization = await storage.getOrganization(organizationId);
+        connectAccountId = organization?.stripeConnectAccountId;
+      }
+      
       const result = await stripeService.createPaymentIntent(
         amount,
         "usd",
         req.user.stripeCustomerId,
-        metadata
+        metadata,
+        connectAccountId
       );
       res.json(result);
     } catch (error) {
@@ -3273,20 +3293,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Subscription routes
   app.post("/api/subscriptions/create", requireAuth, async (req, res) => {
     try {
-      const { priceId, trialDays } = req.body;
+      const { priceId, trialDays, organizationId } = req.body;
+      
+      // Get organization if organizationId is provided to use its connected account
+      let connectAccountId: string | undefined;
+      if (organizationId) {
+        const organization = await storage.getOrganization(organizationId);
+        connectAccountId = organization?.stripeConnectAccountId;
+      }
       
       let customerId = req.user.stripeCustomerId;
       if (!customerId) {
         const customer = await stripeService.createCustomer(
           req.user.email,
           `${req.user.firstName} ${req.user.lastName}`,
-          req.user.organizationId || ""
+          req.user.organizationId || "",
+          connectAccountId
         );
         customerId = customer.id;
         await storage.updateUserStripeInfo(req.user.id, customerId);
       }
 
-      const subscription = await stripeService.createSubscription(customerId, priceId, trialDays);
+      const subscription = await stripeService.createSubscription(customerId, priceId, trialDays, connectAccountId);
       
       // Update user with subscription ID
       await storage.updateUserStripeInfo(req.user.id, customerId, subscription.subscriptionId);
