@@ -657,16 +657,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (organizationSlug) {
       try {
         const client = await storage.getClientByUser(req.user.id);
-        console.log(`🔍 [PATIENT-LOGIN] User ID: ${req.user.id}`);
-        console.log(`🔍 [PATIENT-LOGIN] Slug: ${organizationSlug}`);
-        console.log(`🔍 [PATIENT-LOGIN] Client found:`, client ? { id: client.id, organizationId: client.organizationId } : 'NO CLIENT');
         
         if (client) {
           // Check if slug is for a location first (same logic as registration)
           let location = await storage.getLocationBySlug(organizationSlug);
           let organization;
-          
-          console.log(`🔍 [PATIENT-LOGIN] Location lookup:`, location ? { id: location.id, organizationId: location.organizationId } : 'NO LOCATION');
           
           if (location && location.isActive) {
             // It's a location slug - get the organization
@@ -675,9 +670,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
             // Try organization slug (backward compatibility)
             organization = await storage.getOrganizationBySlug(organizationSlug);
           }
-          
-          console.log(`🔍 [PATIENT-LOGIN] Organization found:`, organization ? { id: organization.id, name: organization.name } : 'NO ORG');
-          console.log(`🔍 [PATIENT-LOGIN] Match check: client.orgId=${client.organizationId} vs org.id=${organization?.id}`);
           
           if (!organization || client.organizationId !== organization.id) {
             req.logout((err) => {
@@ -2304,7 +2296,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       console.log(`✅ [PAYMENT INTENT] Payment intent created: ${paymentIntent.id} on account: ${organization?.stripeConnectAccountId || 'platform'}`);
 
-      // Create appointment
+      // Create appointment with pending status - only marked as scheduled after payment confirmation
       const appointment = await storage.createAppointment({
         organizationId: service.organizationId,
         locationId,
@@ -2314,8 +2306,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         startTime: new Date(startTime),
         endTime: new Date(endTime),
         totalAmount: (service.price || 0).toString(),
-        depositPaid: (isDepositPayment ? (service.depositAmount || 0) : (service.price || 0)).toString(),
-        status: "scheduled"
+        depositPaid: "0", // No deposit paid yet until payment is confirmed
+        status: "pending"
       });
 
       // Create transaction record
@@ -2367,9 +2359,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Payment not confirmed" });
       }
 
-      // Update appointment to confirmed
+      // Get transaction to determine payment amount and type
+      const transactions = await storage.getTransactionsByAppointment(appointmentId);
+      const transaction = transactions.find(t => t.stripePaymentIntentId === paymentIntentId);
+      const paymentAmount = paymentIntent.amount / 100; // Convert cents to dollars
+
+      // Update appointment to scheduled (confirmed) and record deposit/payment
       await storage.updateAppointment(appointmentId, {
-        status: "scheduled"
+        status: "scheduled",
+        depositPaid: paymentAmount.toString() // Record the amount paid
       });
 
       // Update transaction to succeeded

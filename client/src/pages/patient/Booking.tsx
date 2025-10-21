@@ -60,7 +60,7 @@ export default function Booking() {
     { id: "service", title: "Select Service", completed: !!selectedService },
     { id: "provider", title: "Choose Provider", completed: !!selectedProvider },
     { id: "datetime", title: "Date & Time", completed: !!selectedDate && !!selectedTime },
-    { id: "review", title: "Review & Pay", completed: false }
+    { id: "review", title: "Review & Pay", completed: !!selectedLocation && !!selectedService && !!selectedProvider && !!selectedDate && !!selectedTime }
   ];
 
   // Hide location step if patient has only one location (no multi-location access)
