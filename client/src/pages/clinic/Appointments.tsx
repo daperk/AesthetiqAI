@@ -380,18 +380,36 @@ export default function Appointments() {
         {/* Calendar and Appointments */}
         <div className="grid lg:grid-cols-4 gap-6">
           {/* Calendar Sidebar */}
-          <Card>
-            <CardHeader>
+          <Card className="overflow-hidden">
+            <CardHeader className="pb-3">
               <CardTitle className="text-lg">Calendar</CardTitle>
             </CardHeader>
-            <CardContent>
-              <Calendar
-                mode="single"
-                selected={selectedDate}
-                onSelect={(date) => date && setSelectedDate(date)}
-                className="rounded-md border"
-                data-testid="calendar-picker"
-              />
+            <CardContent className="p-3">
+              <div className="w-full overflow-x-auto">
+                <Calendar
+                  mode="single"
+                  selected={selectedDate}
+                  onSelect={(date) => date && setSelectedDate(date)}
+                  className="rounded-md border w-full"
+                  classNames={{
+                    months: "w-full",
+                    month: "w-full space-y-2",
+                    table: "w-full border-collapse",
+                    head_row: "flex w-full",
+                    head_cell: "text-muted-foreground rounded-md w-full font-normal text-[0.8rem] flex-1",
+                    row: "flex w-full mt-1",
+                    cell: "text-center text-sm relative flex-1 p-0",
+                    day: "h-8 w-full p-0 font-normal aria-selected:opacity-100 hover:bg-accent hover:text-accent-foreground",
+                    day_selected: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground focus:bg-primary focus:text-primary-foreground",
+                    day_today: "bg-accent text-accent-foreground",
+                    day_outside: "text-muted-foreground opacity-50",
+                    day_disabled: "text-muted-foreground opacity-50",
+                    day_range_middle: "aria-selected:bg-accent aria-selected:text-accent-foreground",
+                    day_hidden: "invisible",
+                  }}
+                  data-testid="calendar-picker"
+                />
+              </div>
             </CardContent>
           </Card>
 
