@@ -213,24 +213,35 @@ export function BookingWithPayment({
       </Card>
 
       {/* Payment Form */}
-      <Elements 
-        stripe={stripePromise} 
-        options={{ 
-          clientSecret,
-          appearance: {
-            theme: 'stripe',
-          },
-        }}
-      >
-        <PaymentForm
-          amount={Number(service.price)}
-          isDepositOnly={isDepositPayment || undefined}
-          depositAmount={Number(service.depositAmount)}
-          serviceName={service.name}
-          onSuccess={handlePaymentSuccess}
-          onCancel={onCancel}
-        />
-      </Elements>
+      {clientSecret ? (
+        <Elements 
+          stripe={stripePromise} 
+          options={{ 
+            clientSecret,
+            appearance: {
+              theme: 'stripe',
+            },
+          }}
+        >
+          <PaymentForm
+            amount={Number(service.price)}
+            isDepositOnly={isDepositPayment || undefined}
+            depositAmount={Number(service.depositAmount)}
+            serviceName={service.name}
+            onSuccess={handlePaymentSuccess}
+            onCancel={onCancel}
+          />
+        </Elements>
+      ) : (
+        <Card>
+          <CardContent className="flex items-center justify-center p-8">
+            <div className="flex items-center gap-2">
+              <Loader2 className="h-5 w-5 animate-spin" />
+              <p className="text-muted-foreground">Loading payment options...</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
