@@ -51,6 +51,12 @@ Preferred communication style: Simple, everyday language.
 - **Stripe Connect**: Marketplace functionality for clinic payouts and revenue sharing
 - **Multi-tier Pricing**: Dynamic subscription plans with usage-based add-ons
 - **Automated Dunning**: Failed payment recovery and subscription management
+- **Content Security Policy**: Configured following Stripe's official requirements (https://docs.stripe.com/security/guide#content-security-policy) to allow Stripe Elements, including:
+  - `https://api.stripe.com` and `https://m.stripe.network` for API calls and 3DS/SCA telemetry
+  - `https://js.stripe.com` and `https://*.js.stripe.com` for Stripe.js library and Elements iframes
+  - `https://hooks.stripe.com` for payment method redirects and 3D Secure
+  - `style-src 'unsafe-inline'` to allow Stripe's inline styles
+  - CSP configured in both client/index.html (meta tag for Vite dev server) and server/index.ts (HTTP header for production)
 
 ## External Dependencies
 
