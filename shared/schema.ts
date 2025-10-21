@@ -628,8 +628,14 @@ export const insertServiceSchema = createInsertSchema(services).omit({
   createdAt: true
 }).extend({
   paymentType: z.enum(["deposit", "full"]).default("full"),
-  price: z.union([z.string(), z.number()]).optional().transform(val => val ? String(val) : val),
-  depositAmount: z.union([z.string(), z.number()]).optional().transform(val => val ? String(val) : val)
+  price: z.union([z.string(), z.number()]).optional().transform(val => {
+    if (val === "" || val === undefined || val === null) return null;
+    return String(val);
+  }),
+  depositAmount: z.union([z.string(), z.number()]).optional().transform(val => {
+    if (val === "" || val === undefined || val === null) return null;
+    return String(val);
+  })
 });
 
 export const insertAppointmentSchema = createInsertSchema(appointments).omit({
