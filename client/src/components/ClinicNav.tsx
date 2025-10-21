@@ -9,7 +9,7 @@ export default function ClinicNav() {
   const [location] = useLocation();
 
   return (
-    <div className="overflow-x-auto -mx-6 px-6 scrollbar-hide">
+    <div className="overflow-x-auto scrollbar-hide">
       <div className="flex space-x-1 bg-muted p-1 rounded-lg w-fit min-w-full sm:min-w-0">
         <Link href="/clinic">
           <Button

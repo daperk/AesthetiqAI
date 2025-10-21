@@ -202,7 +202,9 @@ export default function Appointments() {
             Appointments
           </h1>
           <p className="text-muted-foreground mb-4">Manage your clinic's appointment schedule</p>
-          <ClinicNav />
+          <div className="mt-4">
+            <ClinicNav />
+          </div>
         </div>
 
         {/* Actions */}
