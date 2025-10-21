@@ -27,6 +27,7 @@ interface ServiceFormData {
   price: string;
   depositRequired: boolean;
   depositAmount: string;
+  paymentType: "full" | "deposit";
   requiresConsent: boolean;
   availableStaffIds: string[];
 }
@@ -49,6 +50,7 @@ export default function Services() {
     price: "",
     depositRequired: false,
     depositAmount: "",
+    paymentType: "full",
     requiresConsent: false,
     availableStaffIds: []
   });
@@ -178,6 +180,7 @@ export default function Services() {
       price: "",
       depositRequired: false,
       depositAmount: "",
+      paymentType: "full",
       requiresConsent: false,
       availableStaffIds: []
     });
@@ -190,9 +193,10 @@ export default function Services() {
       description: service.description || "",
       category: service.category || "",
       duration: service.duration,
-      price: service.price.toString(),
+      price: service.price?.toString() || "",
       depositRequired: service.depositRequired || false,
       depositAmount: service.depositAmount?.toString() || "",
+      paymentType: service.paymentType || "full",
       requiresConsent: service.requiresConsent || false,
       availableStaffIds: Array.isArray(service.availableStaffIds) ? service.availableStaffIds : []
     });
@@ -327,7 +331,9 @@ export default function Services() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="price">Price ($)</Label>
+                    <Label htmlFor="price">
+                      Price ($) {formData.paymentType === 'deposit' && <span className="text-muted-foreground text-xs">(Optional)</span>}
+                    </Label>
                     <Input
                       id="price"
                       type="number"
@@ -336,12 +342,14 @@ export default function Services() {
                       min="0"
                       step="0.01"
                       placeholder="0.00"
-                      required
+                      required={formData.paymentType === 'full'}
                       data-testid="input-service-price"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="depositAmount">Deposit Amount ($)</Label>
+                    <Label htmlFor="depositAmount">
+                      Deposit Amount ($) {formData.paymentType === 'deposit' && <span className="text-red-500">*</span>}
+                    </Label>
                     <Input
                       id="depositAmount"
                       type="number"
@@ -350,25 +358,52 @@ export default function Services() {
                       min="0"
                       step="0.01"
                       placeholder="0.00"
-                      disabled={!formData.depositRequired}
+                      required={formData.paymentType === 'deposit'}
                       data-testid="input-service-deposit"
                     />
                   </div>
                 </div>
 
                 <div className="space-y-4">
-                  <div className="flex items-center space-x-2">
-                    <Switch
-                      id="depositRequired"
-                      checked={formData.depositRequired}
-                      onCheckedChange={(checked) => setFormData(prev => ({ 
-                        ...prev, 
-                        depositRequired: checked,
-                        depositAmount: checked ? prev.depositAmount : ""
-                      }))}
-                      data-testid="switch-deposit-required"
-                    />
-                    <Label htmlFor="depositRequired">Requires deposit payment</Label>
+                  <div className="space-y-2">
+                    <Label>Payment Collection</Label>
+                    <div className="flex gap-4">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="paymentType"
+                          value="full"
+                          checked={formData.paymentType === "full"}
+                          onChange={() => setFormData(prev => ({ 
+                            ...prev, 
+                            paymentType: "full",
+                            depositRequired: false
+                          }))}
+                          className="w-4 h-4"
+                        />
+                        <span>Charge Full Amount</span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="paymentType"
+                          value="deposit"
+                          checked={formData.paymentType === "deposit"}
+                          onChange={() => setFormData(prev => ({ 
+                            ...prev, 
+                            paymentType: "deposit",
+                            depositRequired: true
+                          }))}
+                          className="w-4 h-4"
+                        />
+                        <span>Charge Deposit Only</span>
+                      </label>
+                    </div>
+                    {formData.paymentType === "deposit" && (
+                      <p className="text-xs text-muted-foreground">
+                        Collect deposit at booking, charge remaining after service based on actual product usage
+                      </p>
+                    )}
                   </div>
                   
                   <div className="flex items-center space-x-2">
