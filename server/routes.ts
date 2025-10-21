@@ -657,10 +657,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (organizationSlug) {
       try {
         const client = await storage.getClientByUser(req.user.id);
+        console.log(`🔍 [PATIENT-LOGIN] User ID: ${req.user.id}`);
+        console.log(`🔍 [PATIENT-LOGIN] Slug: ${organizationSlug}`);
+        console.log(`🔍 [PATIENT-LOGIN] Client found:`, client ? { id: client.id, organizationId: client.organizationId } : 'NO CLIENT');
+        
         if (client) {
           // Check if slug is for a location first (same logic as registration)
           let location = await storage.getLocationBySlug(organizationSlug);
           let organization;
+          
+          console.log(`🔍 [PATIENT-LOGIN] Location lookup:`, location ? { id: location.id, organizationId: location.organizationId } : 'NO LOCATION');
           
           if (location && location.isActive) {
             // It's a location slug - get the organization
@@ -669,6 +675,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
             // Try organization slug (backward compatibility)
             organization = await storage.getOrganizationBySlug(organizationSlug);
           }
+          
+          console.log(`🔍 [PATIENT-LOGIN] Organization found:`, organization ? { id: organization.id, name: organization.name } : 'NO ORG');
+          console.log(`🔍 [PATIENT-LOGIN] Match check: client.orgId=${client.organizationId} vs org.id=${organization?.id}`);
           
           if (!organization || client.organizationId !== organization.id) {
             req.logout((err) => {
