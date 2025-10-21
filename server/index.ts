@@ -9,41 +9,35 @@ app.use('/api/stripe/webhook', express.raw({ type: 'application/json' }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
-// CSP configuration for Stripe compatibility
+// CSP configuration following Stripe's official requirements
+// https://docs.stripe.com/security/guide#content-security-policy
 app.use((req, res, next) => {
   const isDev = process.env.NODE_ENV === 'development' || app.get('env') === 'development';
-  console.log(`🔍 [CSP] NODE_ENV: ${process.env.NODE_ENV}, app.get('env'): ${app.get('env')}, isDev: ${isDev}`);
   
   if (isDev) {
-    // In development, use permissive CSP to allow Stripe and Vite HMR
-    const cspHeader = [
+    // Development CSP: permissive for Vite HMR + Stripe's required domains including m.stripe.network
+    res.setHeader('Content-Security-Policy', [
       "default-src 'self' 'unsafe-inline' 'unsafe-eval'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com https://m.stripe.network",
-      "style-src 'self' 'unsafe-inline' https://m.stripe.network https://fonts.googleapis.com",
-      "img-src 'self' data: blob: https:",
+      "connect-src 'self' ws: wss: https://api.stripe.com https://m.stripe.network",
+      "frame-src 'self' https://js.stripe.com https://*.js.stripe.com https://hooks.stripe.com",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com https://*.js.stripe.com https://m.stripe.network",
+      "img-src 'self' data: blob: https: https://*.stripe.com",
       "font-src 'self' data: https://fonts.gstatic.com https://fonts.googleapis.com",
-      "connect-src 'self' ws: wss: https://api.stripe.com https://m.stripe.network https://vitals.vercel-insights.com",
-      "frame-src 'self' https://js.stripe.com https://hooks.stripe.com",
-      "child-src 'self' blob:",
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "worker-src 'self' blob:"
-    ].join('; ');
-    console.log(`✅ [CSP] Setting permissive CSP for development`);
-    res.setHeader('Content-Security-Policy', cspHeader);
-    // Disable Trusted Types requirement in development
-    res.removeHeader('Require-Trusted-Types-For');
+    ].join('; '));
   } else {
-    // In production, use strict CSP with Stripe domains allowed
-    const cspHeader = [
+    // Production CSP: stricter with Stripe's required domains including m.stripe.network
+    res.setHeader('Content-Security-Policy', [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com https://m.stripe.network",
-      "style-src 'self' 'unsafe-inline' https://m.stripe.network https://fonts.googleapis.com",
-      "img-src 'self' data: https:",
-      "font-src 'self' https://fonts.gstatic.com https://fonts.googleapis.com",
       "connect-src 'self' https://api.stripe.com https://m.stripe.network",
-      "frame-src https://js.stripe.com https://hooks.stripe.com"
-    ].join('; ');
-    console.log(`⚠️ [CSP] Setting production CSP`);
-    res.setHeader('Content-Security-Policy', cspHeader);
+      "frame-src https://js.stripe.com https://*.js.stripe.com https://hooks.stripe.com",
+      "script-src 'self' https://js.stripe.com https://*.js.stripe.com https://m.stripe.network",
+      "img-src 'self' data: https://*.stripe.com",
+      "font-src 'self' https://fonts.gstatic.com https://fonts.googleapis.com",
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      "worker-src 'self' blob:"
+    ].join('; '));
   }
   next();
 });
