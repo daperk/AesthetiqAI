@@ -37,6 +37,7 @@ export default function Navigation() {
     queryKey: ["/api/clients/me"],
     enabled: user?.role === "patient",
     staleTime: 5 * 60000,
+    retry: false, // Don't retry on failure
   });
 
   // Fetch organization data for patients
@@ -44,6 +45,7 @@ export default function Navigation() {
     queryKey: ["/api/organizations", clientData?.organizationId],
     enabled: !!clientData?.organizationId,
     staleTime: 5 * 60000,
+    retry: false, // Don't retry on failure
   });
 
   // Determine branding based on user role
