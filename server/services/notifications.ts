@@ -62,49 +62,111 @@ export class NotificationService {
     return this.organizationCache.get(organizationId) || null;
   }
 
-  // Create default templates for an organization
+  // Create default templates for an organization (with idempotency)
   async createDefaultTemplates(organizationId: string): Promise<void> {
-    console.log(`[NOTIFICATIONS] Creating default templates for organization ${organizationId}`);
+    console.log(`[NOTIFICATIONS] Initializing default templates for organization ${organizationId}`);
     
-    // Create SMS templates
+    // Upsert SMS templates (check if exists, update if needed, create if not)
     for (const [key, template] of Object.entries(DEFAULT_SMS_TEMPLATES)) {
       try {
-        await storage.createMessageTemplate({
-          organizationId,
-          name: template.name,
-          type: template.type,
-          category: template.category,
-          content: template.content,
-          variables: template.variables,
-          isDefault: true,
-          isActive: true
-        });
-        console.log(`✅ Created default SMS template: ${template.name}`);
-      } catch (error) {
-        console.error(`❌ Failed to create template ${template.name}:`, error);
+        // Check if template already exists
+        const existingTemplates = await storage.getMessageTemplatesByOrganization(organizationId);
+        const existing = existingTemplates.find(t => 
+          t.name === template.name && 
+          t.type === template.type
+        );
+        
+        if (existing) {
+          // Update existing template if it's a default template
+          if (existing.isDefault) {
+            await storage.updateMessageTemplate(existing.id, {
+              category: template.category,
+              content: template.content,
+              variables: template.variables,
+              isActive: true
+            });
+            console.log(`✅ Updated existing default SMS template: ${template.name}`);
+          } else {
+            console.log(`⏭️ Skipped SMS template (custom exists): ${template.name}`);
+          }
+        } else {
+          // Create new template
+          await storage.createMessageTemplate({
+            organizationId,
+            name: template.name,
+            type: template.type,
+            category: template.category,
+            content: template.content,
+            variables: template.variables,
+            isDefault: true,
+            isActive: true
+          });
+          console.log(`✅ Created default SMS template: ${template.name}`);
+        }
+      } catch (error: any) {
+        // Handle unique constraint violation gracefully
+        if (error.code === '23505' || error.message?.includes('unique')) {
+          console.log(`⏭️ Template already exists: ${template.name} (skipped)`);
+        } else {
+          console.error(`❌ Failed to create/update template ${template.name}:`, error);
+        }
       }
     }
 
-    // Create email templates (using SendGrid defaults)
+    // Upsert email templates (using SendGrid defaults)
     for (const [key, template] of Object.entries(sendgridService.DEFAULT_EMAIL_TEMPLATES)) {
       try {
-        await storage.createMessageTemplate({
-          organizationId,
-          name: key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
-          type: 'email',
-          category: key.includes('appointment') ? 'appointment' : 
-                   key.includes('birthday') ? 'birthday' :
-                   key.includes('membership') ? 'membership' :
-                   key.includes('follow') ? 'follow_up' : 'promotion',
-          subject: template.subject,
-          content: template.html,
-          variables: template.variables,
-          isDefault: true,
-          isActive: true
-        });
-        console.log(`✅ Created default email template: ${key}`);
-      } catch (error) {
-        console.error(`❌ Failed to create email template ${key}:`, error);
+        const templateName = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+        
+        // Check if template already exists
+        const existingTemplates = await storage.getMessageTemplatesByOrganization(organizationId);
+        const existing = existingTemplates.find(t => 
+          t.name === templateName && 
+          t.type === 'email'
+        );
+        
+        if (existing) {
+          // Update existing template if it's a default template
+          if (existing.isDefault) {
+            await storage.updateMessageTemplate(existing.id, {
+              category: key.includes('appointment') ? 'appointment' : 
+                       key.includes('birthday') ? 'birthday' :
+                       key.includes('membership') ? 'membership' :
+                       key.includes('follow') ? 'follow_up' : 'promotion',
+              subject: template.subject,
+              content: template.html,
+              variables: template.variables,
+              isActive: true
+            });
+            console.log(`✅ Updated existing default email template: ${templateName}`);
+          } else {
+            console.log(`⏭️ Skipped email template (custom exists): ${templateName}`);
+          }
+        } else {
+          // Create new template
+          await storage.createMessageTemplate({
+            organizationId,
+            name: templateName,
+            type: 'email',
+            category: key.includes('appointment') ? 'appointment' : 
+                     key.includes('birthday') ? 'birthday' :
+                     key.includes('membership') ? 'membership' :
+                     key.includes('follow') ? 'follow_up' : 'promotion',
+            subject: template.subject,
+            content: template.html,
+            variables: template.variables,
+            isDefault: true,
+            isActive: true
+          });
+          console.log(`✅ Created default email template: ${templateName}`);
+        }
+      } catch (error: any) {
+        // Handle unique constraint violation gracefully
+        if (error.code === '23505' || error.message?.includes('unique')) {
+          console.log(`⏭️ Template already exists: ${key} (skipped)`);
+        } else {
+          console.error(`❌ Failed to create/update email template ${key}:`, error);
+        }
       }
     }
   }

@@ -4647,141 +4647,251 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // SMS and Email Marketing Endpoints
   
-  // Send individual SMS
-  app.post("/api/sms/send", requireAuth, async (req, res) => {
-    try {
-      const { to, message, organizationId } = req.body;
-      
-      // Validate required fields
-      if (!to || !message) {
-        return res.status(400).json({ 
-          success: false, 
-          message: "Phone number and message are required" 
-        });
-      }
-      
-      // Verify user has access to organization
+  // Rate limiting storage (in-memory for now, can be replaced with Redis later)
+  const rateLimits = new Map<string, { count: number, resetTime: number }>();
+  const dailyLimits = new Map<string, { count: number, date: string }>();
+
+  // Rate limiting middleware
+  const checkRateLimit = (limitType: 'sms_per_minute' | 'sms_daily' | 'campaign_daily') => {
+    return async (req: Request, res: Response, next: NextFunction) => {
       const userOrgId = await getUserOrganizationId(req.user!);
-      if (organizationId && organizationId !== userOrgId && req.user!.role !== 'super_admin') {
-        return res.status(403).json({ 
-          success: false, 
-          message: "Access denied to this organization" 
-        });
-      }
-      
-      const targetOrgId = organizationId || userOrgId;
-      if (!targetOrgId) {
-        return res.status(400).json({ 
-          success: false, 
-          message: "No organization found" 
-        });
-      }
-      
-      // Import Twilio service
-      const twilioService = await import("./services/twilio");
-      
-      // Send SMS
-      const result = await twilioService.sendSMS({
-        to,
-        message
-      });
-      
-      // Log usage
-      await storage.createUsageLog({
-        organizationId: targetOrgId,
-        feature: 'sms_send',
-        usage: 1,
-        metadata: { to, messageLength: message.length }
-      });
-      
-      res.json(result);
-    } catch (error) {
-      console.error("SMS send error:", error);
-      res.status(500).json({ 
-        success: false, 
-        message: "Failed to send SMS",
-        error: error instanceof Error ? error.message : "Unknown error"
-      });
-    }
-  });
-  
-  // Send bulk SMS campaign
-  app.post("/api/sms/campaign", requireAuth, async (req, res) => {
-    try {
-      const { campaignId, recipients, template, organizationId } = req.body;
-      
-      // Verify user has access
-      const userOrgId = await getUserOrganizationId(req.user!);
-      const targetOrgId = organizationId || userOrgId;
-      
-      if (!targetOrgId) {
-        return res.status(400).json({ 
-          success: false, 
-          message: "No organization found" 
-        });
-      }
-      
-      if (organizationId && organizationId !== userOrgId && req.user!.role !== 'super_admin') {
-        return res.status(403).json({ 
-          success: false, 
-          message: "Access denied" 
-        });
-      }
-      
-      // Import services
-      const twilioService = await import("./services/twilio");
-      
-      // Send bulk SMS
-      const result = await twilioService.sendBulkSMS({
-        recipients,
-        template
-      });
-      
-      // Update campaign if provided
-      if (campaignId) {
-        await storage.updateMarketingCampaign(campaignId, {
-          status: 'sent',
-          sentDate: new Date(),
-          sentCount: result.sent,
-          failedCount: result.failed
-        });
+      const clientIp = req.ip || req.connection.remoteAddress || 'unknown';
+      const now = Date.now();
+      const today = new Date().toISOString().split('T')[0];
+
+      if (limitType === 'sms_per_minute') {
+        const key = `sms_minute_${clientIp}`;
+        const limit = rateLimits.get(key);
         
-        // Update recipients status
-        for (const recipientResult of result.results) {
-          const recipient = recipients.find((r: any) => r.to === recipientResult.to);
-          if (recipient?.clientId) {
-            await storage.createCampaignRecipient({
-              campaignId,
-              clientId: recipient.clientId,
-              status: recipientResult.success ? 'sent' : 'failed',
-              phoneNumber: recipientResult.to,
-              messageId: recipientResult.messageId,
-              error: recipientResult.error,
-              sentAt: recipientResult.success ? new Date() : undefined,
-              variables: recipient.variables
+        if (limit && limit.resetTime > now) {
+          if (limit.count >= 5) {
+            return res.status(429).json({
+              success: false,
+              message: "Rate limit exceeded. Maximum 5 SMS per minute per IP.",
+              retryAfter: Math.ceil((limit.resetTime - now) / 1000)
+            });
+          }
+          limit.count++;
+        } else {
+          rateLimits.set(key, { count: 1, resetTime: now + 60000 }); // 1 minute
+        }
+      }
+
+      if (limitType === 'sms_daily' && userOrgId) {
+        const key = `sms_daily_${userOrgId}_${today}`;
+        const limit = dailyLimits.get(key);
+        
+        if (limit && limit.date === today) {
+          if (limit.count >= 100) {
+            return res.status(429).json({
+              success: false,
+              message: "Daily SMS limit exceeded. Maximum 100 SMS per organization per day."
+            });
+          }
+          limit.count++;
+        } else {
+          dailyLimits.set(key, { count: 1, date: today });
+        }
+      }
+
+      if (limitType === 'campaign_daily' && userOrgId) {
+        const key = `campaign_daily_${userOrgId}_${today}`;
+        const limit = dailyLimits.get(key);
+        
+        if (limit && limit.date === today) {
+          if (limit.count >= 10) {
+            return res.status(429).json({
+              success: false,
+              message: "Daily campaign limit exceeded. Maximum 10 campaigns per organization per day."
+            });
+          }
+          limit.count++;
+        } else {
+          dailyLimits.set(key, { count: 1, date: today });
+        }
+      }
+
+      next();
+    };
+  };
+
+  // Send individual SMS - SECURED with role check and rate limiting
+  app.post("/api/sms/send", 
+    requireAuth, 
+    requireRole("clinic_admin", "staff", "super_admin"),
+    checkRateLimit('sms_per_minute'),
+    checkRateLimit('sms_daily'),
+    async (req, res) => {
+      try {
+        const { to, message, organizationId } = req.body;
+        
+        // Validate required fields
+        if (!to || !message) {
+          return res.status(400).json({ 
+            success: false, 
+            message: "Phone number and message are required" 
+          });
+        }
+        
+        // Get user's organization
+        const userOrgId = await getUserOrganizationId(req.user!);
+        
+        // SECURITY: Verify user belongs to the organization they're trying to send from
+        if (organizationId) {
+          if (req.user!.role !== 'super_admin' && organizationId !== userOrgId) {
+            await auditLog(req, "unauthorized_access", "sms_send", organizationId, { 
+              attemptedOrg: organizationId,
+              userOrg: userOrgId,
+              blocked: true 
+            });
+            return res.status(403).json({ 
+              success: false, 
+              message: "Access denied. You cannot send SMS for another organization." 
             });
           }
         }
+        
+        const targetOrgId = organizationId || userOrgId;
+        if (!targetOrgId) {
+          return res.status(400).json({ 
+            success: false, 
+            message: "No organization found" 
+          });
+        }
+        
+        // Import Twilio service
+        const twilioService = await import("./services/twilio");
+        
+        // Send SMS
+        const result = await twilioService.sendSMS({
+          to,
+          message
+        });
+        
+        // Audit log for successful send
+        await auditLog(req, "sms_send", "message", result.messageId || 'unknown', {
+          to: to.slice(0, 3) + '***' + to.slice(-2), // Partially mask phone number
+          messageLength: message.length,
+          organizationId: targetOrgId,
+          success: result.success
+        });
+        
+        // Log usage
+        await storage.createUsageLog({
+          organizationId: targetOrgId,
+          feature: 'sms_send',
+          usage: 1,
+          metadata: { to, messageLength: message.length }
+        });
+        
+        res.json(result);
+      } catch (error) {
+        console.error("SMS send error:", error);
+        res.status(500).json({ 
+          success: false, 
+          message: "Failed to send SMS",
+          error: error instanceof Error ? error.message : "Unknown error"
+        });
       }
-      
-      // Log usage
-      await storage.createUsageLog({
-        organizationId: targetOrgId,
-        feature: 'sms_campaign',
-        usage: recipients.length,
-        metadata: { campaignId, sent: result.sent, failed: result.failed }
-      });
-      
-      res.json(result);
-    } catch (error) {
-      console.error("SMS campaign error:", error);
-      res.status(500).json({ 
-        success: false, 
-        message: "Failed to send SMS campaign",
-        error: error instanceof Error ? error.message : "Unknown error"
-      });
-    }
-  });
+    });
+  
+  // Send bulk SMS campaign - SECURED with role check and rate limiting
+  app.post("/api/sms/campaign", 
+    requireAuth, 
+    requireRole("clinic_admin", "super_admin"), // Only admins can send bulk campaigns
+    checkRateLimit('campaign_daily'),
+    async (req, res) => {
+      try {
+        const { campaignId, recipients, template, organizationId } = req.body;
+        
+        // Get user's organization
+        const userOrgId = await getUserOrganizationId(req.user!);
+        
+        // SECURITY: Verify user belongs to the organization they're trying to send from
+        if (organizationId) {
+          if (req.user!.role !== 'super_admin' && organizationId !== userOrgId) {
+            await auditLog(req, "unauthorized_access", "sms_campaign", organizationId, { 
+              attemptedOrg: organizationId,
+              userOrg: userOrgId,
+              blocked: true 
+            });
+            return res.status(403).json({ 
+              success: false, 
+              message: "Access denied. You cannot send campaigns for another organization." 
+            });
+          }
+        }
+        
+        const targetOrgId = organizationId || userOrgId;
+        if (!targetOrgId) {
+          return res.status(400).json({ 
+            success: false, 
+            message: "No organization found" 
+          });
+        }
+        
+        // Import services
+        const twilioService = await import("./services/twilio");
+        
+        // Send bulk SMS
+        const result = await twilioService.sendBulkSMS({
+          recipients,
+          template
+        });
+        
+        // Audit log for campaign send
+        await auditLog(req, "sms_campaign_send", "campaign", campaignId || 'direct', {
+          recipientCount: recipients.length,
+          sent: result.sent,
+          failed: result.failed,
+          organizationId: targetOrgId
+        });
+        
+        // Update campaign if provided
+        if (campaignId) {
+          await storage.updateMarketingCampaign(campaignId, {
+            status: 'sent',
+            sentDate: new Date(),
+            sentCount: result.sent,
+            failedCount: result.failed
+          });
+          
+          // Update recipients status
+          for (const recipientResult of result.results) {
+            const recipient = recipients.find((r: any) => r.to === recipientResult.to);
+            if (recipient?.clientId) {
+              await storage.createCampaignRecipient({
+                campaignId,
+                clientId: recipient.clientId,
+                status: recipientResult.success ? 'sent' : 'failed',
+                phoneNumber: recipientResult.to,
+                messageId: recipientResult.messageId,
+                error: recipientResult.error,
+                sentAt: recipientResult.success ? new Date() : undefined,
+                variables: recipient.variables
+              });
+            }
+          }
+        }
+        
+        // Log usage
+        await storage.createUsageLog({
+          organizationId: targetOrgId,
+          feature: 'sms_campaign',
+          usage: recipients.length,
+          metadata: { campaignId, sent: result.sent, failed: result.failed }
+        });
+        
+        res.json(result);
+      } catch (error) {
+        console.error("SMS campaign error:", error);
+        res.status(500).json({ 
+          success: false, 
+          message: "Failed to send SMS campaign",
+          error: error instanceof Error ? error.message : "Unknown error"
+        });
+      }
+    });
   
   // Get message templates
   app.get("/api/message-templates/:organizationId", requireAuth, async (req, res) => {
