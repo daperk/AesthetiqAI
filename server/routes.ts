@@ -883,6 +883,302 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Invite staff member endpoint
+  app.post("/api/staff/invite", requireAuth, requireRole("clinic_admin", "super_admin"), async (req, res) => {
+    try {
+      const { email, firstName, lastName, role, title, commissionRate, commissionType, hourlyRate, serviceIds } = req.body;
+      
+      console.log(`📋 Processing staff invitation for: ${email}`);
+      
+      const organizationId = await getUserOrganizationId(req.user!);
+      if (!organizationId) {
+        return res.status(400).json({ message: "No organization found for user" });
+      }
+
+      const organization = await storage.getOrganization(organizationId);
+      if (!organization) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+
+      // Check if user already exists with this email
+      const existingUser = await storage.getUserByEmail(email);
+      if (existingUser) {
+        return res.status(400).json({ 
+          message: "A user with this email already exists",
+          existingUser: {
+            id: existingUser.id,
+            email: existingUser.email,
+            role: existingUser.role
+          }
+        });
+      }
+
+      // Create a temporary password
+      const temporaryPassword = `Temp${Math.random().toString(36).slice(2, 10)}!`;
+      
+      // Create user account for staff
+      let user;
+      try {
+        const hashedPassword = await bcrypt.hash(temporaryPassword, 10);
+        user = await storage.createUser({
+          email,
+          username: email,
+          password: hashedPassword,
+          firstName,
+          lastName,
+          role: "staff",
+          organizationId
+        });
+        
+        console.log(`✅ User account created successfully: ${user.id}`);
+      } catch (dbError) {
+        console.error('❌ Failed to create user account:', dbError);
+        return res.status(500).json({ 
+          message: "Failed to create user account",
+          error: dbError instanceof Error ? dbError.message : 'Unknown database error'
+        });
+      }
+
+      // Create staff record
+      let staff;
+      try {
+        staff = await storage.createStaff({
+          userId: user.id,
+          organizationId,
+          role: role || "provider",
+          title,
+          commissionRate: commissionRate || 15,
+          commissionType: commissionType || "percentage",
+          hourlyRate: hourlyRate || 0,
+          canBookOnline: true,
+          isActive: true,
+        });
+        
+        console.log(`✅ Staff record created successfully: ${staff.id}`);
+      } catch (dbError) {
+        console.error('❌ Failed to create staff record:', dbError);
+        return res.status(500).json({ 
+          message: "Failed to create staff record",
+          error: dbError instanceof Error ? dbError.message : 'Unknown database error'
+        });
+      }
+
+      // Prepare invitation link
+      const invitationLink = `${req.protocol}://${req.get('host')}/login`;
+      
+      // Prepare email content
+      const emailContent = `
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            body {
+              font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+              line-height: 1.6;
+              color: #333;
+              max-width: 600px;
+              margin: 0 auto;
+              padding: 0;
+              background-color: #f5f1e8;
+            }
+            .container {
+              background: white;
+              border-radius: 12px;
+              overflow: hidden;
+              margin: 20px;
+              box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            }
+            .header {
+              background: linear-gradient(135deg, #8b7355 0%, #6b5a45 100%);
+              color: white;
+              padding: 40px 30px;
+              text-align: center;
+            }
+            .header h1 {
+              margin: 0;
+              font-size: 28px;
+              font-weight: 600;
+              letter-spacing: -0.5px;
+            }
+            .content {
+              padding: 40px 30px;
+            }
+            .content h2 {
+              color: #8b7355;
+              font-size: 20px;
+              margin-bottom: 10px;
+            }
+            .credentials {
+              background: #f8f6f3;
+              border-left: 4px solid #8b7355;
+              padding: 20px;
+              margin: 25px 0;
+              border-radius: 6px;
+            }
+            .credentials p {
+              margin: 8px 0;
+              font-size: 15px;
+            }
+            .credentials strong {
+              color: #6b5a45;
+              display: inline-block;
+              width: 120px;
+            }
+            .button {
+              display: inline-block;
+              padding: 14px 32px;
+              background: linear-gradient(135deg, #8b7355 0%, #6b5a45 100%);
+              color: white !important;
+              text-decoration: none;
+              border-radius: 30px;
+              font-weight: 600;
+              font-size: 16px;
+              margin: 20px 0;
+              text-align: center;
+            }
+            .footer {
+              background: #f8f6f3;
+              padding: 30px;
+              text-align: center;
+              color: #666;
+              font-size: 14px;
+            }
+            .role-badge {
+              display: inline-block;
+              background: #8b7355;
+              color: white;
+              padding: 6px 16px;
+              border-radius: 20px;
+              font-size: 14px;
+              font-weight: 500;
+              margin-top: 10px;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>Welcome to ${organization.name}</h1>
+            </div>
+            <div class="content">
+              <h2>Hi ${firstName},</h2>
+              <p>You've been invited to join our team at ${organization.name} as a staff member.</p>
+              
+              <p>Your role: <span class="role-badge">${title || role}</span></p>
+              
+              <div class="credentials">
+                <p><strong>Email:</strong> ${email}</p>
+                <p><strong>Username:</strong> ${email}</p>
+                <p><strong>Password:</strong> ${temporaryPassword}</p>
+                <p style="margin-top: 15px; font-size: 14px; color: #666;">
+                  ⚠️ Please change your password after your first login for security.
+                </p>
+              </div>
+              
+              <p>Click the button below to access your dashboard:</p>
+              
+              <div style="text-align: center;">
+                <a href="${invitationLink}" class="button">Access Your Dashboard</a>
+              </div>
+              
+              <p style="margin-top: 30px;">As a team member, you'll have access to:</p>
+              <ul style="color: #555; line-height: 1.8;">
+                <li>Your personal staff dashboard</li>
+                <li>Appointment management tools</li>
+                <li>Client information and history</li>
+                <li>Service scheduling</li>
+                <li>Commission tracking</li>
+              </ul>
+            </div>
+            <div class="footer">
+              <p>If you have any questions, please contact your clinic administrator.</p>
+              <p style="margin-top: 15px;">© ${new Date().getFullYear()} ${organization.name}. All rights reserved.</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `;
+
+      const textContent = `Welcome to ${organization.name}\n\n` +
+        `Hi ${firstName},\n\n` +
+        `You've been invited to join our team as: ${title || role}\n\n` +
+        `Your Login Credentials:\n` +
+        `Email: ${email}\n` +
+        `Username: ${email}\n` +
+        `Password: ${temporaryPassword}\n\n` +
+        `⚠️ Please change your password after your first login for security.\n\n` +
+        `Access your dashboard at: ${invitationLink}\n\n` +
+        `If you have any questions, please contact your clinic administrator.\n\n` +
+        `© ${new Date().getFullYear()} ${organization.name}. All rights reserved.`;
+
+      // Send invitation email
+      const emailResult = await sendEmail({
+        to: email,
+        subject: `Staff Invitation - ${organization.name}`,
+        html: emailContent,
+        text: textContent,
+        fromName: organization.name
+      });
+
+      // Prepare response
+      const response: any = {
+        success: true,
+        staff: {
+          id: staff.id,
+          userId: user.id,
+          firstName,
+          lastName,
+          email,
+          role,
+          title,
+          createdAt: new Date().toISOString()
+        },
+        invitation: {
+          link: invitationLink,
+          sentTo: email,
+          temporaryPassword: temporaryPassword // Only for initial display, should not be stored
+        },
+        emailStatus: {
+          sent: emailResult.sent,
+          message: emailResult.sent 
+            ? '✅ Invitation email sent successfully'
+            : emailResult.error?.code === 'NO_CONFIG'
+              ? '⚠️ Email service not configured - staff created but email not sent'
+              : `⚠️ Staff created but email failed to send: ${emailResult.error?.message}`,
+          error: emailResult.error,
+          debugInfo: SENDGRID_CONFIG.debugMode ? emailResult.debugInfo : undefined
+        }
+      };
+
+      // Log the final status
+      if (emailResult.sent) {
+        console.log(`✅ Full staff invitation completed for ${email}:`, {
+          staffId: staff.id,
+          userId: user.id,
+          organization: organization.name,
+          emailSent: true
+        });
+      } else {
+        console.warn(`⚠️ Partial staff invitation completed for ${email}:`, {
+          staffId: staff.id,
+          userId: user.id,
+          organization: organization.name,
+          emailSent: false,
+          emailError: emailResult.error
+        });
+      }
+
+      await auditLog(req, "create", "staff", staff.id, { email, role, title });
+      res.json(response);
+
+    } catch (error) {
+      console.error("Staff invitation error:", error);
+      res.status(500).json({ message: "Failed to send invitation" });
+    }
+  });
+
   // Staff Roles Management
   app.get("/api/staff/roles/:organizationId", requireAuth, async (req, res) => {
     try {
