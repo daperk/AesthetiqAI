@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import LoadingSpinner from "@/components/ui/loading-spinner";
 import ClinicNav from "@/components/ClinicNav";
 import { useAuth } from "@/hooks/useAuth";
@@ -13,12 +14,12 @@ import { useOrganization } from "@/hooks/useOrganization";
 import { 
   DollarSign, Calendar, Users, Crown, TrendingUp, 
   Plus, Bell, Brain, Gift, CalendarPlus, UserPlus, Scissors, MapPin,
-  Sparkles, Lock, ArrowUpRight, Zap, Target, ChartBar
+  Sparkles, Lock, ArrowUpRight, Zap, Target, ChartBar, LogOut, User, Settings
 } from "lucide-react";
 import type { DashboardStats, Appointment, AiInsight, Location } from "@/types";
 
 export default function ClinicDashboard() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const { organization } = useOrganization();
   const [location, setLocation] = useLocation();
   const [selectedLocationId, setSelectedLocationId] = useState<string>("");
@@ -167,6 +168,33 @@ export default function ClinicDashboard() {
               <Button variant="outline" size="sm" data-testid="button-notifications">
                 <Bell className="w-4 h-4" />
               </Button>
+              
+              {/* User Dropdown Menu */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" data-testid="button-user-menu">
+                    <User className="w-4 h-4 mr-2" />
+                    {user?.firstName || user?.username || "Account"}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuLabel>My Account</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => setLocation("/clinic/settings")}>
+                    <Settings className="w-4 h-4 mr-2" />
+                    Settings
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setLocation("/clinic/profile")}>
+                    <User className="w-4 h-4 mr-2" />
+                    Profile
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => logout()} className="text-red-600" data-testid="button-sign-out">
+                    <LogOut className="w-4 h-4 mr-2" />
+                    Sign Out
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
 
