@@ -208,19 +208,19 @@ export default function Appointments() {
         </div>
 
         {/* Actions */}
-        <div className="flex items-center space-x-4 mb-6">
-            <Select value={viewMode} onValueChange={(value: "day" | "week" | "month") => setViewMode(value)}>
-              <SelectTrigger className="w-32" data-testid="select-view-mode">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="day">Day View</SelectItem>
-                <SelectItem value="week">Week View</SelectItem>
-                <SelectItem value="month">Month View</SelectItem>
-              </SelectContent>
-            </Select>
-            
-            <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+        <div className="flex items-center justify-between mb-6">
+          <Select value={viewMode} onValueChange={(value: "day" | "week" | "month") => setViewMode(value)}>
+            <SelectTrigger className="w-32" data-testid="select-view-mode">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="day">Day View</SelectItem>
+              <SelectItem value="week">Week View</SelectItem>
+              <SelectItem value="month">Month View</SelectItem>
+            </SelectContent>
+          </Select>
+          
+          <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
               <DialogTrigger asChild>
                 <Button data-testid="button-create-appointment">
                   <Plus className="w-4 h-4 mr-2" />
@@ -353,7 +353,6 @@ export default function Appointments() {
                 </form>
               </DialogContent>
             </Dialog>
-          </div>
         </div>
 
         {/* Filters */}
@@ -465,5 +464,6 @@ export default function Appointments() {
           </div>
         </div>
       </div>
+    </div>
   );
 }
