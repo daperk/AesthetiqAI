@@ -8,7 +8,6 @@ import { Loader2, Calendar, Clock, MapPin, User, DollarSign } from "lucide-react
 import { Badge } from "@/components/ui/badge";
 import { apiRequest } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
-import { useOrganization } from "@/hooks/useOrganization";
 import type { Service, Staff, Location } from "@shared/schema";
 
 // Use test key if environment variable is not set
@@ -47,7 +46,6 @@ export function BookingWithPayment({
   const [isLoading, setIsLoading] = useState(true);
   const [appointmentId, setAppointmentId] = useState<string>("");
   const { toast } = useToast();
-  const { organization } = useOrganization();
 
   // Determine payment amount based on service configuration
   // If paymentType is "deposit", charge ONLY the deposit amount
@@ -65,9 +63,9 @@ export function BookingWithPayment({
       setIsLoading(true);
       
       // Create appointment with payment intent
+      // Note: organizationId is not needed in the request - the server derives it from the service
       const response = await apiRequest("POST", "/api/appointments/book-with-payment", {
         ...bookingData,
-        organizationId: organization?.id,
       });
 
       const data = await response.json();

@@ -26,6 +26,14 @@ interface BookingStep {
   completed: boolean;
 }
 
+// Helper function to convert 24-hour time to 12-hour format
+const formatTimeTo12Hour = (time24: string): string => {
+  const [hours, minutes] = time24.split(':').map(Number);
+  const period = hours >= 12 ? 'PM' : 'AM';
+  const hours12 = hours % 12 || 12;
+  return `${hours12}:${minutes.toString().padStart(2, '0')} ${period}`;
+};
+
 export default function Booking() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -334,7 +342,7 @@ export default function Booking() {
                         className="justify-center"
                         data-testid={`time-slot-${slot.time}`}
                       >
-                        {slot.time}
+                        {formatTimeTo12Hour(slot.time)}
                       </Button>
                     )) || (
                       // Default time slots if no availability data
@@ -347,7 +355,7 @@ export default function Booking() {
                             className="justify-center"
                             data-testid={`time-slot-${time}`}
                           >
-                            {time}
+                            {formatTimeTo12Hour(time)}
                           </Button>
                         ))}
                       </>
@@ -450,7 +458,7 @@ export default function Booking() {
                     
                     <div className="flex items-center gap-2">
                       <Clock className="h-4 w-4 text-muted-foreground" />
-                      <span>{selectedTime} ({selectedService?.duration} minutes)</span>
+                      <span>{formatTimeTo12Hour(selectedTime)} ({selectedService?.duration} minutes)</span>
                     </div>
                   </div>
                 </div>
