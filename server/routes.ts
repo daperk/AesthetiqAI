@@ -1486,6 +1486,154 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Update client information
+  app.patch("/api/clients/:id", requireAuth, requireRole("clinic_admin", "super_admin"), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { firstName, lastName, email, phone, dateOfBirth, address, notes } = req.body;
+
+      // Get organization ID to verify access
+      const organizationId = await getUserOrganizationId(req.user!);
+      if (!organizationId) {
+        return res.status(403).json({ message: "No organization access" });
+      }
+
+      // Get the client to verify it belongs to the user's organization
+      const client = await storage.getClientById(id);
+      if (!client) {
+        return res.status(404).json({ message: "Client not found" });
+      }
+
+      if (client.organizationId !== organizationId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      // Update the client
+      const updatedClient = await storage.updateClient(id, {
+        firstName,
+        lastName,
+        email,
+        phone: phone || null,
+        dateOfBirth: dateOfBirth || null,
+        address: address || null,
+        notes: notes || null,
+      });
+
+      // Update Stripe customer if email changed and Stripe is configured
+      if (client.stripeCustomerId && email !== client.email && stripe) {
+        try {
+          const organization = await storage.getOrganization(organizationId);
+          const updateOptions: any = {
+            email,
+            name: `${firstName} ${lastName}`,
+          };
+          
+          if (organization?.stripeConnectAccountId) {
+            await stripe.customers.update(client.stripeCustomerId, updateOptions, {
+              stripeAccount: organization.stripeConnectAccountId
+            });
+          } else {
+            await stripe.customers.update(client.stripeCustomerId, updateOptions);
+          }
+        } catch (stripeError) {
+          console.error("Failed to update Stripe customer:", stripeError);
+          // Continue - Stripe update failure is not critical
+        }
+      }
+
+      res.json(updatedClient);
+    } catch (error) {
+      console.error("Error updating client:", error);
+      res.status(500).json({ message: "Failed to update client" });
+    }
+  });
+
+  // Delete client
+  app.delete("/api/clients/:id", requireAuth, requireRole("clinic_admin", "super_admin"), async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      // Get organization ID to verify access
+      const organizationId = await getUserOrganizationId(req.user!);
+      if (!organizationId) {
+        return res.status(403).json({ message: "No organization access" });
+      }
+
+      // Get the client to verify it belongs to the user's organization
+      const client = await storage.getClientById(id);
+      if (!client) {
+        return res.status(404).json({ message: "Client not found" });
+      }
+
+      if (client.organizationId !== organizationId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      // Delete from Stripe if customer exists
+      if (client.stripeCustomerId && stripe) {
+        try {
+          const organization = await storage.getOrganization(organizationId);
+          if (organization?.stripeConnectAccountId) {
+            await stripe.customers.del(client.stripeCustomerId, {
+              stripeAccount: organization.stripeConnectAccountId
+            });
+          } else {
+            await stripe.customers.del(client.stripeCustomerId);
+          }
+        } catch (stripeError) {
+          console.error("Failed to delete Stripe customer:", stripeError);
+          // Continue - Stripe deletion failure is not critical
+        }
+      }
+
+      // Delete the client
+      await storage.deleteClient(id);
+
+      res.json({ message: "Client deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting client:", error);
+      res.status(500).json({ message: "Failed to delete client" });
+    }
+  });
+
+  // Toggle client active status
+  app.patch("/api/clients/:id/status", requireAuth, requireRole("clinic_admin", "super_admin"), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { isActive } = req.body;
+
+      if (typeof isActive !== "boolean") {
+        return res.status(400).json({ message: "isActive must be a boolean" });
+      }
+
+      // Get organization ID to verify access
+      const organizationId = await getUserOrganizationId(req.user!);
+      if (!organizationId) {
+        return res.status(403).json({ message: "No organization access" });
+      }
+
+      // Get the client to verify it belongs to the user's organization
+      const client = await storage.getClientById(id);
+      if (!client) {
+        return res.status(404).json({ message: "Client not found" });
+      }
+
+      if (client.organizationId !== organizationId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      // Update the client status
+      const updatedClient = await storage.updateClient(id, {
+        isActive,
+      });
+
+      res.json(updatedClient);
+    } catch (error) {
+      console.error("Error updating client status:", error);
+      res.status(500).json({ message: "Failed to update client status" });
+    }
+  });
+
   app.post("/api/clients", requireRole("clinic_admin", "staff", "super_admin"), requireBusinessSetupComplete, async (req, res) => {
     try {
       // Get organization ID from user session (same logic as GET endpoint)

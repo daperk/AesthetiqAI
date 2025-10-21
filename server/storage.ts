@@ -94,10 +94,12 @@ export interface IStorage {
   // Clients
   getClientsByOrganization(organizationId: string): Promise<Client[]>;
   getClient(id: string): Promise<Client | undefined>;
+  getClientById(id: string): Promise<Client | undefined>;
   getClientByUser(userId: string): Promise<Client | undefined>;
   getClientByEmail(email: string): Promise<Client | undefined>;
   createClient(client: InsertClient): Promise<Client>;
   updateClient(id: string, updates: Partial<InsertClient>): Promise<Client>;
+  deleteClient(id: string): Promise<boolean>;
   
   // Client Locations
   getClientLocations(clientId: string): Promise<ClientLocation[]>;
@@ -645,6 +647,15 @@ export class DatabaseStorage implements IStorage {
   async updateClient(id: string, updates: Partial<InsertClient>): Promise<Client> {
     const [client] = await db.update(clients).set(updates).where(eq(clients.id, id)).returning();
     return client;
+  }
+
+  async getClientById(id: string): Promise<Client | undefined> {
+    return await this.getClient(id);
+  }
+
+  async deleteClient(id: string): Promise<boolean> {
+    const result = await db.delete(clients).where(eq(clients.id, id));
+    return true;
   }
 
   async getClientLocations(clientId: string): Promise<ClientLocation[]> {
