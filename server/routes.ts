@@ -2247,9 +2247,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
       
-      // Create Stripe PaymentIntent on connected account
+      // Create Stripe PaymentIntent on platform account
       const organization = await storage.getOrganization(service.organizationId);
-      console.log(`🔍 [PAYMENT INTENT] Creating payment intent for org: ${organization?.name} with Connect ID: ${organization?.stripeConnectAccountId}`);
+      console.log(`🔍 [PAYMENT INTENT] Creating payment intent for org: ${organization?.name} on platform account`);
       
       const paymentIntentData = {
         amount: Math.round(paymentAmount * 100), // Convert to cents
@@ -2263,14 +2263,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       };
       
-      // Create payment intent on connected account if available
-      const paymentIntent = organization?.stripeConnectAccountId
-        ? await stripe.paymentIntents.create(paymentIntentData, {
-            stripeAccount: organization.stripeConnectAccountId
-          })
-        : await stripe.paymentIntents.create(paymentIntentData);
+      // Create payment intent on platform account (for now - Connect payouts will be handled separately)
+      // NOTE: Creating on platform account to match frontend publishable key
+      const paymentIntent = await stripe.paymentIntents.create(paymentIntentData);
       
-      console.log(`✅ [PAYMENT INTENT] Payment intent created: ${paymentIntent.id} on account: ${organization?.stripeConnectAccountId || 'platform'}`);
+      console.log(`✅ [PAYMENT INTENT] Payment intent created: ${paymentIntent.id} on platform account`);
 
       // Create appointment with pending status - only marked as scheduled after payment confirmation
       const appointment = await storage.createAppointment({
