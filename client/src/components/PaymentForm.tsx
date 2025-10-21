@@ -28,44 +28,64 @@ export function PaymentForm({
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string>("");
+  const [isReady, setIsReady] = useState(false);
 
   const paymentAmount = isDepositOnly ? (depositAmount || 0) : amount;
   const remainingBalance = isDepositOnly ? amount - (depositAmount || 0) : 0;
 
+  // Track when Payment Element is ready
+  const handleReady = () => {
+    setIsReady(true);
+  };
+
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
 
-    if (!stripe || !elements) {
+    if (!stripe || !elements || !isReady) {
+      toast({
+        title: "Payment System Not Ready",
+        description: "Please wait for the payment form to load completely.",
+        variant: "destructive",
+      });
       return;
     }
 
     setIsLoading(true);
     setErrorMessage("");
 
-    const { error, paymentIntent } = await stripe.confirmPayment({
-      elements,
-      confirmParams: {
-        return_url: `${window.location.origin}/appointments`,
-      },
-      redirect: "if_required",
-    });
+    try {
+      const { error, paymentIntent } = await stripe.confirmPayment({
+        elements,
+        confirmParams: {
+          return_url: `${window.location.origin}/appointments`,
+        },
+        redirect: "if_required",
+      });
 
-    if (error) {
-      setErrorMessage(error.message || "An error occurred during payment");
+      if (error) {
+        setErrorMessage(error.message || "An error occurred during payment");
+        toast({
+          title: "Payment Failed",
+          description: error.message,
+          variant: "destructive",
+        });
+      } else if (paymentIntent && paymentIntent.status === "succeeded") {
+        toast({
+          title: "Payment Successful",
+          description: `Payment of $${paymentAmount.toFixed(2)} completed successfully!`,
+        });
+        onSuccess(paymentIntent.id);
+      }
+    } catch (err: any) {
+      setErrorMessage(err.message || "An unexpected error occurred");
       toast({
-        title: "Payment Failed",
-        description: error.message,
+        title: "Payment Error",
+        description: err.message || "An unexpected error occurred",
         variant: "destructive",
       });
-    } else if (paymentIntent && paymentIntent.status === "succeeded") {
-      toast({
-        title: "Payment Successful",
-        description: `Payment of $${paymentAmount.toFixed(2)} completed successfully!`,
-      });
-      onSuccess(paymentIntent.id);
+    } finally {
+      setIsLoading(false);
     }
-
-    setIsLoading(false);
   };
 
   return (
@@ -111,6 +131,7 @@ export function PaymentForm({
               options={{
                 layout: "tabs",
               }}
+              onReady={handleReady}
             />
           </div>
 
@@ -135,7 +156,7 @@ export function PaymentForm({
             )}
             <Button
               type="submit"
-              disabled={!stripe || isLoading}
+              disabled={!stripe || !isReady || isLoading}
               className="flex-1"
               data-testid="button-submit-payment"
             >
