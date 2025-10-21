@@ -19,9 +19,27 @@ import { apiRequest } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { 
   Users, Plus, Search, Filter, MoreHorizontal, Phone, Mail,
-  Calendar, DollarSign, Crown, Gift, MapPin, CreditCard
+  Calendar, DollarSign, Crown, Gift, MapPin, CreditCard,
+  Edit, Trash2, Power
 } from "lucide-react";
 import type { Client, Appointment, Membership, Transaction } from "@/types";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export default function Clients() {
   const { user } = useAuth();
@@ -36,8 +54,22 @@ export default function Clients() {
   const [filterStatus, setFilterStatus] = useState("all");
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [clientToEdit, setClientToEdit] = useState<Client | null>(null);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [clientToDelete, setClientToDelete] = useState<Client | null>(null);
   
   const [newClient, setNewClient] = useState({
+    firstName: "",
+    lastName: "",
+    email: "",
+    phone: "",
+    dateOfBirth: "",
+    address: "",
+    notes: "",
+  });
+
+  const [editClient, setEditClient] = useState({
     firstName: "",
     lastName: "",
     email: "",
@@ -58,6 +90,74 @@ export default function Clients() {
     queryKey: ["/api/appointments", "client", selectedClient?.id],
     enabled: !!selectedClient?.id,
     staleTime: 30000,
+  });
+
+  const updateClientMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string, data: typeof editClient }) => {
+      const response = await apiRequest("PATCH", `/api/clients/${id}`, data);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/clients"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/clients", organization?.id] });
+      setIsEditDialogOpen(false);
+      toast({
+        title: "Client updated",
+        description: "Client information has been successfully updated.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Failed to update client",
+        description: error.message || "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deleteClientMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const response = await apiRequest("DELETE", `/api/clients/${id}`);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/clients"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/clients", organization?.id] });
+      setIsDeleteDialogOpen(false);
+      toast({
+        title: "Client deleted",
+        description: "Client has been successfully removed.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Failed to delete client",
+        description: error.message || "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const toggleClientStatusMutation = useMutation({
+    mutationFn: async ({ id, isActive }: { id: string, isActive: boolean }) => {
+      const response = await apiRequest("PATCH", `/api/clients/${id}/status`, { isActive });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/clients"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/clients", organization?.id] });
+      toast({
+        title: "Client status updated",
+        description: "Client status has been successfully changed.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Failed to update status",
+        description: error.message || "Please try again.",
+        variant: "destructive",
+      });
+    },
   });
 
   const createClientMutation = useMutation({
@@ -131,6 +231,53 @@ export default function Clients() {
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setNewClient(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleEditInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    setEditClient(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleEditClient = (client: Client) => {
+    setClientToEdit(client);
+    setEditClient({
+      firstName: client.firstName || "",
+      lastName: client.lastName || "",
+      email: client.email || "",
+      phone: client.phone || "",
+      dateOfBirth: client.dateOfBirth || "",
+      address: client.address || "",
+      notes: client.notes || "",
+    });
+    setIsEditDialogOpen(true);
+  };
+
+  const handleDeleteClient = (client: Client) => {
+    setClientToDelete(client);
+    setIsDeleteDialogOpen(true);
+  };
+
+  const handleToggleStatus = (client: Client) => {
+    toggleClientStatusMutation.mutate({ 
+      id: client.id, 
+      isActive: !client.isActive 
+    });
+  };
+
+  const handleEditSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (clientToEdit) {
+      updateClientMutation.mutate({ 
+        id: clientToEdit.id, 
+        data: editClient 
+      });
+    }
+  };
+
+  const confirmDelete = () => {
+    if (clientToDelete) {
+      deleteClientMutation.mutate(clientToDelete.id);
+    }
   };
 
   const filteredClients = clients?.filter(client => {
@@ -561,17 +708,49 @@ export default function Clients() {
                         <Badge variant={client.isActive ? "default" : "secondary"}>
                           {client.isActive ? "Active" : "Inactive"}
                         </Badge>
-                        <Button 
-                          variant="ghost" 
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            // Handle menu actions
-                          }}
-                          data-testid={`button-client-menu-${client.id}`}
-                        >
-                          <MoreHorizontal className="w-4 h-4" />
-                        </Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button 
+                              variant="ghost" 
+                              size="sm"
+                              onClick={(e) => e.stopPropagation()}
+                              data-testid={`button-client-menu-${client.id}`}
+                            >
+                              <MoreHorizontal className="w-4 h-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleEditClient(client);
+                              }}
+                            >
+                              <Edit className="w-4 h-4 mr-2" />
+                              Edit Client
+                            </DropdownMenuItem>
+                            <DropdownMenuItem 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleToggleStatus(client);
+                              }}
+                            >
+                              <Power className="w-4 h-4 mr-2" />
+                              {client.isActive ? "Deactivate" : "Activate"}
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteClient(client);
+                              }}
+                              className="text-destructive"
+                            >
+                              <Trash2 className="w-4 h-4 mr-2" />
+                              Delete Client
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     </div>
                   ))}
@@ -580,6 +759,153 @@ export default function Clients() {
             </CardContent>
           </Card>
         )}
+
+        {/* Edit Client Dialog */}
+        <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Edit Client</DialogTitle>
+              <DialogDescription>
+                Update the client's information
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleEditSubmit} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-firstName">First Name *</Label>
+                  <Input
+                    id="edit-firstName"
+                    name="firstName"
+                    value={editClient.firstName}
+                    onChange={handleEditInputChange}
+                    required
+                    data-testid="input-edit-first-name"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-lastName">Last Name *</Label>
+                  <Input
+                    id="edit-lastName"
+                    name="lastName"
+                    value={editClient.lastName}
+                    onChange={handleEditInputChange}
+                    required
+                    data-testid="input-edit-last-name"
+                  />
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-email">Email *</Label>
+                  <Input
+                    id="edit-email"
+                    name="email"
+                    type="email"
+                    value={editClient.email}
+                    onChange={handleEditInputChange}
+                    required
+                    data-testid="input-edit-email"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-phone">Phone</Label>
+                  <Input
+                    id="edit-phone"
+                    name="phone"
+                    value={editClient.phone}
+                    onChange={handleEditInputChange}
+                    placeholder="(555) 123-4567"
+                    data-testid="input-edit-phone"
+                  />
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-dateOfBirth">Date of Birth</Label>
+                  <Input
+                    id="edit-dateOfBirth"
+                    name="dateOfBirth"
+                    type="date"
+                    value={editClient.dateOfBirth}
+                    onChange={handleEditInputChange}
+                    data-testid="input-edit-date-of-birth"
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="edit-address">Address</Label>
+                  <Input
+                    id="edit-address"
+                    name="address"
+                    value={editClient.address}
+                    onChange={handleEditInputChange}
+                    placeholder="Street address"
+                    data-testid="input-edit-address"
+                  />
+                </div>
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="edit-notes">Notes</Label>
+                <Textarea
+                  id="edit-notes"
+                  name="notes"
+                  value={editClient.notes}
+                  onChange={handleEditInputChange}
+                  placeholder="Additional notes about the client"
+                  data-testid="input-edit-notes"
+                />
+              </div>
+              
+              <div className="flex justify-end space-x-2">
+                <Button type="button" variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={updateClientMutation.isPending} data-testid="button-save-edit">
+                  {updateClientMutation.isPending ? (
+                    <div className="flex items-center space-x-2">
+                      <LoadingSpinner size="sm" />
+                      <span>Saving...</span>
+                    </div>
+                  ) : (
+                    "Save Changes"
+                  )}
+                </Button>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
+
+        {/* Delete Confirmation Dialog */}
+        <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete Client</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to delete <strong>{clientToDelete?.firstName} {clientToDelete?.lastName}</strong>? 
+                This action cannot be undone. All associated data including appointments, memberships, and transaction history will be permanently removed.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={confirmDelete}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                {deleteClientMutation.isPending ? (
+                  <div className="flex items-center space-x-2">
+                    <LoadingSpinner size="sm" />
+                    <span>Deleting...</span>
+                  </div>
+                ) : (
+                  "Delete"
+                )}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </div>
   );
