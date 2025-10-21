@@ -172,49 +172,34 @@ export default function PatientDashboard() {
         </div>
 
         {/* Membership CTA Banner - Only show if no active membership */}
-        {!membership?.isActive && (
-          <Card className="bg-gradient-to-r from-primary via-primary to-accent text-white mb-8 border-0 shadow-lg">
-            <CardContent className="p-8">
-              <div className="flex flex-col md:flex-row items-center justify-between gap-6">
-                <div className="flex-1 text-center md:text-left">
-                  <div className="flex items-center justify-center md:justify-start mb-3">
-                    <Crown className="w-8 h-8 mr-3" />
-                    <h2 className="text-2xl font-bold" data-testid="text-membership-cta-title">
-                      Unlock Exclusive Benefits
-                    </h2>
-                  </div>
-                  <p className="text-lg text-white/90 mb-4">
-                    Save up to 20% on all services • Earn 2x reward points • Priority booking • Monthly credits
-                  </p>
-                  <div className="flex flex-wrap gap-3 justify-center md:justify-start">
-                    <Badge className="bg-white/20 text-white border-white/30 px-3 py-1">
-                      <Gift className="w-4 h-4 mr-1" />
-                      Exclusive Perks
-                    </Badge>
-                    <Badge className="bg-white/20 text-white border-white/30 px-3 py-1">
-                      <Star className="w-4 h-4 mr-1" />
-                      VIP Treatment
-                    </Badge>
-                    <Badge className="bg-white/20 text-white border-white/30 px-3 py-1">
-                      <CreditCard className="w-4 h-4 mr-1" />
-                      Monthly Credits
-                    </Badge>
+        {(!membership || membership.status !== 'active') && (
+          <Card className="bg-gradient-to-r from-primary to-accent text-white mb-6 border-0">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <Crown className="w-5 h-5 flex-shrink-0" />
+                  <div>
+                    <h3 className="font-semibold text-sm" data-testid="text-membership-cta-title">
+                      Become a Member
+                    </h3>
+                    <p className="text-xs text-white/80">
+                      Save 20% on services, earn 2x points, get monthly credits
+                    </p>
                   </div>
                 </div>
-                <div className="text-center">
-                  <div className="text-sm text-white/80 mb-2">Starting at</div>
-                  <div className="text-4xl font-bold mb-4">${membershipTiers?.[0]?.monthlyPrice || '49'}<span className="text-lg">/mo</span></div>
+                <div className="flex items-center gap-3">
+                  <div className="text-right hidden sm:block">
+                    <div className="text-xl font-bold">${membershipTiers?.[0]?.monthlyPrice || '49'}<span className="text-sm">/mo</span></div>
+                  </div>
                   <Button 
-                    size="lg"
+                    size="sm"
                     variant="secondary"
-                    className="bg-white text-primary hover:bg-white/90 font-semibold px-8"
+                    className="bg-white text-primary hover:bg-white/90 font-medium"
                     onClick={() => setLocation("/patient/dashboard#membership")}
                     data-testid="button-join-membership"
                   >
-                    <Crown className="w-5 h-5 mr-2" />
                     Join Now
                   </Button>
-                  <div className="text-xs text-white/70 mt-2">Cancel anytime</div>
                 </div>
               </div>
             </CardContent>
