@@ -1427,8 +1427,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get staff member by ID
-  app.get("/api/staff/:id", requireAuth, async (req, res) => {
+  // Get all staff for an organization
+  app.get("/api/staff/:organizationId", requireAuth, async (req, res) => {
+    try {
+      const { organizationId } = req.params;
+      
+      // Verify user has access to this organization
+      const userOrgId = await getUserOrganizationId(req.user!);
+      if (organizationId !== userOrgId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const staff = await storage.getStaffByOrganization(organizationId);
+      res.json(staff);
+    } catch (error) {
+      console.error("Error fetching staff:", error);
+      res.status(500).json({ message: "Failed to fetch staff" });
+    }
+  });
+  
+  // Get a specific staff member by ID
+  app.get("/api/staff/member/:id", requireAuth, async (req, res) => {
     try {
       const { id } = req.params;
       const staff = await storage.getStaff(id);
