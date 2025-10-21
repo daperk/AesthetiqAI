@@ -431,7 +431,7 @@ export default function Appointments() {
                         <div className="flex items-center space-x-4">
                           <div className="text-center">
                             <div className="text-sm font-medium text-foreground">
-                              {new Date(appointment.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              {new Date(appointment.startTime).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}
                             </div>
                             <div className="text-xs text-muted-foreground">
                               {Math.round((new Date(appointment.endTime).getTime() - new Date(appointment.startTime).getTime()) / (1000 * 60))} min

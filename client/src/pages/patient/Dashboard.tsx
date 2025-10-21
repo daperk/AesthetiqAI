@@ -314,7 +314,7 @@ export default function PatientDashboard() {
                                 {new Date(appointment.startTime).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                               </div>
                               <div className="text-xs text-muted-foreground">
-                                {new Date(appointment.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                {new Date(appointment.startTime).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}
                               </div>
                             </div>
                             <div>

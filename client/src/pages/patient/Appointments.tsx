@@ -98,8 +98,9 @@ export default function PatientAppointments() {
                               <Clock className="w-5 h-5" />
                               <span>
                                 {new Date(appointment.startTime).toLocaleTimeString([], { 
-                                  hour: '2-digit', 
-                                  minute: '2-digit' 
+                                  hour: 'numeric', 
+                                  minute: '2-digit',
+                                  hour12: true 
                                 })}
                               </span>
                             </div>

@@ -289,7 +289,7 @@ export default function ClinicDashboard() {
                             .map((appointment: any) => {
                               const startTime = new Date(appointment.startTime);
                               const timeStr = startTime.toLocaleTimeString('en-US', { 
-                                hour: '2-digit', 
+                                hour: 'numeric', 
                                 minute: '2-digit',
                                 hour12: true 
                               }).split(' ');
