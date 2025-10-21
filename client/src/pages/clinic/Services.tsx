@@ -237,7 +237,7 @@ export default function Services() {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="container mx-auto px-6 py-8">
+      <div className="max-w-7xl mx-auto px-6 py-8">
         <div className="mb-8">
           <h1 className="text-3xl font-serif font-bold text-foreground mb-2" data-testid="text-services-title">
             Service Catalog
@@ -440,7 +440,7 @@ export default function Services() {
                   <CardHeader className="pb-4">
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
-                        <CardTitle className="text-lg font-medium mb-1" data-testid={`service-name-${service.id}`}>
+                        <CardTitle className="text-lg font-medium mb-1 truncate" data-testid={`service-name-${service.id}`}>
                           {service.name}
                         </CardTitle>
                         {service.category && (

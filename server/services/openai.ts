@@ -225,6 +225,128 @@ export async function generateGrowthRecommendations(businessData: {
   }
 }
 
+export async function generateBusinessInsights(clinicData: {
+  organizationName: string;
+  totalClients: number;
+  activeClients: number;
+  inactiveClients: number;
+  totalAppointments: number;
+  last30DaysAppointments: number;
+  totalRevenue: number;
+  last30DaysRevenue: number;
+  avgServicePrice: number;
+  activeMembers: number;
+  services: any[];
+  topClients: any[];
+}): Promise<{ insights: any[] }> {
+  const prompt = `Analyze this beauty/wellness clinic data and provide AI-powered business insights:
+  
+  Business: ${clinicData.organizationName}
+  Total Clients: ${clinicData.totalClients}
+  Active Clients (last 30 days): ${clinicData.activeClients}
+  Inactive Clients (60+ days): ${clinicData.inactiveClients}
+  Total Appointments: ${clinicData.totalAppointments}
+  Recent Appointments (30 days): ${clinicData.last30DaysAppointments}
+  Total Revenue: $${clinicData.totalRevenue.toFixed(2)}
+  Last 30 Days Revenue: $${clinicData.last30DaysRevenue.toFixed(2)}
+  Average Service Price: $${clinicData.avgServicePrice.toFixed(2)}
+  Active Memberships: ${clinicData.activeMembers}
+  
+  Services Performance:
+  ${clinicData.services.map(s => `- ${s.name}: $${s.price} (${s.bookings} bookings, $${s.revenue} revenue)`).join('\n')}
+  
+  Top Clients:
+  ${clinicData.topClients.map(c => `- ${c.name}: ${c.appointments} visits, $${c.totalSpent} spent`).join('\n')}
+  
+  Generate 5 specific, actionable insights that cover:
+  1. Customer Retention - Identify specific at-risk clients or segments
+  2. Upsell Opportunities - Which clients should get which offers
+  3. Pricing Optimization - Services that could be repriced
+  4. Appointment Optimization - Best times, staff allocation
+  5. Marketing Suggestions - Specific campaigns to launch
+  
+  Each insight should have:
+  - type: "retention", "upsell", "pricing", "optimization", or "marketing"  
+  - title: Short, actionable title
+  - description: Detailed explanation with specific numbers and recommendations
+  - priority: "high", "medium", or "low"
+  - metrics: Object with relevant data points
+  - actionable: true
+  
+  Respond in JSON format with key "insights" containing an array of insight objects.`;
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: "gpt-4",
+      messages: [
+        {
+          role: "system",
+          content: "You are an AI business consultant specializing in beauty and wellness clinics. Provide specific, data-driven insights that will immediately improve revenue and customer satisfaction. Use the actual numbers provided to make concrete recommendations."
+        },
+        {
+          role: "user",
+          content: prompt
+        }
+      ],
+      response_format: { type: "json_object" },
+      temperature: 0.7,
+      max_tokens: 2000
+    });
+
+    const result = JSON.parse(response.choices[0].message.content || "{}");
+    
+    // Ensure insights have the correct structure
+    if (result.insights && Array.isArray(result.insights)) {
+      result.insights = result.insights.map((insight: any) => ({
+        type: insight.type || 'recommendation',
+        title: insight.title || 'Business Insight',
+        description: insight.description || 'No description provided',
+        priority: insight.priority || 'medium',
+        metrics: insight.metrics || {},
+        actionable: insight.actionable !== false
+      }));
+    } else {
+      // Fallback if AI doesn't return expected format
+      result.insights = [{
+        type: 'recommendation',
+        title: 'AI Analysis Complete',
+        description: 'Our AI has analyzed your business data. Check back soon for personalized recommendations.',
+        priority: 'medium',
+        metrics: {
+          clients: clinicData.totalClients,
+          revenue: clinicData.last30DaysRevenue
+        },
+        actionable: false
+      }];
+    }
+    
+    return result;
+  } catch (error) {
+    console.error("Failed to generate business insights:", error);
+    // Return fallback insights instead of throwing
+    return {
+      insights: [
+        {
+          type: 'retention',
+          title: 'Focus on Client Retention',
+          description: `You have ${clinicData.inactiveClients} inactive clients. Reach out with a special offer to win them back.`,
+          priority: 'high',
+          metrics: { inactive: clinicData.inactiveClients },
+          actionable: true
+        },
+        {
+          type: 'revenue',
+          title: 'Revenue Analysis',
+          description: `Your 30-day revenue is $${clinicData.last30DaysRevenue.toFixed(2)}. Focus on your top services to increase bookings.`,
+          priority: 'medium',
+          metrics: { revenue: clinicData.last30DaysRevenue },
+          actionable: true
+        }
+      ]
+    };
+  }
+}
+
 export async function generateBookingChatResponse(message: string, context: {
   clientName?: string;
   availableServices: any[];

@@ -10,7 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import LoadingSpinner from "@/components/ui/loading-spinner";
 import Navigation from "@/components/Navigation";
 import { useAuth } from "@/hooks/useAuth";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { 
   Calendar, Crown, Gift, Wallet, Clock, Star, MessageCircle,
   CalendarPlus, Settings, Bell, CreditCard, Send
@@ -22,14 +22,7 @@ export default function PatientDashboard() {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const [chatMessage, setChatMessage] = useState("");
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
-    {
-      id: "1",
-      role: "assistant",
-      content: "Hi! I'm here to help you with bookings and questions. How can I assist you today?",
-      timestamp: new Date()
-    }
-  ]);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
 
   const { data: client, isLoading: clientLoading } = useQuery<Client>({
     queryKey: ["/api/clients/me"],
@@ -51,6 +44,12 @@ export default function PatientDashboard() {
     staleTime: 60000,
   });
 
+  // Fetch wallet balance
+  const { data: wallet, isLoading: walletLoading } = useQuery<{ balance: number }>({
+    queryKey: ["/api/wallet/balance"],
+    staleTime: 60000,
+  });
+
   // Fetch services and membership tiers for chat context
   const { data: services } = useQuery<any[]>({
     queryKey: ["/api/services"],
@@ -61,6 +60,18 @@ export default function PatientDashboard() {
     queryKey: ["/api/membership-tiers"],
     staleTime: 5 * 60000,
   });
+
+  // Initialize chat with welcome message when component mounts
+  useEffect(() => {
+    if (chatMessages.length === 0) {
+      setChatMessages([{
+        id: "welcome",
+        role: "assistant",
+        content: "Hi! I'm your AI concierge. I can help you book appointments, learn about services, and answer questions. How may I assist you today?",
+        timestamp: new Date()
+      }]);
+    }
+  }, []);
 
   const handleSendMessage = async () => {
     if (!chatMessage.trim()) return;
@@ -123,7 +134,7 @@ export default function PatientDashboard() {
     }
   };
 
-  if (clientLoading || appointmentsLoading || membershipLoading || rewardsLoading) {
+  if (clientLoading || appointmentsLoading || membershipLoading || rewardsLoading || walletLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <LoadingSpinner size="lg" />
@@ -133,7 +144,7 @@ export default function PatientDashboard() {
 
   const nextAppointment = upcomingAppointments?.[0];
   const rewardBalance = rewards?.balance || 0;
-  const walletBalance = 125; // This would come from API
+  const walletBalance = wallet?.balance || 0;
 
   return (
     <div className="min-h-screen bg-background">
@@ -470,27 +481,34 @@ export default function PatientDashboard() {
                   <div>
                     <h4 className="font-medium text-foreground mb-3">Recent Activity</h4>
                     <div className="space-y-3">
-                      <div className="flex items-center justify-between p-3 border rounded">
-                        <div className="flex items-center space-x-2">
-                          <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                          <span className="text-foreground text-sm">Facial appointment</span>
+                      {rewards?.rewards && rewards.rewards.length > 0 ? (
+                        rewards.rewards.slice(0, 5).map((reward) => (
+                          <div key={reward.id} className="flex items-center justify-between p-3 border rounded">
+                            <div className="flex items-center space-x-2">
+                              <div className={`w-2 h-2 rounded-full ${
+                                reward.type === 'earned' ? 'bg-green-500' : 
+                                reward.type === 'redeemed' ? 'bg-red-500' :
+                                'bg-blue-500'
+                              }`}></div>
+                              <span className="text-foreground text-sm">{reward.description || reward.type}</span>
+                            </div>
+                            <span className={`font-medium text-sm ${
+                              reward.type === 'earned' ? 'text-green-500' : 
+                              reward.type === 'redeemed' ? 'text-red-500' :
+                              'text-blue-500'
+                            }`}>
+                              {reward.type === 'earned' ? '+' : '-'}{reward.points || 0} pts
+                            </span>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="text-center py-4">
+                          <p className="text-muted-foreground text-sm">No reward activity yet</p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Earn points by booking appointments and purchasing services
+                          </p>
                         </div>
-                        <span className="text-green-500 font-medium text-sm">+50 pts</span>
-                      </div>
-                      <div className="flex items-center justify-between p-3 border rounded">
-                        <div className="flex items-center space-x-2">
-                          <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                          <span className="text-foreground text-sm">Referral bonus</span>
-                        </div>
-                        <span className="text-blue-500 font-medium text-sm">+100 pts</span>
-                      </div>
-                      <div className="flex items-center justify-between p-3 border rounded">
-                        <div className="flex items-center space-x-2">
-                          <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-                          <span className="text-foreground text-sm">Redeemed discount</span>
-                        </div>
-                        <span className="text-red-500 font-medium text-sm">-200 pts</span>
-                      </div>
+                      )}
                     </div>
                   </div>
                 </div>

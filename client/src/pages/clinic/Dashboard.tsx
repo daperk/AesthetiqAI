@@ -12,7 +12,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { useOrganization } from "@/hooks/useOrganization";
 import { 
   DollarSign, Calendar, Users, Crown, TrendingUp, 
-  Plus, Bell, Brain, Gift, CalendarPlus, UserPlus, Scissors, MapPin
+  Plus, Bell, Brain, Gift, CalendarPlus, UserPlus, Scissors, MapPin,
+  Sparkles, Lock, ArrowUpRight, Zap, Target, ChartBar
 } from "lucide-react";
 import type { DashboardStats, Appointment, AiInsight, Location } from "@/types";
 
@@ -37,32 +38,52 @@ export default function ClinicDashboard() {
     staleTime: 5 * 60000, // 5 minutes
   });
 
+  // Fetch organization details with subscription plan
+  const { data: orgDetails } = useQuery<any>({
+    queryKey: [`/api/organizations/${organization?.id}`],
+    enabled: !!organization?.id,
+    staleTime: 5 * 60000, // 5 minutes
+  });
+
   const { data: stats, isLoading: statsLoading } = useQuery<DashboardStats>({
-    queryKey: ["/api/analytics/dashboard", organization?.id],
+    queryKey: [`/api/analytics/dashboard/${organization?.id}`],
     enabled: !!organization?.id,
     staleTime: 60000, // 1 minute
   });
 
   const { data: todayAppointments, isLoading: appointmentsLoading } = useQuery<Appointment[]>({
-    queryKey: ["/api/appointments", organization?.id, "today"],
+    queryKey: [`/api/appointments/${organization?.id}/today`],
     enabled: !!organization?.id,
     staleTime: 30000, // 30 seconds
   });
 
-  const { data: aiInsights, isLoading: insightsLoading } = useQuery<AiInsight[]>({
-    queryKey: ["/api/ai-insights", organization?.id],
-    enabled: !!organization?.id,
+  // Check subscription tier
+  const subscriptionPlan = orgDetails?.subscriptionPlan;
+  const isEnterpriseTier = subscriptionPlan?.name === 'Enterprise' || 
+                           subscriptionPlan?.tier === 'enterprise';
+  const isProfessionalTier = subscriptionPlan?.name === 'Professional' || 
+                             subscriptionPlan?.tier === 'professional';
+
+  // Only fetch AI insights for Enterprise tier
+  const { 
+    data: aiInsights, 
+    isLoading: insightsLoading, 
+    error: aiInsightsError 
+  } = useQuery<AiInsight[]>({
+    queryKey: [`/api/ai-insights/${organization?.id}`],
+    enabled: !!organization?.id && isEnterpriseTier, // Only fetch if Enterprise
     staleTime: 5 * 60000, // 5 minutes
+    retry: false // Don't retry if forbidden
   });
 
   const { data: recentActivities, isLoading: activitiesLoading } = useQuery({
-    queryKey: ["/api/activities/recent", organization?.id],
+    queryKey: [`/api/activities/recent/${organization?.id}`],
     enabled: !!organization?.id,
     staleTime: 30000, // 30 seconds
   });
 
   const { data: staffAvailability, isLoading: staffLoading } = useQuery({
-    queryKey: ["/api/staff/availability", organization?.id],
+    queryKey: [`/api/staff/availability/${organization?.id}`],
     enabled: !!organization?.id,
     staleTime: 60000, // 1 minute
   });
@@ -84,7 +105,7 @@ export default function ClinicDashboard() {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="container mx-auto px-6 py-8">
+      <div className="max-w-7xl mx-auto px-6 py-8">
         {/* Header */}
         <div className="mb-8">
           <div className="flex items-center justify-between">
@@ -285,22 +306,174 @@ export default function ClinicDashboard() {
                     <CardHeader>
                       <div className="flex items-center space-x-2">
                         <Brain className="w-5 h-5 text-primary" />
-                        <CardTitle className="text-base" data-testid="text-ai-suggestions-title">AI Growth Suggestions</CardTitle>
+                        <CardTitle className="text-base" data-testid="text-ai-suggestions-title">
+                          AI Growth Suggestions
+                          {isEnterpriseTier && (
+                            <Badge className="ml-2 bg-gradient-to-r from-purple-500 to-indigo-500 text-white">
+                              <Sparkles className="w-3 h-3 mr-1" />
+                              Enterprise
+                            </Badge>
+                          )}
+                        </CardTitle>
                       </div>
                     </CardHeader>
                     <CardContent>
                       <div className="space-y-3 text-sm">
-                        {!aiInsights || aiInsights.length === 0 ? (
-                          <p className="text-muted-foreground" data-testid="text-no-ai-insights">
-                            No AI insights available yet. Insights will appear as your clinic builds data.
-                          </p>
-                        ) : (
-                          aiInsights.map((insight: any) => (
-                            <div key={insight.id} className="p-3 bg-muted/30 rounded border" data-testid={`ai-insight-${insight.type}`}>
-                              <div className="font-medium text-foreground mb-1">{insight.title}</div>
-                              <div className="text-muted-foreground">{insight.description}</div>
+                        {!isEnterpriseTier ? (
+                          // Show upgrade prompt for non-Enterprise tiers
+                          <div className="space-y-3">
+                            <div className="p-4 bg-gradient-to-br from-purple-50 to-indigo-50 dark:from-purple-950/20 dark:to-indigo-950/20 rounded-lg border border-purple-200 dark:border-purple-800">
+                              <div className="flex items-center mb-3">
+                                <Lock className="w-5 h-5 text-purple-600 dark:text-purple-400 mr-2" />
+                                <span className="font-semibold text-purple-900 dark:text-purple-100">
+                                  Unlock AI-Powered Insights
+                                </span>
+                              </div>
+                              <p className="text-purple-700 dark:text-purple-300 mb-3">
+                                Upgrade to Enterprise to get AI-powered business intelligence:
+                              </p>
+                              <ul className="space-y-2 mb-4">
+                                <li className="flex items-start">
+                                  <Target className="w-4 h-4 text-purple-600 dark:text-purple-400 mr-2 mt-0.5 flex-shrink-0" />
+                                  <span className="text-purple-700 dark:text-purple-300 text-xs">
+                                    Customer retention predictions and churn prevention
+                                  </span>
+                                </li>
+                                <li className="flex items-start">
+                                  <ChartBar className="w-4 h-4 text-purple-600 dark:text-purple-400 mr-2 mt-0.5 flex-shrink-0" />
+                                  <span className="text-purple-700 dark:text-purple-300 text-xs">
+                                    Pricing optimization and revenue forecasting
+                                  </span>
+                                </li>
+                                <li className="flex items-start">
+                                  <Zap className="w-4 h-4 text-purple-600 dark:text-purple-400 mr-2 mt-0.5 flex-shrink-0" />
+                                  <span className="text-purple-700 dark:text-purple-300 text-xs">
+                                    Personalized upsell and cross-sell recommendations
+                                  </span>
+                                </li>
+                                <li className="flex items-start">
+                                  <TrendingUp className="w-4 h-4 text-purple-600 dark:text-purple-400 mr-2 mt-0.5 flex-shrink-0" />
+                                  <span className="text-purple-700 dark:text-purple-300 text-xs">
+                                    Marketing campaign ideas based on your data
+                                  </span>
+                                </li>
+                              </ul>
+                              <Button 
+                                className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white"
+                                onClick={() => setLocation("/pricing")}
+                                data-testid="button-upgrade-to-enterprise"
+                              >
+                                <Sparkles className="w-4 h-4 mr-2" />
+                                Upgrade to Enterprise
+                                <ArrowUpRight className="w-4 h-4 ml-1" />
+                              </Button>
+                              {isProfessionalTier && (
+                                <p className="text-xs text-center text-purple-600 dark:text-purple-400 mt-2">
+                                  Currently on Professional • $149/month for Enterprise
+                                </p>
+                              )}
                             </div>
-                          ))
+                          </div>
+                        ) : !aiInsights || aiInsights.length === 0 ? (
+                          // Enterprise tier but no insights yet
+                          <div className="space-y-3">
+                            <div className="p-3 bg-gradient-to-r from-purple-50 to-indigo-50 dark:from-purple-950/20 dark:to-indigo-950/20 rounded-lg">
+                              <div className="flex items-center mb-2">
+                                <Sparkles className="w-4 h-4 text-purple-600 dark:text-purple-400 mr-2" />
+                                <span className="font-medium text-purple-900 dark:text-purple-100">
+                                  AI Analysis Initializing
+                                </span>
+                              </div>
+                              <p className="text-purple-700 dark:text-purple-300 text-xs">
+                                Our AI is analyzing your business data. Insights will appear here as we gather more information about your clinic's patterns.
+                              </p>
+                            </div>
+                          </div>
+                        ) : (
+                          // Enterprise tier with AI insights
+                          <>
+                            {aiInsights.slice(0, 3).map((insight: any) => {
+                              const priorityColors = {
+                                high: 'border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/20',
+                                medium: 'border-yellow-200 dark:border-yellow-800 bg-yellow-50 dark:bg-yellow-950/20',
+                                low: 'border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950/20'
+                              };
+                              
+                              const priorityTextColors = {
+                                high: 'text-red-600 dark:text-red-400',
+                                medium: 'text-yellow-600 dark:text-yellow-400',
+                                low: 'text-green-600 dark:text-green-400'
+                              };
+                              
+                              const typeIcons = {
+                                retention: Users,
+                                upsell: TrendingUp,
+                                pricing: DollarSign,
+                                optimization: Zap,
+                                marketing: Target,
+                                revenue: DollarSign,
+                                growth: ChartBar,
+                                recommendation: Brain,
+                                opportunity: Sparkles
+                              };
+                              
+                              const IconComponent = typeIcons[insight.type as keyof typeof typeIcons] || Brain;
+                              
+                              return (
+                                <div 
+                                  key={insight.id} 
+                                  className={`p-3 rounded-lg border ${priorityColors[insight.priority as keyof typeof priorityColors] || 'border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950/20'}`}
+                                  data-testid={`ai-insight-${insight.type}`}
+                                >
+                                  <div className="flex items-start space-x-2">
+                                    <IconComponent className={`w-4 h-4 mt-0.5 flex-shrink-0 ${priorityTextColors[insight.priority as keyof typeof priorityTextColors] || 'text-gray-600'}`} />
+                                    <div className="flex-1">
+                                      <div className="flex items-center justify-between mb-1">
+                                        <div className="font-medium text-foreground text-sm">
+                                          {insight.title}
+                                        </div>
+                                        {insight.priority === 'high' && (
+                                          <Badge variant="destructive" className="text-xs px-1.5 py-0">
+                                            High
+                                          </Badge>
+                                        )}
+                                      </div>
+                                      <div className="text-muted-foreground text-xs leading-relaxed">
+                                        {insight.description}
+                                      </div>
+                                      {insight.metrics && Object.keys(insight.metrics).length > 0 && (
+                                        <div className="mt-2 flex flex-wrap gap-2">
+                                          {Object.entries(insight.metrics).slice(0, 2).map(([key, value]: [string, any]) => (
+                                            <Badge key={key} variant="secondary" className="text-xs">
+                                              {key.replace(/_/g, ' ')}: {
+                                                typeof value === 'number' 
+                                                  ? key.includes('revenue') || key.includes('loss') 
+                                                    ? `$${value.toLocaleString()}` 
+                                                    : value.toLocaleString()
+                                                  : value
+                                              }
+                                            </Badge>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                            {aiInsights.length > 3 && (
+                              <Button 
+                                variant="outline" 
+                                size="sm" 
+                                className="w-full"
+                                onClick={() => setLocation("/clinic/analytics")}
+                                data-testid="button-view-all-insights"
+                              >
+                                View All {aiInsights.length} Insights
+                                <ArrowUpRight className="w-3 h-3 ml-1" />
+                              </Button>
+                            )}
+                          </>
                         )}
                       </div>
                     </CardContent>

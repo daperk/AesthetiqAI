@@ -141,7 +141,7 @@ export default function Clients() {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="container mx-auto px-6 py-8">
+      <div className="max-w-7xl mx-auto px-6 py-8">
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-serif font-bold text-foreground mb-2" data-testid="text-clients-title">
@@ -505,10 +505,10 @@ export default function Clients() {
                           </AvatarFallback>
                         </Avatar>
                         <div>
-                          <div className="font-medium text-foreground">
+                          <div className="font-medium text-foreground truncate">
                             {client.firstName} {client.lastName}
                           </div>
-                          <div className="text-sm text-muted-foreground">
+                          <div className="text-sm text-muted-foreground truncate">
                             {client.email} • {client.phone}
                           </div>
                           <div className="text-xs text-muted-foreground">

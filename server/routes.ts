@@ -81,7 +81,8 @@ async function calculateRewardPoints(clientId: string, organizationId: string, a
 }
 import * as openaiService from "./services/openai";
 import { 
-  insertUserSchema, insertOrganizationSchema, insertStaffSchema, insertClientSchema,
+  insertUserSchema, insertOrganizationSchema, insertStaffSchema, insertStaffRoleSchema, 
+  insertStaffAvailabilitySchema, insertStaffServiceSchema, insertClientSchema,
   insertAppointmentSchema, insertServiceSchema, insertMembershipSchema, insertMembershipTierSchema,
   insertRewardSchema, insertRewardOptionSchema, insertTransactionSchema, insertAuditLogSchema, insertUsageLogSchema, 
   insertAiInsightSchema, type User
@@ -324,6 +325,55 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     }
   };
+
+  // Get upcoming appointments for patient
+  app.get("/api/appointments/upcoming", requireAuth, async (req, res) => {
+    try {
+      const client = await storage.getClientByUser(req.user!.id);
+      if (!client) {
+        return res.json([]);
+      }
+
+      const allAppointments = await storage.getAppointmentsByClient(client.id);
+      const now = new Date();
+      const upcomingAppointments = allAppointments
+        .filter(apt => new Date(apt.startTime) > now && apt.status !== 'cancelled')
+        .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+
+      res.json(upcomingAppointments);
+    } catch (error) {
+      console.error("Error fetching upcoming appointments:", error);
+      res.status(500).json({ message: "Failed to fetch upcoming appointments" });
+    }
+  });
+
+  // Get patient wallet balance  
+  app.get("/api/wallet/balance", requireAuth, async (req, res) => {
+    try {
+      const client = await storage.getClientByUser(req.user!.id);
+      if (!client) {
+        return res.json({ balance: 0 });
+      }
+
+      // Get all transactions for the client to calculate wallet balance
+      const transactions = await storage.getTransactionsByClient(client.id);
+      
+      // Calculate wallet balance from deposits minus spending
+      const balance = transactions.reduce((total, tx) => {
+        if (tx.type === 'wallet_deposit' || tx.type === 'refund') {
+          return total + (tx.amount || 0);
+        } else if (tx.type === 'wallet_payment') {
+          return total - (tx.amount || 0);
+        }
+        return total;
+      }, 0);
+
+      res.json({ balance });
+    } catch (error) {
+      console.error("Error fetching wallet balance:", error);
+      res.status(500).json({ message: "Failed to fetch wallet balance" });
+    }
+  });
 
   // Email configuration status endpoint
   app.get("/api/email/status", requireAuth, async (req, res) => {
@@ -763,7 +813,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Access denied" });
       }
 
-      res.json(organization);
+      // Include subscription plan details
+      let subscriptionPlan = null;
+      if (organization.subscriptionPlanId) {
+        subscriptionPlan = await storage.getSubscriptionPlan(organization.subscriptionPlanId);
+      }
+
+      res.json({
+        ...organization,
+        subscriptionPlan
+      });
     } catch (error) {
       console.error("Get organization error:", error);
       res.status(500).json({ message: "Failed to fetch organization" });
@@ -821,6 +880,270 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Invalid data", errors: error.errors });
       }
       res.status(500).json({ message: "Failed to create staff member" });
+    }
+  });
+
+  // Staff Roles Management
+  app.get("/api/staff/roles/:organizationId", requireAuth, async (req, res) => {
+    try {
+      const { organizationId } = req.params;
+      
+      // Verify user has access to this organization
+      if (req.user!.role !== "super_admin") {
+        const userOrgId = await getUserOrganizationId(req.user!);
+        if (userOrgId !== organizationId) {
+          return res.status(403).json({ message: "Access denied" });
+        }
+      }
+      
+      const roles = await storage.getStaffRolesByOrganization(organizationId);
+      res.json(roles);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch staff roles" });
+    }
+  });
+
+  app.post("/api/staff/roles", requireRole("clinic_admin", "super_admin"), requireBusinessSetupComplete, async (req, res) => {
+    try {
+      const organizationId = req.user!.role === "super_admin" 
+        ? req.body.organizationId 
+        : await getUserOrganizationId(req.user!);
+        
+      if (!organizationId) {
+        return res.status(400).json({ message: "Organization ID required" });
+      }
+      
+      const roleData = insertStaffRoleSchema.parse({
+        ...req.body,
+        organizationId
+      });
+      
+      const role = await storage.createStaffRole(roleData);
+      await auditLog(req, "create", "staff_role", role.id, roleData);
+      res.json(role);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to create staff role" });
+    }
+  });
+
+  app.put("/api/staff/roles/:id", requireRole("clinic_admin", "super_admin"), requireBusinessSetupComplete, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updates = req.body;
+      
+      const role = await storage.updateStaffRole(id, updates);
+      await auditLog(req, "update", "staff_role", id, updates);
+      res.json(role);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to update staff role" });
+    }
+  });
+
+  app.delete("/api/staff/roles/:id", requireRole("clinic_admin", "super_admin"), requireBusinessSetupComplete, async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      await storage.deleteStaffRole(id);
+      await auditLog(req, "delete", "staff_role", id, {});
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to delete staff role" });
+    }
+  });
+
+  // Initialize default roles for organization
+  app.post("/api/staff/roles/initialize/:organizationId", requireRole("clinic_admin", "super_admin"), async (req, res) => {
+    try {
+      const { organizationId } = req.params;
+      
+      // Verify user has access to this organization
+      if (req.user!.role !== "super_admin") {
+        const userOrgId = await getUserOrganizationId(req.user!);
+        if (userOrgId !== organizationId) {
+          return res.status(403).json({ message: "Access denied" });
+        }
+      }
+      
+      await storage.createDefaultRolesForOrganization(organizationId);
+      const roles = await storage.getStaffRolesByOrganization(organizationId);
+      res.json(roles);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to initialize default roles" });
+    }
+  });
+
+  // Staff Permissions - Update staff member's role
+  app.put("/api/staff/permissions/:staffId", requireRole("clinic_admin", "super_admin"), requireBusinessSetupComplete, async (req, res) => {
+    try {
+      const { staffId } = req.params;
+      const { roleId } = req.body;
+      
+      const staff = await storage.updateStaff(staffId, { roleId });
+      await auditLog(req, "update", "staff_permissions", staffId, { roleId });
+      res.json(staff);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to update staff permissions" });
+    }
+  });
+
+  // Staff Availability Management
+  app.get("/api/staff/availability/:staffId", requireAuth, async (req, res) => {
+    try {
+      const { staffId } = req.params;
+      const availability = await storage.getStaffAvailabilityByStaff(staffId);
+      res.json(availability);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch staff availability" });
+    }
+  });
+
+  app.post("/api/staff/availability", requireRole("clinic_admin", "staff", "super_admin"), requireBusinessSetupComplete, async (req, res) => {
+    try {
+      const availabilityData = insertStaffAvailabilitySchema.parse(req.body);
+      const availability = await storage.createStaffAvailability(availabilityData);
+      
+      await auditLog(req, "create", "staff_availability", availability.id, availabilityData);
+      res.json(availability);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to create staff availability" });
+    }
+  });
+
+  app.put("/api/staff/availability/:id", requireRole("clinic_admin", "staff", "super_admin"), requireBusinessSetupComplete, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updates = req.body;
+      
+      const availability = await storage.updateStaffAvailability(id, updates);
+      await auditLog(req, "update", "staff_availability", id, updates);
+      res.json(availability);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to update staff availability" });
+    }
+  });
+
+  app.delete("/api/staff/availability/:id", requireRole("clinic_admin", "staff", "super_admin"), requireBusinessSetupComplete, async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      await storage.deleteStaffAvailability(id);
+      await auditLog(req, "delete", "staff_availability", id, {});
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to delete staff availability" });
+    }
+  });
+
+  // Get available staff for a time slot
+  app.get("/api/staff/available-for-slot", requireAuth, async (req, res) => {
+    try {
+      const { organizationId, startTime, endTime } = req.query;
+      
+      if (!organizationId || !startTime || !endTime) {
+        return res.status(400).json({ message: "organizationId, startTime, and endTime are required" });
+      }
+      
+      const availableStaff = await storage.getAvailableStaffForTimeSlot(
+        organizationId as string,
+        new Date(startTime as string),
+        new Date(endTime as string)
+      );
+      
+      res.json(availableStaff);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch available staff" });
+    }
+  });
+
+  // Staff Services Management
+  app.get("/api/staff/services/:staffId", requireAuth, async (req, res) => {
+    try {
+      const { staffId } = req.params;
+      const services = await storage.getStaffServices(staffId);
+      res.json(services);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch staff services" });
+    }
+  });
+
+  app.post("/api/staff/services", requireRole("clinic_admin", "super_admin"), requireBusinessSetupComplete, async (req, res) => {
+    try {
+      const { staffId, serviceId } = req.body;
+      
+      if (!staffId || !serviceId) {
+        return res.status(400).json({ message: "staffId and serviceId are required" });
+      }
+      
+      const assignment = await storage.assignServiceToStaff(staffId, serviceId);
+      await auditLog(req, "create", "staff_service", `${staffId}-${serviceId}`, { staffId, serviceId });
+      res.json(assignment);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to assign service to staff" });
+    }
+  });
+
+  app.delete("/api/staff/services/:staffId/:serviceId", requireRole("clinic_admin", "super_admin"), requireBusinessSetupComplete, async (req, res) => {
+    try {
+      const { staffId, serviceId } = req.params;
+      
+      await storage.removeServiceFromStaff(staffId, serviceId);
+      await auditLog(req, "delete", "staff_service", `${staffId}-${serviceId}`, {});
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to remove service from staff" });
+    }
+  });
+
+  // Get staff who can perform a specific service
+  app.get("/api/services/:serviceId/staff", requireAuth, async (req, res) => {
+    try {
+      const { serviceId } = req.params;
+      const { organizationId } = req.query;
+      
+      if (!organizationId) {
+        return res.status(400).json({ message: "organizationId is required" });
+      }
+      
+      const staff = await storage.getStaffByService(organizationId as string, serviceId);
+      res.json(staff);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch staff for service" });
+    }
+  });
+
+  // Update staff member details
+  app.put("/api/staff/:id", requireRole("clinic_admin", "super_admin"), requireBusinessSetupComplete, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updates = req.body;
+      
+      const staff = await storage.updateStaff(id, updates);
+      await auditLog(req, "update", "staff", id, updates);
+      res.json(staff);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to update staff member" });
+    }
+  });
+
+  // Get staff member by ID
+  app.get("/api/staff/:id", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const staff = await storage.getStaff(id);
+      
+      if (!staff) {
+        return res.status(404).json({ message: "Staff member not found" });
+      }
+      
+      res.json(staff);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch staff member" });
     }
   });
 
@@ -1182,15 +1505,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Create new Stripe customer if none exists
       if (!stripeCustomerId) {
-        const customer = await stripe.customers.create({
-          email: client.email,
-          name: `${client.firstName} ${client.lastName}`,
-          metadata: {
-            organizationId: service.organizationId,
-            clientId: client.id
-          }
-        });
+        // CRITICAL: Get organization to use Stripe Connect account
+        const organization = await storage.getOrganization(service.organizationId);
+        console.log(`🔍 [STRIPE CONNECT] Creating customer for org: ${organization?.name} with Connect ID: ${organization?.stripeConnectAccountId}`);
         
+        // Use stripeService to create customer on connected account
+        const customer = await stripeService.createCustomer(
+          client.email || '',
+          `${client.firstName} ${client.lastName}`,
+          service.organizationId,
+          organization?.stripeConnectAccountId // Pass connected account ID
+        );
+        
+        console.log(`✅ [STRIPE CONNECT] Customer created: ${customer.id} on account: ${organization?.stripeConnectAccountId || 'platform'}`);
         stripeCustomerId = customer.id;
         
         // IMPORTANT: Save the Stripe customer ID to the client record
@@ -1202,8 +1529,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
       
-      // Create Stripe PaymentIntent
-      const paymentIntent = await stripe.paymentIntents.create({
+      // Create Stripe PaymentIntent on connected account
+      const organization = await storage.getOrganization(service.organizationId);
+      console.log(`🔍 [PAYMENT INTENT] Creating payment intent for org: ${organization?.name} with Connect ID: ${organization?.stripeConnectAccountId}`);
+      
+      const paymentIntentData = {
         amount: Math.round(paymentAmount * 100), // Convert to cents
         currency: 'usd',
         customer: stripeCustomerId,
@@ -1213,7 +1543,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
           clientId: client.id,
           paymentType: isDepositPayment ? "deposit" : "full_payment"
         }
-      });
+      };
+      
+      // Create payment intent on connected account if available
+      const paymentIntent = organization?.stripeConnectAccountId
+        ? await stripe.paymentIntents.create(paymentIntentData, {
+            stripeAccount: organization.stripeConnectAccountId
+          })
+        : await stripe.paymentIntents.create(paymentIntentData);
+      
+      console.log(`✅ [PAYMENT INTENT] Payment intent created: ${paymentIntent.id} on account: ${organization?.stripeConnectAccountId || 'platform'}`);
 
       // Create appointment
       const appointment = await storage.createAppointment({
@@ -1224,8 +1563,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         serviceId,
         startTime: new Date(startTime),
         endTime: new Date(endTime),
-        totalAmount: service.price.toString(),
-        depositPaid: (isDepositPayment ? service.depositAmount : service.price).toString(),
+        totalAmount: (service.price || 0).toString(),
+        depositPaid: (isDepositPayment ? (service.depositAmount || 0) : (service.price || 0)).toString(),
         status: "scheduled"
       });
 
@@ -1269,6 +1608,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Verify payment with Stripe
+      if (!stripe) {
+        return res.status(500).json({ message: "Payment system not configured" });
+      }
       const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
       
       if (paymentIntent.status !== 'succeeded') {
@@ -1694,8 +2036,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         await storage.createReward({
           clientId: client.id,
           points: 100,
-          description: "Membership signup bonus",
-          type: "membership",
           reason: "membership_signup",
           organizationId: client.organizationId
         });
@@ -1707,14 +2047,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         // Get or create Stripe customer
         let stripeCustomerId = req.user!.stripeCustomerId;
+        console.log(`🔍 [MEMBERSHIP UPGRADE] Checking customer - User: ${req.user!.email}, existing customer ID: ${stripeCustomerId}`);
+        
         if (!stripeCustomerId) {
+          console.log(`🔍 [MEMBERSHIP UPGRADE] Creating new customer for org: ${organization?.name} with Connect ID: ${organization?.stripeConnectAccountId}`);
+          
           const customer = await stripeService.createCustomer(
             req.user!.email,
-            `${req.user!.firstName} ${req.user!.lastName}`,
+            `${req.user!.firstName || ''} ${req.user!.lastName || ''}`,
             client.organizationId,
-            organization?.stripeConnectAccountId
+            organization?.stripeConnectAccountId || undefined
           );
           stripeCustomerId = customer.id;
+          console.log(`✅ [MEMBERSHIP UPGRADE] Customer created: ${customer.id} on account: ${organization?.stripeConnectAccountId || 'platform'}`);
           
           // Update user with Stripe customer ID
           await storage.updateUser(req.user!.id, { stripeCustomerId });
@@ -1728,7 +2073,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           stripeCustomerId,
           priceId,
           undefined,
-          organization?.stripeConnectAccountId
+          organization?.stripeConnectAccountId || undefined
         );
 
         // Create inactive membership record until payment confirmed
@@ -3360,6 +3705,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get today's appointments for organization
+  app.get("/api/appointments/:organizationId/today", requireAuth, async (req, res) => {
+    try {
+      const { organizationId } = req.params;
+      
+      // Verify user has access to this organization
+      if (req.user!.role !== "super_admin") {
+        const userOrgId = await getUserOrganizationId(req.user!);
+        if (userOrgId !== organizationId) {
+          return res.status(403).json({ message: "Access denied" });
+        }
+      }
+
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+
+      const allAppointments = await storage.getAppointmentsByOrganization(organizationId);
+      const todayAppointments = allAppointments.filter(apt => {
+        const aptDate = new Date(apt.startTime);
+        return aptDate >= today && aptDate < tomorrow;
+      });
+
+      res.json(todayAppointments);
+    } catch (error) {
+      console.error("Error fetching today's appointments:", error);
+      res.status(500).json({ message: "Failed to fetch today's appointments" });
+    }
+  });
+
   // Recent activities endpoint
   app.get("/api/activities/recent", requireAuth, requireBusinessSetupComplete, async (req, res) => {
     try {
@@ -3508,6 +3884,291 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // AI insights endpoint with organization ID - Enterprise tier only
+  app.get("/api/ai-insights/:organizationId", requireAuth, async (req, res) => {
+    try {
+      const { organizationId } = req.params;
+      
+      // Verify user has access to this organization
+      if (req.user!.role !== "super_admin") {
+        const userOrgId = await getUserOrganizationId(req.user!);
+        if (userOrgId !== organizationId) {
+          return res.status(403).json({ message: "Access denied" });
+        }
+      }
+
+      // Get organization and subscription plan details
+      const organization = await storage.getOrganization(organizationId);
+      if (!organization) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+
+      // Check subscription tier - AI is Enterprise only
+      let subscriptionPlan = null;
+      if (organization.subscriptionPlanId) {
+        subscriptionPlan = await storage.getSubscriptionPlan(organization.subscriptionPlanId);
+      }
+
+      const isEnterpriseTier = subscriptionPlan?.name === 'Enterprise' || 
+                               subscriptionPlan?.tier === 'enterprise';
+      
+      if (!isEnterpriseTier) {
+        return res.status(403).json({ 
+          message: "AI insights are only available for Enterprise tier subscriptions",
+          upgrade_required: true,
+          current_plan: subscriptionPlan?.name || 'No active plan',
+          current_tier: subscriptionPlan?.tier || 'none',
+          upgrade_url: "/pricing",
+          features_available_in_enterprise: [
+            "AI-powered customer retention analysis",
+            "Predictive churn detection",
+            "Personalized upsell recommendations",
+            "Pricing optimization suggestions",
+            "Marketing campaign ideas",
+            "Appointment optimization insights"
+          ]
+        });
+      }
+
+      // Get comprehensive data for AI analysis
+      const appointments = await storage.getAppointmentsByOrganization(organizationId);
+      const clients = await storage.getClientsByOrganization(organizationId);
+      const services = await storage.getServicesByOrganization(organizationId);
+      const transactions = await storage.getTransactionsByOrganization(organizationId);
+      const memberships = await storage.getMembershipsByOrganization(organizationId);
+      const rewardBalances = await storage.getRewardsByOrganization(organizationId);
+      
+      // Calculate key metrics
+      const now = new Date();
+      const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      const sixtyDaysAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
+      
+      // Revenue calculations
+      const totalRevenue = transactions.reduce((sum, t) => sum + (parseFloat(t.amount?.toString() || '0')), 0);
+      const last30DaysRevenue = transactions
+        .filter(t => new Date(t.createdAt!) > thirtyDaysAgo)
+        .reduce((sum, t) => sum + (parseFloat(t.amount?.toString() || '0')), 0);
+      
+      // Client activity analysis
+      const activeClients = clients.filter(client => {
+        const clientAppts = appointments.filter(a => a.clientId === client.id);
+        return clientAppts.some(a => new Date(a.startTime) > thirtyDaysAgo);
+      });
+      
+      const inactiveClients = clients.filter(client => {
+        const clientAppts = appointments.filter(a => a.clientId === client.id);
+        const lastAppt = clientAppts
+          .sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime())[0];
+        return lastAppt && new Date(lastAppt.startTime) < sixtyDaysAgo;
+      });
+
+      // Service performance
+      const serviceBookings: Record<string, number> = {};
+      const serviceRevenue: Record<string, number> = {};
+      
+      appointments.forEach(apt => {
+        const service = services.find(s => s.id === apt.serviceId);
+        if (service) {
+          serviceBookings[service.name] = (serviceBookings[service.name] || 0) + 1;
+          serviceRevenue[service.name] = (serviceRevenue[service.name] || 0) + 
+            parseFloat(apt.totalAmount?.toString() || '0');
+        }
+      });
+
+      // Generate AI insights using OpenAI
+      let aiGeneratedInsights = [];
+      
+      try {
+        const clinicData = {
+          organizationName: organization.name,
+          totalClients: clients.length,
+          activeClients: activeClients.length,
+          inactiveClients: inactiveClients.length,
+          totalAppointments: appointments.length,
+          last30DaysAppointments: appointments.filter(a => new Date(a.startTime) > thirtyDaysAgo).length,
+          totalRevenue: totalRevenue,
+          last30DaysRevenue: last30DaysRevenue,
+          avgServicePrice: services.length > 0 ? 
+            services.reduce((sum, s) => sum + parseFloat(s.price?.toString() || '0'), 0) / services.length : 0,
+          activeMembers: memberships.filter(m => m.status === 'active').length,
+          services: services.map(s => ({
+            name: s.name,
+            price: parseFloat(s.price?.toString() || '0'),
+            bookings: serviceBookings[s.name] || 0,
+            revenue: serviceRevenue[s.name] || 0
+          })),
+          topClients: activeClients.slice(0, 5).map(c => {
+            const clientAppts = appointments.filter(a => a.clientId === c.id);
+            const clientTransactions = transactions.filter(t => t.clientId === c.id);
+            const totalSpent = clientTransactions.reduce((sum, t) => 
+              sum + parseFloat(t.amount?.toString() || '0'), 0);
+            return {
+              id: c.id,
+              name: `${c.firstName} ${c.lastName}`,
+              appointments: clientAppts.length,
+              totalSpent: totalSpent,
+              lastVisit: clientAppts[0]?.startTime || null
+            };
+          })
+        };
+
+        // Use OpenAI to generate insights
+        const aiResponse = await openaiService.generateBusinessInsights(clinicData);
+        
+        if (aiResponse && aiResponse.insights) {
+          aiGeneratedInsights = aiResponse.insights.map((insight: any) => ({
+            id: `ai-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            type: insight.type || 'recommendation',
+            title: insight.title,
+            description: insight.description,
+            priority: insight.priority || 'medium',
+            metrics: insight.metrics || {},
+            actionable: insight.actionable !== false
+          }));
+        }
+      } catch (aiError) {
+        console.error("OpenAI insight generation failed:", aiError);
+        // Fall back to rule-based insights if AI fails
+        aiGeneratedInsights = generateFallbackInsights(
+          clients, activeClients, inactiveClients, 
+          appointments, services, serviceBookings, 
+          totalRevenue, last30DaysRevenue
+        );
+      }
+
+      // Always include some guaranteed valuable insights
+      if (inactiveClients.length > 0) {
+        aiGeneratedInsights.unshift({
+          id: `retention-${Date.now()}`,
+          type: 'retention',
+          title: 'Client Retention Alert',
+          description: `${inactiveClients.length} clients haven't visited in 60+ days. Consider launching a win-back campaign with special offers.`,
+          priority: 'high',
+          metrics: {
+            at_risk_clients: inactiveClients.length,
+            potential_revenue_loss: inactiveClients.length * (totalRevenue / clients.length)
+          },
+          actionable: true
+        });
+      }
+
+      // Store insights in database for caching (optional)
+      for (const insight of aiGeneratedInsights.slice(0, 10)) {
+        try {
+          await storage.createAiInsight({
+            organizationId,
+            type: insight.type,
+            category: 'business',
+            title: insight.title,
+            description: insight.description,
+            priority: insight.priority as any,
+            data: insight.metrics || {},
+            isActionable: insight.actionable
+          });
+        } catch (err) {
+          console.error("Failed to store insight:", err);
+        }
+      }
+      
+      res.json(aiGeneratedInsights.slice(0, 5)); // Return top 5 insights
+    } catch (error) {
+      console.error("Error fetching AI insights:", error);
+      res.status(500).json({ message: "Failed to fetch AI insights" });
+    }
+  });
+
+  // Helper function to generate fallback insights when AI is unavailable
+  function generateFallbackInsights(
+    clients: any[], activeClients: any[], inactiveClients: any[],
+    appointments: any[], services: any[], serviceBookings: Record<string, number>,
+    totalRevenue: number, last30DaysRevenue: number
+  ) {
+    const insights = [];
+    
+    // Revenue trend insight
+    if (last30DaysRevenue > 0) {
+      const avgMonthlyRevenue = totalRevenue / 12; // Rough estimate
+      const trend = last30DaysRevenue > avgMonthlyRevenue ? 'up' : 'down';
+      insights.push({
+        id: `revenue-${Date.now()}`,
+        type: 'revenue',
+        title: `Revenue Trending ${trend === 'up' ? '📈' : '📉'}`,
+        description: `Last 30 days revenue: $${last30DaysRevenue.toFixed(2)}. ${
+          trend === 'up' 
+            ? 'Great job! Consider raising prices on popular services.' 
+            : 'Consider promotions to boost bookings.'
+        }`,
+        priority: 'high',
+        metrics: { last30Days: last30DaysRevenue, trend },
+        actionable: true
+      });
+    }
+
+    // Popular service insight
+    const topService = Object.entries(serviceBookings)
+      .sort(([,a], [,b]) => b - a)[0];
+    
+    if (topService) {
+      insights.push({
+        id: `popular-${Date.now()}`,
+        type: 'opportunity',
+        title: 'Most Popular Service',
+        description: `"${topService[0]}" has ${topService[1]} bookings. Consider creating package deals or add-ons for this service.`,
+        priority: 'medium',
+        metrics: { service: topService[0], bookings: topService[1] },
+        actionable: true
+      });
+    }
+
+    // Client acquisition insight
+    const clientGrowthRate = activeClients.length / Math.max(clients.length, 1);
+    if (clientGrowthRate < 0.5) {
+      insights.push({
+        id: `acquisition-${Date.now()}`,
+        type: 'growth',
+        title: 'Boost Client Acquisition',
+        description: 'Only ' + (clientGrowthRate * 100).toFixed(0) + '% of clients are active. Consider referral programs or new client specials.',
+        priority: 'high',
+        metrics: { activeRate: clientGrowthRate },
+        actionable: true
+      });
+    }
+
+    return insights;
+  }
+
+  // Staff availability endpoint with organization ID
+  app.get("/api/staff/availability/:organizationId", requireAuth, async (req, res) => {
+    try {
+      const { organizationId } = req.params;
+      
+      // Verify user has access to this organization
+      if (req.user!.role !== "super_admin") {
+        const userOrgId = await getUserOrganizationId(req.user!);
+        if (userOrgId !== organizationId) {
+          return res.status(403).json({ message: "Access denied" });
+        }
+      }
+
+      const staff = await storage.getStaffByOrganization(organizationId);
+      
+      // For now, simulate online status - in production this would track actual login/activity
+      const now = new Date();
+      const workingHours = now.getHours() >= 8 && now.getHours() <= 18; // 8 AM to 6 PM
+      
+      const availability = {
+        total: staff.length,
+        online: workingHours ? Math.min(staff.length, Math.max(1, Math.floor(staff.length * 0.8))) : 0,
+        available: workingHours ? Math.min(staff.length, Math.max(1, Math.floor(staff.length * 0.6))) : 0
+      };
+      
+      res.json(availability);
+    } catch (error) {
+      console.error("Error fetching staff availability:", error);
+      res.status(500).json({ message: "Failed to fetch staff availability" });
+    }
+  });
+
   // Staff availability endpoint
   app.get("/api/staff/availability", requireAuth, requireBusinessSetupComplete, async (req, res) => {
     try {
@@ -3527,6 +4188,163 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(availability);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch staff availability" });
+    }
+  });
+
+  // Platform analytics for super admin
+  app.get("/api/analytics/platform", requireAuth, requireRole("super_admin"), async (req, res) => {
+    try {
+      const now = new Date();
+      const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      
+      // Get all organizations
+      const allOrganizations = await storage.getOrganizations();
+      const activeOrganizations = allOrganizations.filter(org => org.isActive && org.subscriptionStatus === 'active');
+      const trialOrganizations = allOrganizations.filter(org => org.subscriptionStatus === 'trialing');
+      
+      // Calculate MRR from active subscriptions
+      let mrr = 0;
+      for (const org of activeOrganizations) {
+        if (org.subscriptionPlanId) {
+          const plan = await storage.getSubscriptionPlan(org.subscriptionPlanId);
+          if (plan) {
+            mrr += parseFloat(plan.monthlyPrice.toString());
+          }
+        }
+      }
+      
+      // Calculate churn rate
+      const churnedThisMonth = allOrganizations.filter(org => 
+        org.subscriptionStatus === 'cancelled' && 
+        org.updatedAt && new Date(org.updatedAt) >= thisMonth
+      ).length;
+      const activeLastMonth = allOrganizations.filter(org =>
+        org.createdAt && new Date(org.createdAt) < lastMonth
+      ).length;
+      const churnRate = activeLastMonth > 0 ? (churnedThisMonth / activeLastMonth) * 100 : 0;
+      
+      // Calculate trial conversion rate
+      const completedTrials = allOrganizations.filter(org =>
+        org.trialEndsAt && new Date(org.trialEndsAt) < now
+      );
+      const convertedTrials = completedTrials.filter(org =>
+        org.subscriptionStatus === 'active'
+      );
+      const trialConversions = completedTrials.length > 0 
+        ? (convertedTrials.length / completedTrials.length) * 100 
+        : 0;
+      
+      // Calculate growth metrics
+      const newThisMonth = allOrganizations.filter(org =>
+        org.createdAt && new Date(org.createdAt) >= thisMonth
+      ).length;
+      
+      const stats = {
+        mrr,
+        activeOrganizations: activeOrganizations.length,
+        trialOrganizations: trialOrganizations.length,
+        totalOrganizations: allOrganizations.length,
+        churnRate,
+        trialConversions,
+        newThisMonth,
+        revenue: {
+          subscription: mrr,
+          processing: mrr * 0.12, // Estimated processing fees
+          total: mrr * 1.12
+        }
+      };
+      
+      res.json(stats);
+    } catch (error) {
+      console.error("Error fetching platform analytics:", error);
+      res.status(500).json({ message: "Failed to fetch platform analytics" });
+    }
+  });
+
+  // Dashboard analytics with organization ID in path
+  app.get("/api/analytics/dashboard/:organizationId", requireAuth, async (req, res) => {
+    try {
+      const { organizationId } = req.params;
+      
+      // Verify user has access to this organization
+      if (req.user!.role !== "super_admin") {
+        const userOrgId = await getUserOrganizationId(req.user!);
+        if (userOrgId !== organizationId) {
+          return res.status(403).json({ message: "Access denied" });
+        }
+      }
+
+      // Real analytics data aggregation
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      const thisYear = new Date(now.getFullYear(), 0, 1);
+      const thisWeek = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+      // Get revenue from completed appointments
+      const completedAppointments = await storage.getAppointmentsByOrganization(organizationId);
+      const todayRevenue = completedAppointments
+        .filter(apt => apt.status === 'completed' && new Date(apt.createdAt!) >= today)
+        .reduce((sum, apt) => sum + Number(apt.totalAmount || 0), 0);
+      
+      const monthRevenue = completedAppointments
+        .filter(apt => apt.status === 'completed' && new Date(apt.createdAt!) >= thisMonth)
+        .reduce((sum, apt) => sum + Number(apt.totalAmount || 0), 0);
+        
+      const yearRevenue = completedAppointments
+        .filter(apt => apt.status === 'completed' && new Date(apt.createdAt!) >= thisYear)
+        .reduce((sum, apt) => sum + Number(apt.totalAmount || 0), 0);
+
+      // Get appointment counts
+      const allAppointments = await storage.getAppointmentsByOrganization(organizationId);
+      const todayAppointments = allAppointments.filter(apt => new Date(apt.startTime) >= today).length;
+      const weekAppointments = allAppointments.filter(apt => new Date(apt.startTime) >= thisWeek).length;
+      const monthAppointments = allAppointments.filter(apt => new Date(apt.startTime) >= thisMonth).length;
+
+      // Get client counts
+      const allClients = await storage.getClientsByOrganization(organizationId);
+      const newClients = allClients.filter(client => new Date(client.createdAt!) >= thisMonth).length;
+      const activeClients = allClients.filter(client => client.isActive !== false).length;
+
+      // Get membership counts
+      const allMemberships = await storage.getMembershipsByOrganization(organizationId);
+      const activeMemberships = allMemberships.filter(membership => membership.status === 'active').length;
+
+      // Get staff counts
+      const allStaff = await storage.getStaffByOrganization(organizationId);
+      const activeStaff = allStaff.filter(staff => staff.isActive !== false).length;
+
+      const analytics = {
+        revenue: {
+          today: todayRevenue,
+          month: monthRevenue,
+          year: yearRevenue
+        },
+        appointments: {
+          today: todayAppointments,
+          week: weekAppointments,
+          month: monthAppointments
+        },
+        clients: {
+          total: allClients.length,
+          new: newClients,
+          active: activeClients
+        },
+        memberships: {
+          active: activeMemberships
+        },
+        staff: {
+          total: allStaff.length,
+          active: activeStaff,
+          online: activeStaff // For now, assume active staff are online during work hours
+        }
+      };
+
+      res.json(analytics);
+    } catch (error) {
+      console.error("Error fetching dashboard analytics:", error);
+      res.status(500).json({ message: "Failed to fetch analytics" });
     }
   });
 
@@ -3824,6 +4642,76 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Setup subscription plans error:", error);
       res.status(500).json({ message: "Failed to setup subscription plans" });
+    }
+  });
+
+  // Test endpoint to verify Stripe Connect customer creation
+  app.post("/api/test/stripe-connect-customer", requireAuth, requireRole("clinic_admin", "super_admin"), async (req, res) => {
+    try {
+      const { email, name, useConnectAccount = true } = req.body;
+      
+      // Get organization for the current user
+      const organizationId = await getUserOrganizationId(req.user!);
+      if (!organizationId) {
+        return res.status(400).json({ message: "No organization found for user" });
+      }
+      
+      const organization = await storage.getOrganization(organizationId);
+      if (!organization) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+      
+      console.log(`🧪 [TEST] Starting Stripe Connect customer test`);
+      console.log(`🧪 [TEST] Organization: ${organization.name} (${organization.id})`);
+      console.log(`🧪 [TEST] Connect Account ID: ${organization.stripeConnectAccountId || 'NOT SET'}`);
+      console.log(`🧪 [TEST] Use Connect Account: ${useConnectAccount}`);
+      
+      // Create customer on platform or connect account based on parameter
+      const connectAccountId = useConnectAccount ? organization.stripeConnectAccountId : undefined;
+      
+      const customer = await stripeService.createCustomer(
+        email || req.user!.email,
+        name || `${req.user!.firstName} ${req.user!.lastName}`,
+        organizationId,
+        connectAccountId || undefined
+      );
+      
+      console.log(`✅ [TEST] Customer created successfully`);
+      console.log(`✅ [TEST] Customer ID: ${customer.id}`);
+      console.log(`✅ [TEST] Created on: ${connectAccountId ? `Connected Account (${connectAccountId})` : 'Platform Account'}`);
+      
+      // Verify customer exists by retrieving it
+      let verificationResult;
+      if (connectAccountId && stripe) {
+        verificationResult = await stripe.customers.retrieve(customer.id, {
+          stripeAccount: connectAccountId
+        });
+      } else if (stripe) {
+        verificationResult = await stripe.customers.retrieve(customer.id);
+      }
+      
+      res.json({
+        success: true,
+        message: "Test customer created successfully",
+        customerId: customer.id,
+        createdOn: connectAccountId ? "connected_account" : "platform_account",
+        connectAccountId: connectAccountId || null,
+        organizationName: organization.name,
+        customerDetails: {
+          email: customer.email,
+          name: customer.name,
+          metadata: customer.metadata
+        },
+        verified: !!verificationResult
+      });
+      
+    } catch (error) {
+      console.error("❌ [TEST] Stripe Connect customer test failed:", error);
+      res.status(500).json({ 
+        success: false,
+        message: "Test failed",
+        error: error instanceof Error ? error.message : "Unknown error"
+      });
     }
   });
 

@@ -7,6 +7,7 @@ import { z } from "zod";
 // Enums
 export const userRoleEnum = pgEnum("user_role", ["super_admin", "clinic_admin", "staff", "patient"]);
 export const staffRoleEnum = pgEnum("staff_role", ["admin", "receptionist", "provider"]);
+export const commissionTypeEnum = pgEnum("commission_type", ["percentage", "flat"]);
 export const subscriptionStatusEnum = pgEnum("subscription_status", ["active", "past_due", "canceled", "trialing", "incomplete"]);
 export const appointmentStatusEnum = pgEnum("appointment_status", ["scheduled", "confirmed", "in_progress", "completed", "canceled", "no_show"]);
 export const paymentStatusEnum = pgEnum("payment_status", ["pending", "completed", "failed", "refunded"]);
@@ -93,19 +94,47 @@ export const locations = pgTable("locations", {
   createdAt: timestamp("created_at").default(sql`now()`)
 });
 
+// Staff Management Tables
+export const staffRoles = pgTable("staff_roles", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: uuid("organization_id").notNull(),
+  name: text("name").notNull(),
+  permissions: jsonb("permissions").notNull(),
+  createdAt: timestamp("created_at").default(sql`now()`)
+});
+
 export const staff = pgTable("staff", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: uuid("user_id").notNull(),
   organizationId: uuid("organization_id").notNull(),
+  roleId: uuid("role_id"),
   locationIds: jsonb("location_ids"),
-  role: staffRoleEnum("role").notNull(),
+  role: staffRoleEnum("role").notNull(), // Keeping for backwards compatibility
   title: text("title"),
   specialties: jsonb("specialties"),
   bio: text("bio"),
   commissionRate: decimal("commission_rate", { precision: 5, scale: 2 }),
+  commissionType: commissionTypeEnum("commission_type").default("percentage"),
   hourlyRate: decimal("hourly_rate", { precision: 10, scale: 2 }),
   availability: jsonb("availability"),
+  canBookOnline: boolean("can_book_online").default(true),
   isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").default(sql`now()`)
+});
+
+export const staffAvailability = pgTable("staff_availability", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  staffId: uuid("staff_id").notNull(),
+  dayOfWeek: integer("day_of_week").notNull(), // 0-6 (Sunday-Saturday)
+  startTime: text("start_time").notNull(), // HH:MM format
+  endTime: text("end_time").notNull(), // HH:MM format
+  isRecurring: boolean("is_recurring").default(true),
+  createdAt: timestamp("created_at").default(sql`now()`)
+});
+
+export const staffServices = pgTable("staff_services", {
+  staffId: uuid("staff_id").notNull(),
+  serviceId: uuid("service_id").notNull(),
   createdAt: timestamp("created_at").default(sql`now()`)
 });
 
@@ -148,10 +177,12 @@ export const services = pgTable("services", {
   description: text("description"),
   category: text("category"),
   duration: integer("duration").notNull(),
+  estimatedDuration: integer("estimated_duration"), // Duration in minutes
   price: decimal("price", { precision: 10, scale: 2 }),
   depositRequired: boolean("deposit_required").default(false),
   depositAmount: decimal("deposit_amount", { precision: 10, scale: 2 }),
   requiresConsent: boolean("requires_consent").default(false),
+  requiresStaff: boolean("requires_staff").default(true),
   availableStaffIds: jsonb("available_staff_ids"),
   stripeProductId: text("stripe_product_id"),
   stripePriceId: text("stripe_price_id"),
@@ -496,8 +527,22 @@ export const insertLocationSchema = createInsertSchema(locations).omit({
   createdAt: true
 });
 
+export const insertStaffRoleSchema = createInsertSchema(staffRoles).omit({
+  id: true,
+  createdAt: true
+});
+
 export const insertStaffSchema = createInsertSchema(staff).omit({
   id: true,
+  createdAt: true
+});
+
+export const insertStaffAvailabilitySchema = createInsertSchema(staffAvailability).omit({
+  id: true,
+  createdAt: true
+});
+
+export const insertStaffServiceSchema = createInsertSchema(staffServices).omit({
   createdAt: true
 });
 
@@ -598,8 +643,14 @@ export type SubscriptionPlan = typeof subscriptionPlans.$inferSelect;
 export type InsertSubscriptionPlan = z.infer<typeof insertSubscriptionPlanSchema>;
 export type Location = typeof locations.$inferSelect;
 export type InsertLocation = z.infer<typeof insertLocationSchema>;
+export type StaffRole = typeof staffRoles.$inferSelect;
+export type InsertStaffRole = z.infer<typeof insertStaffRoleSchema>;
 export type Staff = typeof staff.$inferSelect;
 export type InsertStaff = z.infer<typeof insertStaffSchema>;
+export type StaffAvailability = typeof staffAvailability.$inferSelect;
+export type InsertStaffAvailability = z.infer<typeof insertStaffAvailabilitySchema>;
+export type StaffService = typeof staffServices.$inferSelect;
+export type InsertStaffService = z.infer<typeof insertStaffServiceSchema>;
 export type Client = typeof clients.$inferSelect;
 export type InsertClient = z.infer<typeof insertClientSchema>;
 export type ClientLocation = typeof clientLocations.$inferSelect;

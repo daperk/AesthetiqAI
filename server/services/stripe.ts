@@ -25,7 +25,7 @@ if (!secretKey) {
 }
 
 const stripe = secretKey 
-  ? new Stripe(secretKey, { apiVersion: "2023-10-16" })
+  ? new Stripe(secretKey, { apiVersion: "2025-08-27.basil" })
   : null;
 
 export interface SubscriptionResult {

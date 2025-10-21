@@ -90,7 +90,7 @@ export default function ShareLink() {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="container mx-auto px-6 py-8 max-w-4xl">
+      <div className="max-w-7xl mx-auto px-6 py-8">
         <div className="mb-8">
           <h1 className="text-3xl font-serif font-bold text-foreground mb-2" data-testid="text-page-title">
             Share Your Booking Link
@@ -133,7 +133,7 @@ export default function ShareLink() {
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
-                    Patients who register through this link will be associated with {selectedLocation?.name || 'this location'}
+                    Patients who register through this link will be associated with {organization?.name} - {selectedLocation?.name || 'this location'}
                   </p>
                 </div>
               )}

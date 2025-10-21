@@ -1,10 +1,12 @@
 import {
-  users, organizations, subscriptionPlans, locations, staff, clients, clientLocations, services,
-  appointments, memberships, membershipTiers, rewards, rewardOptions, transactions, addOns, organizationAddOns,
-  usageLogs, aiInsights, notifications, auditLogs, fileStorage, featureFlags,
+  users, organizations, subscriptionPlans, locations, staff, staffRoles, staffAvailability, staffServices,
+  clients, clientLocations, services, appointments, memberships, membershipTiers, rewards, rewardOptions, 
+  transactions, addOns, organizationAddOns, usageLogs, aiInsights, notifications, auditLogs, fileStorage, featureFlags,
   type User, type InsertUser, type Organization, type InsertOrganization,
   type SubscriptionPlan, type InsertSubscriptionPlan, type Location, type InsertLocation,
-  type Staff, type InsertStaff, type Client, type InsertClient, type ClientLocation, type InsertClientLocation, type Service, type InsertService,
+  type Staff, type InsertStaff, type StaffRole, type InsertStaffRole,
+  type StaffAvailability, type InsertStaffAvailability, type StaffService, type InsertStaffService,
+  type Client, type InsertClient, type ClientLocation, type InsertClientLocation, type Service, type InsertService,
   type Appointment, type InsertAppointment, type Membership, type InsertMembership,
   type MembershipTier, type InsertMembershipTier, type Reward, type InsertReward,
   type RewardOption, type InsertRewardOption,
@@ -62,6 +64,29 @@ export interface IStorage {
   getStaffByUser(userId: string): Promise<Staff | undefined>;
   createStaff(staff: InsertStaff): Promise<Staff>;
   updateStaff(id: string, updates: Partial<InsertStaff>): Promise<Staff>;
+
+  // Staff Roles
+  getStaffRolesByOrganization(organizationId: string): Promise<StaffRole[]>;
+  getStaffRole(id: string): Promise<StaffRole | undefined>;
+  createStaffRole(role: InsertStaffRole): Promise<StaffRole>;
+  updateStaffRole(id: string, updates: Partial<InsertStaffRole>): Promise<StaffRole>;
+  deleteStaffRole(id: string): Promise<boolean>;
+  createDefaultRolesForOrganization(organizationId: string): Promise<void>;
+
+  // Staff Availability
+  getStaffAvailabilityByStaff(staffId: string): Promise<StaffAvailability[]>;
+  getStaffAvailabilityByDay(staffId: string, dayOfWeek: number): Promise<StaffAvailability[]>;
+  createStaffAvailability(availability: InsertStaffAvailability): Promise<StaffAvailability>;
+  updateStaffAvailability(id: string, updates: Partial<InsertStaffAvailability>): Promise<StaffAvailability>;
+  deleteStaffAvailability(id: string): Promise<boolean>;
+  getAvailableStaffForTimeSlot(organizationId: string, startTime: Date, endTime: Date): Promise<Staff[]>;
+
+  // Staff Services
+  getStaffServices(staffId: string): Promise<Service[]>;
+  getServiceStaff(serviceId: string): Promise<Staff[]>;
+  assignServiceToStaff(staffId: string, serviceId: string): Promise<StaffService>;
+  removeServiceFromStaff(staffId: string, serviceId: string): Promise<boolean>;
+  getStaffByService(organizationId: string, serviceId: string): Promise<Staff[]>;
 
   // Clients
   getClientsByOrganization(organizationId: string): Promise<Client[]>;
@@ -330,6 +355,243 @@ export class DatabaseStorage implements IStorage {
   async updateStaff(id: string, updates: Partial<InsertStaff>): Promise<Staff> {
     const [staffMember] = await db.update(staff).set(updates).where(eq(staff.id, id)).returning();
     return staffMember;
+  }
+
+  // Staff Roles
+  async getStaffRolesByOrganization(organizationId: string): Promise<StaffRole[]> {
+    return await db.select().from(staffRoles)
+      .where(eq(staffRoles.organizationId, organizationId))
+      .orderBy(asc(staffRoles.name));
+  }
+
+  async getStaffRole(id: string): Promise<StaffRole | undefined> {
+    const [role] = await db.select().from(staffRoles).where(eq(staffRoles.id, id));
+    return role || undefined;
+  }
+
+  async createStaffRole(insertRole: InsertStaffRole): Promise<StaffRole> {
+    const [role] = await db.insert(staffRoles).values(insertRole).returning();
+    return role;
+  }
+
+  async updateStaffRole(id: string, updates: Partial<InsertStaffRole>): Promise<StaffRole> {
+    const [role] = await db.update(staffRoles).set(updates).where(eq(staffRoles.id, id)).returning();
+    return role;
+  }
+
+  async deleteStaffRole(id: string): Promise<boolean> {
+    const result = await db.delete(staffRoles).where(eq(staffRoles.id, id));
+    return true;
+  }
+
+  async createDefaultRolesForOrganization(organizationId: string): Promise<void> {
+    const defaultRoles = [
+      {
+        name: "Clinic Admin",
+        organizationId,
+        permissions: {
+          appointments: { view: true, create: true, edit: true, cancel: true },
+          clients: { view: true, create: true, edit: true, delete: true },
+          payments: { process: true, refund: true, viewReports: true },
+          services: { view: true, create: true, edit: true, setPricing: true },
+          products: { manageInventory: true, sell: true },
+          marketing: { sendCampaigns: true, viewAnalytics: true },
+          staff: { manage: true, viewSchedules: true }
+        }
+      },
+      {
+        name: "Injector",
+        organizationId,
+        permissions: {
+          appointments: { view: true, create: true, edit: true, cancel: true },
+          clients: { view: true, create: true, edit: true, delete: false },
+          payments: { process: true, refund: false, viewReports: false },
+          services: { view: true, create: false, edit: false, setPricing: false },
+          products: { manageInventory: false, sell: true },
+          marketing: { sendCampaigns: false, viewAnalytics: false },
+          staff: { manage: false, viewSchedules: true }
+        }
+      },
+      {
+        name: "Aesthetician",
+        organizationId,
+        permissions: {
+          appointments: { view: true, create: true, edit: true, cancel: true },
+          clients: { view: true, create: true, edit: true, delete: false },
+          payments: { process: true, refund: false, viewReports: false },
+          services: { view: true, create: false, edit: false, setPricing: false },
+          products: { manageInventory: false, sell: true },
+          marketing: { sendCampaigns: false, viewAnalytics: false },
+          staff: { manage: false, viewSchedules: true }
+        }
+      },
+      {
+        name: "Nail Technician",
+        organizationId,
+        permissions: {
+          appointments: { view: true, create: true, edit: true, cancel: true },
+          clients: { view: true, create: true, edit: false, delete: false },
+          payments: { process: false, refund: false, viewReports: false },
+          services: { view: true, create: false, edit: false, setPricing: false },
+          products: { manageInventory: false, sell: false },
+          marketing: { sendCampaigns: false, viewAnalytics: false },
+          staff: { manage: false, viewSchedules: true }
+        }
+      },
+      {
+        name: "Receptionist",
+        organizationId,
+        permissions: {
+          appointments: { view: true, create: true, edit: true, cancel: true },
+          clients: { view: true, create: true, edit: true, delete: false },
+          payments: { process: false, refund: false, viewReports: false },
+          services: { view: true, create: false, edit: false, setPricing: false },
+          products: { manageInventory: false, sell: false },
+          marketing: { sendCampaigns: false, viewAnalytics: false },
+          staff: { manage: false, viewSchedules: true }
+        }
+      },
+      {
+        name: "Manager",
+        organizationId,
+        permissions: {
+          appointments: { view: true, create: true, edit: true, cancel: true },
+          clients: { view: true, create: true, edit: true, delete: true },
+          payments: { process: true, refund: true, viewReports: true },
+          services: { view: true, create: true, edit: true, setPricing: true },
+          products: { manageInventory: true, sell: true },
+          marketing: { sendCampaigns: true, viewAnalytics: true },
+          staff: { manage: true, viewSchedules: true }
+        }
+      }
+    ];
+
+    for (const role of defaultRoles) {
+      await this.createStaffRole(role);
+    }
+  }
+
+  // Staff Availability
+  async getStaffAvailabilityByStaff(staffId: string): Promise<StaffAvailability[]> {
+    return await db.select().from(staffAvailability)
+      .where(eq(staffAvailability.staffId, staffId))
+      .orderBy(asc(staffAvailability.dayOfWeek), asc(staffAvailability.startTime));
+  }
+
+  async getStaffAvailabilityByDay(staffId: string, dayOfWeek: number): Promise<StaffAvailability[]> {
+    return await db.select().from(staffAvailability)
+      .where(and(
+        eq(staffAvailability.staffId, staffId),
+        eq(staffAvailability.dayOfWeek, dayOfWeek)
+      ))
+      .orderBy(asc(staffAvailability.startTime));
+  }
+
+  async createStaffAvailability(insertAvailability: InsertStaffAvailability): Promise<StaffAvailability> {
+    const [availability] = await db.insert(staffAvailability).values(insertAvailability).returning();
+    return availability;
+  }
+
+  async updateStaffAvailability(id: string, updates: Partial<InsertStaffAvailability>): Promise<StaffAvailability> {
+    const [availability] = await db.update(staffAvailability).set(updates).where(eq(staffAvailability.id, id)).returning();
+    return availability;
+  }
+
+  async deleteStaffAvailability(id: string): Promise<boolean> {
+    await db.delete(staffAvailability).where(eq(staffAvailability.id, id));
+    return true;
+  }
+
+  async getAvailableStaffForTimeSlot(organizationId: string, startTime: Date, endTime: Date): Promise<Staff[]> {
+    const dayOfWeek = startTime.getDay();
+    const startTimeStr = `${String(startTime.getHours()).padStart(2, '0')}:${String(startTime.getMinutes()).padStart(2, '0')}`;
+    const endTimeStr = `${String(endTime.getHours()).padStart(2, '0')}:${String(endTime.getMinutes()).padStart(2, '0')}`;
+
+    // Get all staff for the organization
+    const allStaff = await this.getStaffByOrganization(organizationId);
+    
+    // Filter staff based on availability
+    const availableStaff: Staff[] = [];
+    
+    for (const staffMember of allStaff) {
+      const availability = await this.getStaffAvailabilityByDay(staffMember.id, dayOfWeek);
+      
+      // Check if staff is available during the requested time slot
+      const isAvailable = availability.some(slot => {
+        return slot.startTime <= startTimeStr && slot.endTime >= endTimeStr;
+      });
+      
+      if (isAvailable) {
+        // Check if staff has any conflicting appointments
+        const appointments = await this.getAppointmentsByStaff(staffMember.id, startTime);
+        const hasConflict = appointments.some(apt => {
+          return (apt.startTime < endTime && apt.endTime > startTime) && 
+                 apt.status !== 'canceled';
+        });
+        
+        if (!hasConflict) {
+          availableStaff.push(staffMember);
+        }
+      }
+    }
+    
+    return availableStaff;
+  }
+
+  // Staff Services
+  async getStaffServices(staffId: string): Promise<Service[]> {
+    const staffServiceLinks = await db.select()
+      .from(staffServices)
+      .where(eq(staffServices.staffId, staffId));
+    
+    const serviceIds = staffServiceLinks.map(link => link.serviceId);
+    
+    if (serviceIds.length === 0) {
+      return [];
+    }
+    
+    return await db.select()
+      .from(services)
+      .where(sql`${services.id} IN ${serviceIds}`);
+  }
+
+  async getServiceStaff(serviceId: string): Promise<Staff[]> {
+    const staffServiceLinks = await db.select()
+      .from(staffServices)
+      .where(eq(staffServices.serviceId, serviceId));
+    
+    const staffIds = staffServiceLinks.map(link => link.staffId);
+    
+    if (staffIds.length === 0) {
+      return [];
+    }
+    
+    return await db.select()
+      .from(staff)
+      .where(sql`${staff.id} IN ${staffIds}`);
+  }
+
+  async assignServiceToStaff(staffId: string, serviceId: string): Promise<StaffService> {
+    const [link] = await db.insert(staffServices)
+      .values({ staffId, serviceId })
+      .returning();
+    return link;
+  }
+
+  async removeServiceFromStaff(staffId: string, serviceId: string): Promise<boolean> {
+    await db.delete(staffServices)
+      .where(and(
+        eq(staffServices.staffId, staffId),
+        eq(staffServices.serviceId, serviceId)
+      ));
+    return true;
+  }
+
+  async getStaffByService(organizationId: string, serviceId: string): Promise<Staff[]> {
+    const serviceStaff = await this.getServiceStaff(serviceId);
+    
+    // Filter by organization
+    return serviceStaff.filter(s => s.organizationId === organizationId);
   }
 
   // Clients

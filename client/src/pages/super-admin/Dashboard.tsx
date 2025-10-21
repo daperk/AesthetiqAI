@@ -23,6 +23,11 @@ export default function SuperAdminDashboard() {
     staleTime: 5 * 60 * 1000,
   });
 
+  const { data: plans, isLoading: plansLoading } = useQuery<any[]>({
+    queryKey: ["/api/subscription-plans"],
+    staleTime: 5 * 60 * 1000,
+  });
+
   if (statsLoading || orgsLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -71,9 +76,11 @@ export default function SuperAdminDashboard() {
                 <TrendingUp className="w-4 h-4 text-green-500" />
               </div>
               <div className="text-2xl font-bold text-foreground" data-testid="text-mrr">
-                ${stats?.mrr?.toLocaleString() || "47,850"}
+                ${stats?.mrr?.toLocaleString() || "0"}
               </div>
-              <div className="text-sm text-green-500">+12.5% from last month</div>
+              <div className="text-sm text-green-500">
+                {stats?.newThisMonth ? `+${stats.newThisMonth} new this month` : "No change"}
+              </div>
             </CardContent>
           </Card>
 
@@ -84,9 +91,11 @@ export default function SuperAdminDashboard() {
                 <Building2 className="w-4 h-4 text-blue-500" />
               </div>
               <div className="text-2xl font-bold text-foreground" data-testid="text-active-orgs">
-                {stats?.activeOrganizations || organizations?.length || 142}
+                {stats?.activeOrganizations || 0}
               </div>
-              <div className="text-sm text-green-500">+8 new this month</div>
+              <div className="text-sm text-green-500">
+                {stats?.newThisMonth ? `+${stats.newThisMonth} new this month` : "No new organizations"}
+              </div>
             </CardContent>
           </Card>
 
@@ -97,9 +106,9 @@ export default function SuperAdminDashboard() {
                 <TrendingDown className="w-4 h-4 text-green-500" />
               </div>
               <div className="text-2xl font-bold text-foreground" data-testid="text-churn-rate">
-                {stats?.churnRate?.toFixed(1) || "2.1"}%
+                {stats?.churnRate?.toFixed(1) || "0.0"}%
               </div>
-              <div className="text-sm text-green-500">-0.5% improvement</div>
+              <div className="text-sm text-muted-foreground">Monthly churn</div>
             </CardContent>
           </Card>
 
@@ -110,9 +119,9 @@ export default function SuperAdminDashboard() {
                 <CheckCircle className="w-4 h-4 text-green-500" />
               </div>
               <div className="text-2xl font-bold text-foreground" data-testid="text-trial-conversions">
-                {stats?.trialConversions || 68}%
+                {stats?.trialConversions?.toFixed(0) || 0}%
               </div>
-              <div className="text-sm text-green-500">+5% this month</div>
+              <div className="text-sm text-muted-foreground">Trial to paid conversion</div>
             </CardContent>
           </Card>
         </div>
@@ -139,59 +148,60 @@ export default function SuperAdminDashboard() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {organizations?.length === 0 ? (
+                  {!organizations || organizations.length === 0 ? (
                     <div className="text-center py-8">
+                      <Building2 className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
                       <p className="text-muted-foreground" data-testid="text-no-organizations">
                         No organizations found
                       </p>
+                      <p className="text-sm text-muted-foreground mt-2">
+                        Organizations will appear here when clinics sign up
+                      </p>
                     </div>
                   ) : (
-                    <>
-                      {/* Sample organization entries */}
-                      <div className="flex items-center justify-between p-4 border rounded-lg" data-testid="org-item-luxe-spa">
+                    organizations.map((org) => (
+                      <div key={org.id} className="flex items-center justify-between p-4 border rounded-lg" data-testid={`org-item-${org.id}`}>
                         <div className="flex items-center space-x-3">
                           <div className="w-10 h-10 bg-muted rounded-lg flex items-center justify-center">
                             <Building2 className="w-5 h-5 text-muted-foreground" />
                           </div>
                           <div>
-                            <div className="font-medium text-foreground">Luxe Beauty Spa</div>
-                            <div className="text-sm text-muted-foreground">Business Plan • 2 locations</div>
+                            <div className="font-medium text-foreground">{org.name}</div>
+                            <div className="text-sm text-muted-foreground">
+                              {org.subscriptionPlanId ? "Subscribed" : "Free"} • {org.slug}
+                            </div>
                           </div>
                         </div>
                         <div className="flex items-center space-x-4">
                           <div className="text-right">
-                            <div className="text-sm font-medium">$299/mo</div>
-                            <div className="text-xs text-muted-foreground">68% usage</div>
+                            <div className="text-sm font-medium">
+                              {org.subscriptionStatus === 'active' ? 'Active' : 
+                               org.subscriptionStatus === 'trialing' ? 'Trial' : 
+                               'Inactive'}
+                            </div>
+                            {org.trialEndsAt && (
+                              <div className="text-xs text-muted-foreground">
+                                Trial ends: {new Date(org.trialEndsAt).toLocaleDateString()}
+                              </div>
+                            )}
                           </div>
-                          <Badge variant="default" className="bg-green-100 text-green-800">Active</Badge>
-                          <Button variant="ghost" size="sm" data-testid="button-org-menu">
+                          <Badge variant={
+                            org.subscriptionStatus === 'active' ? "default" :
+                            org.subscriptionStatus === 'trialing' ? "secondary" :
+                            "outline"
+                          } className={
+                            org.subscriptionStatus === 'active' ? "bg-green-100 text-green-800" :
+                            org.subscriptionStatus === 'trialing' ? "bg-yellow-100 text-yellow-800" :
+                            "bg-gray-100 text-gray-800"
+                          }>
+                            {org.subscriptionStatus || 'Inactive'}
+                          </Badge>
+                          <Button variant="ghost" size="sm" data-testid={`button-org-menu-${org.id}`}>
                             <MoreHorizontal className="w-4 h-4" />
                           </Button>
                         </div>
                       </div>
-
-                      <div className="flex items-center justify-between p-4 border rounded-lg" data-testid="org-item-medspa-elite">
-                        <div className="flex items-center space-x-3">
-                          <div className="w-10 h-10 bg-muted rounded-lg flex items-center justify-center">
-                            <Building2 className="w-5 h-5 text-muted-foreground" />
-                          </div>
-                          <div>
-                            <div className="font-medium text-foreground">MedSpa Elite</div>
-                            <div className="text-sm text-muted-foreground">Enterprise • 5 locations</div>
-                          </div>
-                        </div>
-                        <div className="flex items-center space-x-4">
-                          <div className="text-right">
-                            <div className="text-sm font-medium">Trial</div>
-                            <div className="text-xs text-muted-foreground">Day 8/14</div>
-                          </div>
-                          <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">Trial</Badge>
-                          <Button variant="ghost" size="sm" data-testid="button-org-menu-2">
-                            <MoreHorizontal className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    </>
+                    ))
                   )}
                 </div>
               </CardContent>
@@ -211,31 +221,40 @@ export default function SuperAdminDashboard() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between p-4 border rounded-lg" data-testid="plan-item-business">
-                    <div>
-                      <div className="font-medium text-foreground">Business Plan</div>
-                      <div className="text-sm text-muted-foreground">$299/month • Up to 3 locations</div>
+                  {!plans || plans.length === 0 ? (
+                    <div className="text-center py-8">
+                      <p className="text-muted-foreground" data-testid="text-no-plans">
+                        No subscription plans found
+                      </p>
                     </div>
-                    <div className="flex items-center space-x-4">
-                      <div className="text-sm font-medium text-foreground">47 subscribers</div>
-                      <Button variant="ghost" size="sm" data-testid="button-edit-plan">
-                        <Settings className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between p-4 border rounded-lg" data-testid="plan-item-enterprise">
-                    <div>
-                      <div className="font-medium text-foreground">Enterprise Plan</div>
-                      <div className="text-sm text-muted-foreground">$599/month • Up to 10 locations</div>
-                    </div>
-                    <div className="flex items-center space-x-4">
-                      <div className="text-sm font-medium text-foreground">23 subscribers</div>
-                      <Button variant="ghost" size="sm" data-testid="button-edit-plan-2">
-                        <Settings className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </div>
+                  ) : (
+                    plans.map((plan) => {
+                      // Count organizations subscribed to this plan
+                      const subscriberCount = organizations?.filter(org => 
+                        org.subscriptionPlanId === plan.id && 
+                        (org.subscriptionStatus === 'active' || org.subscriptionStatus === 'trialing')
+                      ).length || 0;
+                      
+                      return (
+                        <div key={plan.id} className="flex items-center justify-between p-4 border rounded-lg" data-testid={`plan-item-${plan.id}`}>
+                          <div>
+                            <div className="font-medium text-foreground">{plan.name}</div>
+                            <div className="text-sm text-muted-foreground">
+                              ${plan.monthlyPrice}/month • {plan.maxLocations} location{plan.maxLocations !== 1 ? 's' : ''}
+                            </div>
+                          </div>
+                          <div className="flex items-center space-x-4">
+                            <div className="text-sm font-medium text-foreground">
+                              {subscriberCount} subscriber{subscriberCount !== 1 ? 's' : ''}
+                            </div>
+                            <Button variant="ghost" size="sm" data-testid={`button-edit-plan-${plan.id}`}>
+                              <Settings className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -269,15 +288,21 @@ export default function SuperAdminDashboard() {
                     <div className="space-y-3">
                       <div className="flex justify-between text-sm">
                         <span className="text-muted-foreground">Subscription Revenue:</span>
-                        <span className="font-medium" data-testid="text-subscription-revenue">$42,100</span>
+                        <span className="font-medium" data-testid="text-subscription-revenue">
+                          ${stats?.revenue?.subscription?.toLocaleString() || "0"}
+                        </span>
                       </div>
                       <div className="flex justify-between text-sm">
                         <span className="text-muted-foreground">Processing Fees:</span>
-                        <span className="font-medium" data-testid="text-processing-fees">$5,750</span>
+                        <span className="font-medium" data-testid="text-processing-fees">
+                          ${stats?.revenue?.processing?.toLocaleString() || "0"}
+                        </span>
                       </div>
                       <div className="flex justify-between text-sm border-t pt-2">
                         <span className="font-medium">Total MRR:</span>
-                        <span className="font-bold" data-testid="text-total-mrr">$47,850</span>
+                        <span className="font-bold" data-testid="text-total-mrr">
+                          ${stats?.revenue?.total?.toLocaleString() || stats?.mrr?.toLocaleString() || "0"}
+                        </span>
                       </div>
                     </div>
                   </div>
