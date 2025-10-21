@@ -227,9 +227,9 @@ export default function ClinicDashboard() {
                       <Calendar className="w-4 h-4 text-primary" />
                     </div>
                     <div className="text-2xl font-bold text-foreground" data-testid="text-today-appointments">
-                      {stats?.appointments?.today || todayAppointments?.length || 0}
+                      {todayAppointments?.length || 0}
                     </div>
-                    <div className="text-sm text-muted-foreground">{todayAppointments ? todayAppointments.length - (stats?.appointments?.today || 0) : 0} remaining</div>
+                    <div className="text-sm text-muted-foreground">{todayAppointments?.filter((apt: any) => apt.status !== 'completed')?.length || 0} remaining</div>
                   </CardContent>
                 </Card>
 
