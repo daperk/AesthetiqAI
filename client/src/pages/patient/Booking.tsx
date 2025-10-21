@@ -138,6 +138,8 @@ export default function Booking() {
   const handlePrevious = () => {
     if (currentStep > 0) {
       setCurrentStep(currentStep - 1);
+      // Reset payment flow when going back
+      setShowPaymentFlow(false);
     }
   };
 
