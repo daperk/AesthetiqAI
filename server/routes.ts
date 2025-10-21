@@ -2208,57 +2208,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const isDepositPayment = service.paymentType === 'deposit';
       const paymentAmount = isDepositPayment ? Number(service.depositAmount || 0) : Number(service.price);
       
-      // Get or create Stripe customer for payment
+      // Create Stripe PaymentIntent on platform account
       if (!stripe) {
         return res.status(500).json({ message: "Payment system not configured" });
       }
       
-      let stripeCustomerId = client.stripeCustomerId;
-      
-      // If client doesn't have a Stripe customer ID, check if the user has one
-      if (!stripeCustomerId && client.userId) {
-        const user = await storage.getUser(client.userId);
-        stripeCustomerId = user?.stripeCustomerId || null;
-      }
-      
-      // Create new Stripe customer if none exists
-      if (!stripeCustomerId) {
-        // CRITICAL: Get organization to use Stripe Connect account
-        const organization = await storage.getOrganization(service.organizationId);
-        console.log(`🔍 [STRIPE CONNECT] Creating customer for org: ${organization?.name} with Connect ID: ${organization?.stripeConnectAccountId}`);
-        
-        // Use stripeService to create customer on connected account
-        const customer = await stripeService.createCustomer(
-          client.email || '',
-          `${client.firstName} ${client.lastName}`,
-          service.organizationId,
-          organization?.stripeConnectAccountId // Pass connected account ID
-        );
-        
-        console.log(`✅ [STRIPE CONNECT] Customer created: ${customer.id} on account: ${organization?.stripeConnectAccountId || 'platform'}`);
-        stripeCustomerId = customer.id;
-        
-        // IMPORTANT: Save the Stripe customer ID to the client record
-        await storage.updateClient(client.id, { stripeCustomerId });
-        
-        // If user is logged in, also update the user's stripeCustomerId
-        if (req.user && client.userId) {
-          await storage.updateUser(client.userId, { stripeCustomerId });
-        }
-      }
-      
-      // Create Stripe PaymentIntent on platform account
       const organization = await storage.getOrganization(service.organizationId);
       console.log(`🔍 [PAYMENT INTENT] Creating payment intent for org: ${organization?.name} on platform account`);
       
-      const paymentIntentData = {
+      // Payment intent data - don't include customer to avoid conflicts between accounts
+      const paymentIntentData: any = {
         amount: Math.round(paymentAmount * 100), // Convert to cents
         currency: 'usd',
-        customer: stripeCustomerId,
+        automatic_payment_methods: {
+          enabled: true,
+        },
         metadata: {
           serviceId: service.id,
           organizationId: service.organizationId,
           clientId: client.id,
+          clientEmail: client.email || '',
+          clientName: `${client.firstName} ${client.lastName}`,
           paymentType: isDepositPayment ? "deposit" : "full_payment"
         }
       };
