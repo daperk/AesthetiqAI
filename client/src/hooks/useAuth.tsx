@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { apiRequest } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import type { User } from "@/types";
@@ -22,6 +23,7 @@ interface RegisterData {
 export function useAuth() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
 
   const {
     data: user,
@@ -94,16 +96,48 @@ export function useAuth() {
 
   const logoutMutation = useMutation({
     mutationFn: async () => {
+      // Get current user and client data before logout to determine redirect
+      const currentUser = user;
+      let clientData = null;
+      
+      if (currentUser?.role === "patient") {
+        try {
+          const clientResponse = await apiRequest("GET", "/api/clients/me");
+          if (clientResponse.ok) {
+            clientData = await clientResponse.json();
+          }
+        } catch (e) {
+          // Ignore error, will redirect to default login
+        }
+      }
+      
       const response = await apiRequest("POST", "/api/auth/logout");
-      return response.json();
+      return { response: await response.json(), currentUser, clientData };
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.setQueryData(["/api/auth/me"], null);
       queryClient.clear();
       toast({
         title: "Signed out",
         description: "You have been successfully signed out.",
       });
+      
+      // Redirect patients to their clinic login page
+      if (data.currentUser?.role === "patient" && data.clientData?.organizationId) {
+        // Fetch organization to get slug
+        apiRequest("GET", `/api/organizations/${data.clientData.organizationId}`)
+          .then(res => res.json())
+          .then(org => {
+            if (org?.slug) {
+              setLocation(`/c/${org.slug}/login`);
+            } else {
+              setLocation("/");
+            }
+          })
+          .catch(() => setLocation("/"));
+      } else {
+        setLocation("/");
+      }
     },
     onError: (error: any) => {
       toast({

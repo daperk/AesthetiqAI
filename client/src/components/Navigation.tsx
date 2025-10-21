@@ -81,7 +81,7 @@ export default function Navigation() {
       <div className="container mx-auto px-6 py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-8">
-            <Link href="/" className="flex items-center space-x-3" data-testid="link-brand">
+            <Link href={user ? getDashboardUrl() : "/"} className="flex items-center space-x-3" data-testid="link-brand">
               {brandLogo ? (
                 <img src={brandLogo} alt={brandName} className="h-10 w-auto" />
               ) : (

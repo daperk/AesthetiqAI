@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, useEffect } from "react";
+import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -38,6 +39,7 @@ export default function Booking() {
   const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [, setLocation] = useLocation();
   
   const [currentStep, setCurrentStep] = useState(0);
   const [selectedLocation, setSelectedLocation] = useState<string>("");
@@ -169,19 +171,11 @@ export default function Booking() {
       description: "Your appointment has been successfully booked and payment processed.",
     });
     
-    // Reset form
-    setCurrentStep(0);
-    setSelectedLocation("");
-    setSelectedService(null);
-    setSelectedProvider(null);
-    setSelectedDate(undefined);
-    setSelectedTime("");
-    setSelectedDateTime("");
-    setNotes("");
-    setShowPaymentFlow(false);
-    
     // Refresh appointments
     queryClient.invalidateQueries({ queryKey: ["/api/appointments"] });
+    
+    // Redirect to patient dashboard
+    setLocation("/patient");
   };
 
   const handlePaymentCancel = () => {
