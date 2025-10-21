@@ -152,60 +152,57 @@ export default function StaffForm({
 
   const createStaffMutation = useMutation({
     mutationFn: async (data: StaffFormValues) => {
-      // First create a user account for new staff
-      const userResponse = await apiRequest("POST", "/api/auth/register", {
+      // Use the new staff invitation endpoint
+      const response = await apiRequest("POST", "/api/staff/invite", {
         email: data.email,
-        username: data.email,
-        password: "TempPassword123!", // Temporary password - user will need to reset
         firstName: data.firstName,
         lastName: data.lastName,
-        role: "staff",
-      });
-      
-      const user = await userResponse.json();
-      
-      // Then create the staff record
-      const response = await apiRequest("POST", "/api/staff", {
-        userId: user.user.id,
-        organizationId: organization?.id,
         role: data.role,
-        roleId: data.roleId === "none" ? null : data.roleId,
         title: data.title,
-        specialties: data.specialties || [],
-        bio: data.bio,
         commissionRate: data.commissionRate,
         commissionType: data.commissionType,
         hourlyRate: data.hourlyRate,
-        canBookOnline: data.canBookOnline,
-        isActive: data.isActive,
+        serviceIds: data.serviceIds || [],
       });
       
-      const newStaff = await response.json();
+      return await response.json();
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/staff"] });
       
-      // Assign services to staff
-      if (data.serviceIds && data.serviceIds.length > 0) {
-        for (const serviceId of data.serviceIds) {
-          await apiRequest("POST", "/api/staff/services", {
-            staffId: newStaff.id,
-            serviceId,
-          });
-        }
+      // Show appropriate message based on email status
+      const emailSent = result.emailStatus?.sent;
+      const invitationInfo = result.invitation;
+      
+      if (emailSent) {
+        toast({
+          title: "Staff member invited successfully",
+          description: `An invitation email has been sent to ${result.staff.email}.`,
+        });
+      } else {
+        // If email failed but staff was created, show credentials
+        toast({
+          title: "Staff member created",
+          description: (
+            <div className="space-y-2">
+              <p>Staff member was created successfully, but the invitation email could not be sent.</p>
+              <p className="font-mono text-sm">
+                Email: {invitationInfo.sentTo}<br/>
+                Password: {invitationInfo.temporaryPassword}
+              </p>
+              <p className="text-xs text-muted-foreground">Please share these credentials manually.</p>
+            </div>
+          ) as any,
+          duration: 10000, // Show for longer since it contains important info
+        });
       }
       
-      return newStaff;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/staff"] });
-      toast({
-        title: "Staff member created",
-        description: "The staff member has been successfully added.",
-      });
       onOpenChange(false);
       form.reset();
     },
     onError: (error: any) => {
       toast({
-        title: "Failed to create staff member",
+        title: "Failed to invite staff member",
         description: error.message || "Please try again.",
         variant: "destructive",
       });
