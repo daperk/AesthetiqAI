@@ -9,7 +9,7 @@ export const userRoleEnum = pgEnum("user_role", ["super_admin", "clinic_admin", 
 export const staffRoleEnum = pgEnum("staff_role", ["admin", "receptionist", "provider"]);
 export const commissionTypeEnum = pgEnum("commission_type", ["percentage", "flat"]);
 export const subscriptionStatusEnum = pgEnum("subscription_status", ["active", "past_due", "canceled", "trialing", "incomplete"]);
-export const appointmentStatusEnum = pgEnum("appointment_status", ["scheduled", "confirmed", "in_progress", "completed", "canceled", "no_show"]);
+export const appointmentStatusEnum = pgEnum("appointment_status", ["scheduled", "confirmed", "in_progress", "completed", "canceled", "no_show", "cancellation_requested"]);
 export const paymentStatusEnum = pgEnum("payment_status", ["pending", "completed", "failed", "refunded"]);
 export const membershipStatusEnum = pgEnum("membership_status", ["active", "expired", "canceled", "suspended"]);
 export const planTierEnum = pgEnum("plan_tier", ["starter", "professional", "business", "enterprise", "medical_chain"]);
@@ -181,6 +181,7 @@ export const services = pgTable("services", {
   price: decimal("price", { precision: 10, scale: 2 }),
   depositRequired: boolean("deposit_required").default(false),
   depositAmount: decimal("deposit_amount", { precision: 10, scale: 2 }),
+  paymentType: text("payment_type").default("full"), // "deposit" or "full"  
   requiresConsent: boolean("requires_consent").default(false),
   requiresStaff: boolean("requires_staff").default(true),
   availableStaffIds: jsonb("available_staff_ids"),
@@ -625,6 +626,10 @@ export const insertClientLocationSchema = createInsertSchema(clientLocations).om
 export const insertServiceSchema = createInsertSchema(services).omit({
   id: true,
   createdAt: true
+}).extend({
+  paymentType: z.enum(["deposit", "full"]).default("full"),
+  price: z.union([z.string(), z.number()]).optional().transform(val => val ? String(val) : val),
+  depositAmount: z.union([z.string(), z.number()]).optional().transform(val => val ? String(val) : val)
 });
 
 export const insertAppointmentSchema = createInsertSchema(appointments).omit({

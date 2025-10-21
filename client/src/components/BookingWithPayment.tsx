@@ -49,9 +49,10 @@ export function BookingWithPayment({
   const { toast } = useToast();
   const { organization } = useOrganization();
 
-  // Determine payment amount based on user selection and service config
-  const isDepositPayment = bookingData.paymentType === 'deposit' && service.depositRequired;
-  const paymentAmount = isDepositPayment ? Number(service.depositAmount) : Number(service.price);
+  // Determine payment amount based on service configuration
+  const isDepositOnly = service.paymentType === 'deposit';
+  const paymentAmount = isDepositOnly ? Number(service.depositAmount || service.price) : Number(service.price);
+  const isDepositPayment = isDepositOnly;
 
   useEffect(() => {
     createPaymentIntent();
@@ -172,7 +173,14 @@ export function BookingWithPayment({
               <div className="flex items-center gap-2">
                 <DollarSign className="h-4 w-4 text-muted-foreground" />
                 <span className="font-medium">{service.name}</span>
-                <Badge variant="outline">${service.price}</Badge>
+                {isDepositOnly ? (
+                  <div className="flex gap-2">
+                    <Badge variant="outline">Total: ${service.price}</Badge>
+                    <Badge variant="default">Deposit: ${paymentAmount}</Badge>
+                  </div>
+                ) : (
+                  <Badge variant="outline">${service.price}</Badge>
+                )}
               </div>
               
               <div className="flex items-center gap-2">
@@ -197,13 +205,13 @@ export function BookingWithPayment({
                 <span>Duration: {getDuration()}</span>
               </div>
               
-              {isDepositPayment && (
-                <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                  <p className="text-sm font-medium text-blue-800 dark:text-blue-200">
-                    Deposit Required
+              {isDepositOnly && (
+                <div className="p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-800">
+                  <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                    Deposit Payment Only
                   </p>
-                  <p className="text-xs text-blue-600 dark:text-blue-300">
-                    ${service.depositAmount} deposit required. Remaining balance due at appointment.
+                  <p className="text-xs text-amber-600 dark:text-amber-300 mt-1">
+                    Paying ${paymentAmount} deposit now. Remaining ${Number(service.price) - paymentAmount} due at appointment.
                   </p>
                 </div>
               )}

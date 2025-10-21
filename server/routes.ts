@@ -1688,6 +1688,81 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Services routes
+  app.get("/api/services", requireAuth, async (req, res) => {
+    try {
+      let organizationId = req.query.organizationId as string;
+      
+      if (req.user!.role === "super_admin") {
+        if (!organizationId) {
+          return res.status(400).json({ message: "Organization ID required for super admin" });
+        }
+      } else {
+        const userOrgId = await getUserOrganizationId(req.user!);
+        if (!userOrgId) {
+          return res.status(403).json({ message: "No organization access" });
+        }
+        organizationId = userOrgId;
+      }
+
+      const services = await storage.getServicesByOrganization(organizationId);
+      res.json(services);
+    } catch (error) {
+      console.error("Get services error:", error);
+      res.status(500).json({ message: "Failed to fetch services" });
+    }
+  });
+
+  app.post("/api/services", requireAuth, requireRole("clinic_admin"), async (req, res) => {
+    try {
+      const organizationId = await getUserOrganizationId(req.user!);
+      if (!organizationId) {
+        return res.status(403).json({ message: "No organization access" });
+      }
+
+      const serviceData = insertServiceSchema.parse({
+        ...req.body,
+        organizationId
+      });
+
+      const service = await storage.createService(serviceData);
+      res.json(service);
+    } catch (error) {
+      console.error("Create service error:", error);
+      res.status(500).json({ message: "Failed to create service" });
+    }
+  });
+
+  app.patch("/api/services/:id", requireAuth, requireRole("clinic_admin"), async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      // Verify service exists and belongs to user's organization
+      const existingService = await storage.getService(id);
+      if (!existingService) {
+        return res.status(404).json({ message: "Service not found" });
+      }
+
+      const userOrgId = await getUserOrganizationId(req.user!);
+      if (req.user!.role !== "super_admin" && existingService.organizationId !== userOrgId) {
+        return res.status(403).json({ message: "Access denied - service belongs to another organization" });
+      }
+
+      // Validate the request body with the schema
+      const updates = insertServiceSchema.partial().parse(req.body);
+      
+      const service = await storage.updateService(id, updates);
+      await auditLog(req, "update", "service", service.id, updates);
+      res.json(service);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      console.error("Update service error:", error);
+      res.status(500).json({ message: "Failed to update service" });
+    }
+  });
+
   // Appointment routes
   app.get("/api/appointments", requireAuth, requireBusinessSetupComplete, async (req, res) => {
     try {
@@ -1759,6 +1834,195 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Invalid data", errors: error.errors });
       }
       res.status(500).json({ message: "Failed to create appointment" });
+    }
+  });
+
+  // Update appointment (clinic admin can edit/reschedule)
+  app.patch("/api/appointments/:id", requireAuth, requireRole("clinic_admin", "staff"), async (req, res) => {
+    try {
+      const appointmentId = req.params.id;
+      const appointment = await storage.getAppointment(appointmentId);
+      
+      if (!appointment) {
+        return res.status(404).json({ message: "Appointment not found" });
+      }
+
+      // Validate organization access
+      const userOrgId = await getUserOrganizationId(req.user!);
+      if (appointment.organizationId !== userOrgId && req.user!.role !== "super_admin") {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const updatedAppointment = await storage.updateAppointment(appointmentId, req.body);
+      await auditLog(req, "update", "appointment", appointmentId, req.body);
+      
+      res.json(updatedAppointment);
+    } catch (error) {
+      console.error("Update appointment error:", error);
+      res.status(500).json({ message: "Failed to update appointment" });
+    }
+  });
+
+  // Cancel appointment - patients request cancellation, clinics approve/cancel directly
+  app.delete("/api/appointments/:id", requireAuth, async (req, res) => {
+    try {
+      const appointmentId = req.params.id;
+      const appointment = await storage.getAppointment(appointmentId);
+      
+      if (!appointment) {
+        return res.status(404).json({ message: "Appointment not found" });
+      }
+
+      // Check if appointment is already cancelled or completed
+      if (appointment.status === "canceled" || appointment.status === "completed") {
+        return res.status(400).json({ message: `Cannot cancel ${appointment.status} appointment` });
+      }
+
+      // Check permissions - clinic admin/staff can cancel any, patients can request cancellation
+      if (req.user!.role === "patient") {
+        const client = await storage.getClientByUser(req.user!.id);
+        if (!client || client.id !== appointment.clientId) {
+          return res.status(403).json({ message: "Can only cancel your own appointments" });
+        }
+        // For patients, mark as cancellation requested
+        await storage.updateAppointment(appointmentId, { 
+          status: "cancellation_requested" as any,
+          notes: `${appointment.notes || ''}\nPatient requested cancellation on ${new Date().toLocaleDateString()}`
+        });
+        res.json({ 
+          message: "Cancellation request submitted. Clinic will review and decide on deposit retention.",
+          depositPaid: appointment.depositPaid 
+        });
+      } else {
+        // Clinic staff can directly cancel with option to retain deposit
+        const userOrgId = await getUserOrganizationId(req.user!);
+        if (appointment.organizationId !== userOrgId && req.user!.role !== "super_admin") {
+          return res.status(403).json({ message: "Access denied" });
+        }
+        
+        // Check if deposit should be retained (default: no refund for late cancellations)
+        const retainDeposit = req.query.retainDeposit !== 'false';
+        
+        await storage.updateAppointment(appointmentId, { status: "canceled" });
+        await auditLog(req, "cancel", "appointment", appointmentId, { 
+          status: "canceled",
+          depositRetained: retainDeposit,
+          depositAmount: appointment.depositPaid
+        });
+        
+        res.json({ 
+          message: `Appointment cancelled ${retainDeposit ? 'with deposit retained' : 'with full refund'}`,
+          depositRetained: retainDeposit,
+          depositAmount: appointment.depositPaid
+        });
+      }
+    } catch (error) {
+      console.error("Cancel appointment error:", error);
+      res.status(500).json({ message: "Failed to cancel appointment" });
+    }
+  });
+
+  // Process cancellation request - approve or deny with deposit retention decision
+  app.post("/api/appointments/:id/process-cancellation", requireAuth, requireRole("clinic_admin", "staff"), async (req, res) => {
+    try {
+      const { approved, retainDeposit, reason } = req.body;
+      const appointmentId = req.params.id;
+
+      // Get appointment and verify it has cancellation request
+      const appointment = await storage.getAppointment(appointmentId);
+      if (!appointment) {
+        return res.status(404).json({ message: "Appointment not found" });
+      }
+
+      if (appointment.status !== "cancellation_requested") {
+        return res.status(400).json({ message: "No cancellation request pending for this appointment" });
+      }
+
+      // Check organization access
+      const userOrgId = await getUserOrganizationId(req.user!);
+      if (appointment.organizationId !== userOrgId && req.user!.role !== "super_admin") {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      if (approved) {
+        // Approve cancellation
+        await storage.updateAppointment(appointmentId, { 
+          status: "canceled",
+          privateNotes: `${appointment.privateNotes || ''}\nCancellation approved by ${req.user!.email} on ${new Date().toLocaleDateString()}.${retainDeposit ? ' Deposit retained.' : ' Full refund issued.'} Reason: ${reason || 'N/A'}`
+        });
+
+        // Handle refund if not retaining deposit
+        if (!retainDeposit && Number(appointment.depositPaid) > 0) {
+          // Get the original payment transaction
+          const transactions = await storage.getTransactionsByAppointment(appointmentId);
+          const depositTransaction = transactions.find(t => 
+            t.type === "appointment_deposit" && t.status === "completed"
+          );
+
+          if (depositTransaction?.stripePaymentIntentId) {
+            try {
+              // Process refund through Stripe
+              const organization = await storage.getOrganization(appointment.organizationId);
+              if (stripe && organization?.stripeConnectAccountId) {
+                const refund = await stripe.refunds.create({
+                  payment_intent: depositTransaction.stripePaymentIntentId,
+                  amount: Math.round(Number(appointment.depositPaid) * 100) // Convert to cents
+                }, {
+                  stripeAccount: organization.stripeConnectAccountId
+                });
+
+                // Record refund transaction
+                await storage.createTransaction({
+                  organizationId: appointment.organizationId,
+                  clientId: appointment.clientId,
+                  appointmentId: appointment.id,
+                  amount: `-${appointment.depositPaid}`,
+                  type: "refund",
+                  status: "completed",
+                  stripePaymentIntentId: depositTransaction.stripePaymentIntentId,
+                  description: `Deposit refund for cancelled appointment`
+                });
+              }
+            } catch (refundError) {
+              console.error("Refund processing error:", refundError);
+              // Continue even if refund fails - log it for manual processing
+            }
+          }
+        }
+
+        await auditLog(req, "approve_cancellation", "appointment", appointmentId, {
+          approved: true,
+          retainDeposit,
+          depositAmount: appointment.depositPaid,
+          reason
+        });
+
+        res.json({
+          message: `Cancellation approved${retainDeposit ? ', deposit retained' : ', deposit refunded'}`,
+          approved: true,
+          retainDeposit,
+          depositAmount: appointment.depositPaid
+        });
+      } else {
+        // Deny cancellation - appointment remains scheduled
+        await storage.updateAppointment(appointmentId, { 
+          status: "scheduled",
+          privateNotes: `${appointment.privateNotes || ''}\nCancellation denied by ${req.user!.email} on ${new Date().toLocaleDateString()}. Reason: ${reason || 'N/A'}`
+        });
+
+        await auditLog(req, "deny_cancellation", "appointment", appointmentId, {
+          approved: false,
+          reason
+        });
+
+        res.json({
+          message: "Cancellation request denied, appointment remains scheduled",
+          approved: false
+        });
+      }
+    } catch (error) {
+      console.error("Process cancellation error:", error);
+      res.status(500).json({ message: "Failed to process cancellation request" });
     }
   });
 
@@ -2130,10 +2394,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Admin: Finalize appointment payment (charge remaining balance)
-  app.post("/api/appointments/:id/finalize-payment", requireRole("clinic_admin", "staff"), async (req, res) => {
+  app.post("/api/appointments/:id/finalize-payment", requireAuth, requireRole("clinic_admin", "staff"), async (req, res) => {
     try {
       const { finalTotal } = req.body;
       const appointmentId = req.params.id;
+
+      if (!finalTotal || Number(finalTotal) <= 0) {
+        return res.status(400).json({ message: "Valid final total amount required" });
+      }
 
       // Get appointment and verify permissions
       const appointment = await storage.getAppointment(appointmentId);
@@ -2142,19 +2410,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Check if user has access to this organization
-      if (req.user!.role !== "super_admin" && await getUserOrganizationId(req.user!) !== appointment.organizationId) {
+      const userOrgId = await getUserOrganizationId(req.user!);
+      if (req.user!.role !== "super_admin" && userOrgId !== appointment.organizationId) {
         return res.status(403).json({ message: "Access denied" });
       }
 
       // Get client's Stripe customer ID
       const client = await storage.getClient(appointment.clientId);
-      if (!client?.userId) {
-        return res.status(400).json({ message: "Client user account not found" });
-      }
-      
-      const clientUser = await storage.getUser(client.userId);
-      if (!clientUser?.stripeCustomerId) {
-        return res.status(400).json({ message: "Client payment method not found" });
+      if (!client) {
+        return res.status(400).json({ message: "Client not found" });
       }
 
       // Calculate remaining balance
@@ -2166,30 +2430,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const remainingBalance = Number(finalTotal) - totalPaid;
 
       if (remainingBalance <= 0) {
-        return res.status(400).json({ message: "No remaining balance to charge" });
+        // Just update the total if no additional payment needed
+        await storage.updateAppointment(appointmentId, { 
+          totalAmount: finalTotal.toString(),
+          status: "completed" 
+        });
+        return res.json({
+          message: "Appointment finalized without additional charge",
+          finalTotal,
+          remainingBalance: 0
+        });
       }
 
       // Get organization to access Stripe Connect account
       const organization = await storage.getOrganization(appointment.organizationId);
-      
-      // Create off-session payment for remaining balance
+      if (!organization?.stripeConnectAccountId) {
+        return res.status(400).json({ message: "Payment system not configured for this organization" });
+      }
+
+      // Create payment intent for remaining balance
+      if (!client.stripeCustomerId) {
+        return res.status(400).json({ message: "Client has no payment method on file. Please collect payment manually." });
+      }
+
       const paymentIntent = await stripeService.createPaymentIntent(
-        Math.round(remainingBalance * 100),
+        Math.round(remainingBalance * 100), // Convert to cents
         "usd",
-        clientUser.stripeCustomerId,
+        client.stripeCustomerId,
         {
           appointmentId: appointment.id,
-          paymentType: "remaining_balance",
-          confirm: "true",
-          off_session: "true"
+          paymentType: "remaining_balance"
         },
-        organization?.stripeConnectAccountId
+        organization.stripeConnectAccountId
       );
 
-      // Update appointment final total
-      await storage.updateAppointment(appointmentId, { totalAmount: finalTotal.toString() });
+      // Update appointment with final total
+      await storage.updateAppointment(appointmentId, { 
+        totalAmount: finalTotal.toString() 
+      });
 
-      // Create transaction record
+      // Create transaction record for the remaining balance
       await storage.createTransaction({
         organizationId: appointment.organizationId,
         clientId: appointment.clientId,
@@ -2201,18 +2481,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         description: `Remaining balance for appointment`
       });
 
-      await auditLog(req, "finalize_payment", "appointment", appointment.id, { finalTotal, remainingBalance });
+      await auditLog(req, "finalize_payment", "appointment", appointment.id, { 
+        finalTotal, 
+        remainingBalance,
+        previousTotal: appointment.totalAmount
+      });
 
       res.json({
-        message: "Payment finalized successfully",
+        message: "Payment intent created for remaining balance",
         finalTotal,
         remainingBalance,
-        paymentIntentId: paymentIntent.paymentIntentId
+        paymentIntentId: paymentIntent.paymentIntentId,
+        clientSecret: paymentIntent.clientSecret
       });
 
     } catch (error) {
       console.error("Finalize payment error:", error);
-      res.status(500).json({ message: "Failed to finalize payment" });
+      res.status(500).json({ message: "Failed to finalize payment: " + (error as any).message });
     }
   });
 
