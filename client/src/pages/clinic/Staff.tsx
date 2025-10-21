@@ -3,26 +3,33 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Textarea } from "@/components/ui/textarea";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import LoadingSpinner from "@/components/ui/loading-spinner";
 import ClinicNav from "@/components/ClinicNav";
+import StaffForm from "@/components/clinic/StaffForm";
+import StaffAvailability from "@/components/clinic/StaffAvailability";
 import { useAuth } from "@/hooks/useAuth";
 import { useOrganization } from "@/hooks/useOrganization";
 import { usePaymentRequired } from "@/hooks/usePaymentRequired";
 import { apiRequest } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
+import { Link } from "wouter";
 import { 
   Users, Plus, Search, MoreHorizontal, Calendar, DollarSign,
-  Clock, UserCheck, Settings, Mail, Phone, MapPin
+  Clock, UserCheck, Settings, Mail, Phone, MapPin, Shield,
+  Edit2, Trash2, UserX, Eye, Scissors
 } from "lucide-react";
-import type { Staff, User, Appointment } from "@/types";
+import type { Staff, Appointment, Service } from "@/types";
 
 export default function StaffPage() {
   const { user } = useAuth();
@@ -35,21 +42,10 @@ export default function StaffPage() {
   
   const [searchTerm, setSearchTerm] = useState("");
   const [filterRole, setFilterRole] = useState("all");
-  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [isStaffFormOpen, setIsStaffFormOpen] = useState(false);
   const [selectedStaff, setSelectedStaff] = useState<Staff | null>(null);
-  
-  const [newStaff, setNewStaff] = useState({
-    email: "",
-    firstName: "",
-    lastName: "",
-    role: "provider",
-    title: "",
-    specialties: "",
-    bio: "",
-    commissionRate: "",
-    hourlyRate: "",
-    isActive: true,
-  });
+  const [editingStaff, setEditingStaff] = useState<Staff | null>(null);
+  const [formMode, setFormMode] = useState<"create" | "edit">("create");
 
   const { data: staff, isLoading: staffLoading } = useQuery<Staff[]>({
     queryKey: ["/api/staff", organization?.id],
@@ -63,72 +59,72 @@ export default function StaffPage() {
     staleTime: 30000,
   });
 
-  const createStaffMutation = useMutation({
-    mutationFn: async (staffData: typeof newStaff) => {
-      // First create a user account
-      const userResponse = await apiRequest("POST", "/api/auth/register", {
-        email: staffData.email,
-        username: staffData.email,
-        password: "TempPassword123!", // Temporary password
-        firstName: staffData.firstName,
-        lastName: staffData.lastName,
-        role: "staff",
-      });
-      
-      const user = await userResponse.json();
-      
-      // Then create the staff record
-      const response = await apiRequest("POST", "/api/staff", {
-        userId: user.user.id,
-        organizationId: organization?.id,
-        role: staffData.role,
-        title: staffData.title,
-        specialties: staffData.specialties ? staffData.specialties.split(',').map(s => s.trim()) : [],
-        bio: staffData.bio,
-        commissionRate: staffData.commissionRate ? parseFloat(staffData.commissionRate) : null,
-        hourlyRate: staffData.hourlyRate ? parseFloat(staffData.hourlyRate) : null,
-        isActive: staffData.isActive,
-      });
-      
+  const { data: staffServices } = useQuery<Service[]>({
+    queryKey: ["/api/staff/services", selectedStaff?.id],
+    enabled: !!selectedStaff?.id,
+  });
+
+  const deleteStaffMutation = useMutation({
+    mutationFn: async (staffId: string) => {
+      const response = await apiRequest("DELETE", `/api/staff/${staffId}`);
       return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/staff"] });
-      setIsCreateDialogOpen(false);
-      setNewStaff({
-        email: "",
-        firstName: "",
-        lastName: "",
-        role: "provider",
-        title: "",
-        specialties: "",
-        bio: "",
-        commissionRate: "",
-        hourlyRate: "",
-        isActive: true,
-      });
+      setSelectedStaff(null);
       toast({
-        title: "Staff member added",
-        description: "New staff member has been successfully added.",
+        title: "Staff member deleted",
+        description: "The staff member has been successfully removed.",
       });
     },
     onError: () => {
       toast({
-        title: "Failed to add staff member",
+        title: "Failed to delete staff member",
         description: "Please try again.",
         variant: "destructive",
       });
     },
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    createStaffMutation.mutate(newStaff);
+  const toggleStaffStatusMutation = useMutation({
+    mutationFn: async ({ staffId, isActive }: { staffId: string; isActive: boolean }) => {
+      const response = await apiRequest("PUT", `/api/staff/${staffId}`, {
+        isActive,
+      });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/staff"] });
+      toast({
+        title: "Status updated",
+        description: "Staff member status has been updated.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Failed to update status",
+        description: "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleCreateStaff = () => {
+    setEditingStaff(null);
+    setFormMode("create");
+    setIsStaffFormOpen(true);
   };
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { name, value } = e.target;
-    setNewStaff(prev => ({ ...prev, [name]: value }));
+  const handleEditStaff = (staffMember: Staff) => {
+    setEditingStaff(staffMember);
+    setFormMode("edit");
+    setIsStaffFormOpen(true);
+  };
+
+  const handleDeleteStaff = (staffId: string) => {
+    if (confirm("Are you sure you want to delete this staff member?")) {
+      deleteStaffMutation.mutate(staffId);
+    }
   };
 
   const filteredStaff = staff?.filter(member => {
@@ -185,175 +181,27 @@ export default function StaffPage() {
         </div>
 
         {/* Actions */}
-        <div className="mb-6">
-          <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-            <DialogTrigger asChild>
-              <Button data-testid="button-add-staff">
-                <Plus className="w-4 h-4 mr-2" />
-                Add Staff Member
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-2xl">
-              <DialogHeader>
-                <DialogTitle>Add New Staff Member</DialogTitle>
-              </DialogHeader>
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="firstName">First Name</Label>
-                    <Input
-                      id="firstName"
-                      name="firstName"
-                      value={newStaff.firstName}
-                      onChange={handleInputChange}
-                      placeholder="Enter first name"
-                      required
-                      data-testid="input-staff-first-name"
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="lastName">Last Name</Label>
-                    <Input
-                      id="lastName"
-                      name="lastName"
-                      value={newStaff.lastName}
-                      onChange={handleInputChange}
-                      placeholder="Enter last name"
-                      required
-                      data-testid="input-staff-last-name"
-                    />
-                  </div>
-                </div>
-                
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    name="email"
-                    type="email"
-                    value={newStaff.email}
-                    onChange={handleInputChange}
-                    placeholder="staff@example.com"
-                    required
-                    data-testid="input-staff-email"
-                  />
-                </div>
-                
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="role">Role</Label>
-                    <Select value={newStaff.role} onValueChange={(value) => setNewStaff(prev => ({ ...prev, role: value }))}>
-                      <SelectTrigger data-testid="select-staff-role">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="admin">Admin</SelectItem>
-                        <SelectItem value="provider">Provider</SelectItem>
-                        <SelectItem value="receptionist">Receptionist</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="title">Job Title</Label>
-                    <Input
-                      id="title"
-                      name="title"
-                      value={newStaff.title}
-                      onChange={handleInputChange}
-                      placeholder="e.g., Senior Aesthetician"
-                      data-testid="input-staff-title"
-                    />
-                  </div>
-                </div>
-                
-                <div className="space-y-2">
-                  <Label htmlFor="specialties">Specialties (comma-separated)</Label>
-                  <Input
-                    id="specialties"
-                    name="specialties"
-                    value={newStaff.specialties}
-                    onChange={handleInputChange}
-                    placeholder="Facials, Botox, Dermal Fillers"
-                    data-testid="input-staff-specialties"
-                  />
-                </div>
-                
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="commissionRate">Commission Rate (%)</Label>
-                    <Input
-                      id="commissionRate"
-                      name="commissionRate"
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      max="100"
-                      value={newStaff.commissionRate}
-                      onChange={handleInputChange}
-                      placeholder="15.00"
-                      data-testid="input-staff-commission"
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="hourlyRate">Hourly Rate ($)</Label>
-                    <Input
-                      id="hourlyRate"
-                      name="hourlyRate"
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={newStaff.hourlyRate}
-                      onChange={handleInputChange}
-                      placeholder="25.00"
-                      data-testid="input-staff-hourly-rate"
-                    />
-                  </div>
-                </div>
-                
-                <div className="space-y-2">
-                  <Label htmlFor="bio">Bio</Label>
-                  <Textarea
-                    id="bio"
-                    name="bio"
-                    value={newStaff.bio}
-                    onChange={handleInputChange}
-                    placeholder="Brief bio and qualifications"
-                    data-testid="input-staff-bio"
-                  />
-                </div>
-                
-                <div className="flex items-center space-x-2">
-                  <Switch
-                    id="isActive"
-                    checked={newStaff.isActive}
-                    onCheckedChange={(checked) => setNewStaff(prev => ({ ...prev, isActive: checked }))}
-                    data-testid="switch-staff-active"
-                  />
-                  <Label htmlFor="isActive">Active staff member</Label>
-                </div>
-                
-                <div className="flex justify-end space-x-2">
-                  <Button type="button" variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
-                    Cancel
-                  </Button>
-                  <Button type="submit" disabled={createStaffMutation.isPending} data-testid="button-save-staff">
-                    {createStaffMutation.isPending ? (
-                      <div className="flex items-center space-x-2">
-                        <LoadingSpinner size="sm" />
-                        <span>Adding...</span>
-                      </div>
-                    ) : (
-                      "Add Staff Member"
-                    )}
-                  </Button>
-                </div>
-              </form>
-            </DialogContent>
-          </Dialog>
+        <div className="mb-6 flex gap-3">
+          <Button onClick={handleCreateStaff} data-testid="button-add-staff">
+            <Plus className="w-4 h-4 mr-2" />
+            Add Staff Member
+          </Button>
+          
+          <Link href="/clinic/staff-roles">
+            <Button variant="outline" data-testid="button-manage-roles">
+              <Shield className="w-4 h-4 mr-2" />
+              Manage Roles
+            </Button>
+          </Link>
         </div>
+        
+        {/* Staff Form Modal */}
+        <StaffForm
+          open={isStaffFormOpen}
+          onOpenChange={setIsStaffFormOpen}
+          staff={editingStaff}
+          mode={formMode}
+        />
 
         {/* Stats */}
         <div className="grid lg:grid-cols-4 gap-6 mb-8">
@@ -456,21 +304,64 @@ export default function StaffPage() {
                   </Button>
                   <div>
                     <CardTitle data-testid="text-staff-detail-title">
-                      {selectedStaff.title}
+                      {selectedStaff.title || "Staff Member"}
                     </CardTitle>
                     <p className="text-muted-foreground capitalize">{selectedStaff.role}</p>
                   </div>
                 </div>
-                <Button variant="outline" data-testid="button-edit-staff">
-                  Edit Staff
-                </Button>
+                <div className="flex gap-2">
+                  <Button 
+                    variant="outline" 
+                    onClick={() => handleEditStaff(selectedStaff)}
+                    data-testid="button-edit-staff"
+                  >
+                    <Edit2 className="w-4 h-4 mr-1" />
+                    Edit
+                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon" data-testid="button-staff-menu">
+                        <MoreHorizontal className="w-4 h-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        onClick={() => toggleStaffStatusMutation.mutate({
+                          staffId: selectedStaff.id,
+                          isActive: !selectedStaff.isActive
+                        })}
+                      >
+                        {selectedStaff.isActive ? (
+                          <>
+                            <UserX className="w-4 h-4 mr-2" />
+                            Deactivate
+                          </>
+                        ) : (
+                          <>
+                            <UserCheck className="w-4 h-4 mr-2" />
+                            Activate
+                          </>
+                        )}
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onClick={() => handleDeleteStaff(selectedStaff.id)}
+                        className="text-destructive"
+                      >
+                        <Trash2 className="w-4 h-4 mr-2" />
+                        Delete Staff
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
               </div>
             </CardHeader>
             <CardContent>
               <Tabs defaultValue="overview" className="space-y-6">
                 <TabsList>
                   <TabsTrigger value="overview" data-testid="tab-staff-overview">Overview</TabsTrigger>
-                  <TabsTrigger value="schedule" data-testid="tab-staff-schedule">Schedule</TabsTrigger>
+                  <TabsTrigger value="availability" data-testid="tab-staff-availability">Availability</TabsTrigger>
+                  <TabsTrigger value="services" data-testid="tab-staff-services">Services</TabsTrigger>
                   <TabsTrigger value="performance" data-testid="tab-staff-performance">Performance</TabsTrigger>
                 </TabsList>
 
@@ -497,6 +388,12 @@ export default function StaffPage() {
                           <div className="text-sm text-muted-foreground">Bio</div>
                           <div className="font-medium">{selectedStaff.bio || "No bio provided"}</div>
                         </div>
+                        <div>
+                          <div className="text-sm text-muted-foreground">Can Book Online</div>
+                          <Badge variant={selectedStaff.canBookOnline ? "default" : "secondary"}>
+                            {selectedStaff.canBookOnline ? "Yes" : "No"}
+                          </Badge>
+                        </div>
                       </CardContent>
                     </Card>
 
@@ -509,6 +406,10 @@ export default function StaffPage() {
                           <div className="flex justify-between">
                             <span className="text-muted-foreground">Commission Rate:</span>
                             <span className="font-medium">{selectedStaff.commissionRate || 0}%</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Commission Type:</span>
+                            <span className="font-medium capitalize">{selectedStaff.commissionType || "percentage"}</span>
                           </div>
                           <div className="flex justify-between">
                             <span className="text-muted-foreground">Hourly Rate:</span>
@@ -526,18 +427,52 @@ export default function StaffPage() {
                   </div>
                 </TabsContent>
 
-                <TabsContent value="schedule">
+                <TabsContent value="availability">
+                  <StaffAvailability
+                    staff={selectedStaff}
+                    organizationId={organization?.id || ""}
+                    editable={true}
+                  />
+                </TabsContent>
+
+                <TabsContent value="services">
                   <Card>
                     <CardHeader>
-                      <CardTitle className="text-lg">Today's Schedule</CardTitle>
+                      <CardTitle className="text-lg">Assigned Services</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <div className="text-center py-8">
-                        <Calendar className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-                        <p className="text-muted-foreground" data-testid="text-no-staff-schedule">
-                          No appointments scheduled for today
-                        </p>
-                      </div>
+                      {staffServices && staffServices.length > 0 ? (
+                        <div className="grid gap-2">
+                          {staffServices.map((service) => (
+                            <div
+                              key={service.id}
+                              className="flex items-center justify-between p-3 border rounded-lg"
+                            >
+                              <div>
+                                <div className="font-medium">{service.name}</div>
+                                <div className="text-sm text-muted-foreground">
+                                  {service.duration} min · ${service.price || "0.00"}
+                                </div>
+                              </div>
+                              <Badge variant="outline">{service.category || "General"}</Badge>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-center py-8">
+                          <Scissors className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                          <p className="text-muted-foreground" data-testid="text-no-services">
+                            No services assigned yet
+                          </p>
+                          <Button
+                            variant="outline"
+                            className="mt-4"
+                            onClick={() => handleEditStaff(selectedStaff)}
+                          >
+                            Assign Services
+                          </Button>
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 </TabsContent>
