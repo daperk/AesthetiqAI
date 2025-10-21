@@ -3107,6 +3107,72 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Test email sending endpoint (for debugging)
+  app.post("/api/email/test", requireAuth, requireRole("clinic_admin", "super_admin"), async (req, res) => {
+    try {
+      const { to } = req.body;
+      if (!to) {
+        return res.status(400).json({ message: "Email address is required" });
+      }
+
+      console.log(`🧪 Testing email to: ${to}`);
+
+      const emailResult = await sendEmail({
+        to,
+        subject: "Test Email from Aesthiq",
+        html: `
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <style>
+              body { font-family: Arial, sans-serif; }
+              .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+              .header { background: linear-gradient(135deg, #f5f1e8 0%, #e8ddd0 100%); padding: 30px; text-align: center; }
+              h1 { color: #8b7355; margin: 0; }
+              .content { padding: 30px; background: white; }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <div class="header">
+                <h1>Test Email</h1>
+              </div>
+              <div class="content">
+                <p>This is a test email from your Aesthiq platform.</p>
+                <p>If you received this email, your email configuration is working correctly!</p>
+                <p>Timestamp: ${new Date().toISOString()}</p>
+              </div>
+            </div>
+          </body>
+          </html>
+        `,
+        text: `This is a test email from Aesthiq. If you received this, your email configuration is working! Timestamp: ${new Date().toISOString()}`,
+        fromName: "Aesthiq Test"
+      });
+
+      if (emailResult.sent) {
+        res.json({
+          success: true,
+          message: "Test email sent successfully",
+          debugInfo: emailResult.debugInfo
+        });
+      } else {
+        res.status(500).json({
+          success: false,
+          message: "Failed to send test email",
+          error: emailResult.error
+        });
+      }
+    } catch (error) {
+      console.error("Test email error:", error);
+      res.status(500).json({ 
+        success: false,
+        message: "Failed to send test email", 
+        error: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  });
+
   // Get current user's organization
   app.get("/api/organization", requireAuth, async (req, res) => {
     try {
