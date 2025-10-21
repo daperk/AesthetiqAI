@@ -30,6 +30,7 @@ import Memberships from "@/pages/clinic/Memberships";
 import Staff from "@/pages/clinic/Staff";
 import StaffRoles from "@/pages/clinic/StaffRoles";
 import Reports from "@/pages/clinic/Reports";
+import Settings from "@/pages/clinic/Settings";
 import PaymentSetup from "@/pages/clinic/PaymentSetup";
 import BusinessSetup from "@/pages/clinic/BusinessSetup";
 import ShareLink from "@/pages/clinic/ShareLink";
@@ -95,6 +96,7 @@ function Router() {
               <Route path="/clinic/rewards" component={() => (<RequireBusinessSetup><ClinicRewards /></RequireBusinessSetup>)} />
               <Route path="/clinic/staff" component={() => (<RequireBusinessSetup><Staff /></RequireBusinessSetup>)} />
               <Route path="/clinic/staff-roles" component={() => (<RequireBusinessSetup><StaffRoles /></RequireBusinessSetup>)} />
+              <Route path="/clinic/settings" component={() => (<RequireBusinessSetup><Settings /></RequireBusinessSetup>)} />
               <Route path="/clinic/reports" component={() => (<RequireBusinessSetup><Reports /></RequireBusinessSetup>)} />
               <Route path="/clinic/share-link" component={() => (<RequireBusinessSetup><ShareLink /></RequireBusinessSetup>)} />
               <Route path="/clinic/setup" component={BusinessSetup} />

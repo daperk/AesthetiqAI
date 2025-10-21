@@ -169,7 +169,7 @@ export default function StaffForm({
         userId: user.user.id,
         organizationId: organization?.id,
         role: data.role,
-        roleId: data.roleId,
+        roleId: data.roleId === "none" ? null : data.roleId,
         title: data.title,
         specialties: data.specialties || [],
         bio: data.bio,
@@ -219,7 +219,7 @@ export default function StaffForm({
       // Update staff record
       const response = await apiRequest("PUT", `/api/staff/${staff.id}`, {
         role: data.role,
-        roleId: data.roleId,
+        roleId: data.roleId === "none" ? null : data.roleId,
         title: data.title,
         specialties: data.specialties || [],
         bio: data.bio,
@@ -416,7 +416,7 @@ export default function StaffForm({
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="">None</SelectItem>
+                          <SelectItem value="none">None</SelectItem>
                           {staffRoles?.map(role => (
                             <SelectItem key={role.id} value={role.id}>
                               {role.name}

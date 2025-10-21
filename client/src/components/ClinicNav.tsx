@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Link, useLocation } from "wouter";
 import { 
   LayoutDashboard, Calendar, Users, Scissors, Crown, 
-  UserPlus, TrendingUp, Share2, Gift
+  UserPlus, TrendingUp, Share2, Gift, Settings2
 } from "lucide-react";
 
 export default function ClinicNav() {
@@ -108,6 +108,17 @@ export default function ClinicNav() {
           >
             <TrendingUp className="w-4 h-4 sm:mr-2" />
             <span className="hidden sm:inline">Reports</span>
+          </Button>
+        </Link>
+        <Link href="/clinic/settings">
+          <Button
+            variant={location === "/clinic/settings" ? "default" : "ghost"}
+            size="sm"
+            className="relative whitespace-nowrap"
+            data-testid="tab-settings"
+          >
+            <Settings2 className="w-4 h-4 sm:mr-2" />
+            <span className="hidden sm:inline">Settings</span>
           </Button>
         </Link>
       </div>
