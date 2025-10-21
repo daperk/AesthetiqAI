@@ -62,15 +62,15 @@ export default function Clients() {
 
   const createClientMutation = useMutation({
     mutationFn: async (clientData: typeof newClient) => {
-      const response = await apiRequest("POST", "/api/clients", {
+      // Use the invitation endpoint to create both user and client
+      const response = await apiRequest("POST", "/api/patients/invite", {
         ...clientData,
-        // organizationId is now auto-inferred by backend
         dateOfBirth: clientData.dateOfBirth ? clientData.dateOfBirth : undefined,
         address: clientData.address ? { street: clientData.address } : undefined,
       });
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       // Invalidate both general and organization-specific client queries
       queryClient.invalidateQueries({ queryKey: ["/api/clients"] });
       queryClient.invalidateQueries({ queryKey: ["/api/clients", organization?.id] });
@@ -84,15 +84,40 @@ export default function Clients() {
         address: "",
         notes: "",
       });
-      toast({
-        title: "Client created",
-        description: "New client has been successfully added.",
-      });
+      
+      // Show appropriate message based on email status
+      if (result.emailStatus?.sent) {
+        toast({
+          title: "Client invited successfully",
+          description: `An invitation email has been sent to ${result.patient?.email || result.invitation?.sentTo}.`,
+        });
+      } else if (result.invitation) {
+        // If email failed but patient was created, show credentials
+        toast({
+          title: "Client created",
+          description: (
+            <div className="space-y-2">
+              <p>Client was created successfully, but the invitation email could not be sent.</p>
+              <p className="font-mono text-sm">
+                Email: {result.invitation.sentTo}<br/>
+                Password: {result.invitation.temporaryPassword}
+              </p>
+              <p className="text-xs text-muted-foreground">Please share these credentials manually.</p>
+            </div>
+          ) as any,
+          duration: 10000, // Show for longer since it contains important info
+        });
+      } else {
+        toast({
+          title: "Client created",
+          description: "New client has been successfully added.",
+        });
+      }
     },
-    onError: () => {
+    onError: (error: any) => {
       toast({
-        title: "Failed to create client",
-        description: "Please try again.",
+        title: "Failed to invite client",
+        description: error.message || "Please try again.",
         variant: "destructive",
       });
     },
@@ -162,7 +187,10 @@ export default function Clients() {
             </DialogTrigger>
             <DialogContent className="max-w-2xl">
               <DialogHeader>
-                <DialogTitle>Add New Client</DialogTitle>
+                <DialogTitle>Invite New Client</DialogTitle>
+                <DialogDescription>
+                  Enter the client's information. They will receive an invitation email with login credentials.
+                </DialogDescription>
               </DialogHeader>
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
@@ -266,10 +294,10 @@ export default function Clients() {
                     {createClientMutation.isPending ? (
                       <div className="flex items-center space-x-2">
                         <LoadingSpinner size="sm" />
-                        <span>Adding...</span>
+                        <span>Inviting...</span>
                       </div>
                     ) : (
-                      "Add Client"
+                      "Send Invitation"
                     )}
                   </Button>
                 </div>
