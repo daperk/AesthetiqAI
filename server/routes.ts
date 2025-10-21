@@ -658,7 +658,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       try {
         const client = await storage.getClientByUser(req.user.id);
         if (client) {
-          const organization = await storage.getOrganizationBySlug(organizationSlug);
+          // Check if slug is for a location first (same logic as registration)
+          let location = await storage.getLocationBySlug(organizationSlug);
+          let organization;
+          
+          if (location && location.isActive) {
+            // It's a location slug - get the organization
+            organization = await storage.getOrganization(location.organizationId);
+          } else {
+            // Try organization slug (backward compatibility)
+            organization = await storage.getOrganizationBySlug(organizationSlug);
+          }
+          
           if (!organization || client.organizationId !== organization.id) {
             req.logout((err) => {
               if (err) {
