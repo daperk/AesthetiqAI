@@ -19,7 +19,7 @@ import { apiRequest } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { 
   Users, Plus, Search, Filter, MoreHorizontal, Phone, Mail,
-  Calendar, DollarSign, Crown, Gift, MapPin
+  Calendar, DollarSign, Crown, Gift, MapPin, CreditCard
 } from "lucide-react";
 import type { Client, Appointment, Membership, Transaction } from "@/types";
 
