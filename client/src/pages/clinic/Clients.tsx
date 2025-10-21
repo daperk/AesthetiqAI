@@ -542,6 +542,14 @@ export default function Clients() {
                           <div className="text-xs text-muted-foreground">
                             Member since {client.createdAt ? new Date(client.createdAt).toLocaleDateString() : "Unknown"}
                           </div>
+                          {client.stripeCustomerId && (
+                            <div className="flex items-center gap-2 mt-1">
+                              <Badge variant="outline" className="text-xs bg-green-50 border-green-200">
+                                <CreditCard className="h-3 w-3 mr-1" />
+                                Stripe Connected
+                              </Badge>
+                            </div>
+                          )}
                         </div>
                       </div>
                       

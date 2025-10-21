@@ -3235,6 +3235,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
+      // Create Stripe customer on clinic's connected account
+      let stripeCustomerId = null;
+      if (organization.stripeConnectAccountId && stripe) {
+        try {
+          const stripeCustomer = await stripeService.createCustomer(
+            email,
+            `${firstName} ${lastName}`,
+            organizationId,
+            organization.stripeConnectAccountId // Create on connected account
+          );
+          
+          stripeCustomerId = stripeCustomer.id;
+          
+          // Update patient record with Stripe customer ID
+          await storage.updateClient(client.id, {
+            stripeCustomerId: stripeCustomerId
+          });
+          
+          console.log(`✅ Stripe customer created on connected account: ${stripeCustomerId}`);
+          console.log(`   Connected Account: ${organization.stripeConnectAccountId}`);
+        } catch (stripeError) {
+          console.error('⚠️ Failed to create Stripe customer (non-fatal):', stripeError);
+          // Continue without Stripe - this is not a fatal error
+        }
+      } else if (!organization.stripeConnectAccountId) {
+        console.log(`⚠️ Organization ${organizationId} does not have Stripe Connect configured`);
+      }
+
       // Prepare invitation link
       const invitationLink = `${req.protocol}://${req.get('host')}/c/${organization.slug}/register`;
       
@@ -3380,7 +3408,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
           email: client.email,
           phone: client.phone,
           status: client.status,
+          stripeCustomerId: stripeCustomerId,
           createdAt: new Date().toISOString()
+        },
+        stripe: {
+          customerCreated: !!stripeCustomerId,
+          customerId: stripeCustomerId,
+          connectedAccountId: organization.stripeConnectAccountId || null,
+          message: stripeCustomerId 
+            ? `✅ Patient synced to Stripe on clinic's connected account`
+            : organization.stripeConnectAccountId 
+              ? '⚠️ Failed to create Stripe customer (non-fatal)'
+              : '⚠️ Clinic does not have Stripe Connect configured'
         },
         invitation: {
           link: invitationLink,
