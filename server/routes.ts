@@ -1701,30 +1701,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Services routes
-  app.get("/api/services", requireAuth, async (req, res) => {
-    try {
-      let organizationId = req.query.organizationId as string;
-      
-      if (req.user!.role === "super_admin") {
-        if (!organizationId) {
-          return res.status(400).json({ message: "Organization ID required for super admin" });
-        }
-      } else {
-        const userOrgId = await getUserOrganizationId(req.user!);
-        if (!userOrgId) {
-          return res.status(403).json({ message: "No organization access" });
-        }
-        organizationId = userOrgId;
-      }
-
-      const services = await storage.getServicesByOrganization(organizationId);
-      res.json(services);
-    } catch (error) {
-      console.error("Get services error:", error);
-      res.status(500).json({ message: "Failed to fetch services" });
-    }
-  });
-
   app.post("/api/services", requireAuth, requireRole("clinic_admin"), async (req, res) => {
     try {
       const organizationId = await getUserOrganizationId(req.user!);
