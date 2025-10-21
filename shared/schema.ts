@@ -415,6 +415,72 @@ export const featureFlags = pgTable("feature_flags", {
   createdAt: timestamp("created_at").default(sql`now()`)
 });
 
+// Marketing and Communications Tables
+export const messageTemplateTypeEnum = pgEnum("message_template_type", ["sms", "email"]);
+export const messageTemplateCategoryEnum = pgEnum("message_template_category", ["appointment", "marketing", "birthday", "membership", "follow_up", "promotion"]);
+export const campaignTypeEnum = pgEnum("campaign_type", ["sms", "email", "both"]);
+export const campaignStatusEnum = pgEnum("campaign_status", ["draft", "scheduled", "sent", "cancelled"]);
+export const campaignRecipientStatusEnum = pgEnum("campaign_recipient_status", ["pending", "sent", "failed"]);
+
+export const messageTemplates = pgTable("message_templates", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: uuid("organization_id").notNull(),
+  name: text("name").notNull(),
+  type: messageTemplateTypeEnum("type").notNull(),
+  category: messageTemplateCategoryEnum("category").notNull(),
+  subject: text("subject"), // For email templates
+  content: text("content").notNull(),
+  variables: jsonb("variables"), // Array of available variables like ["firstName", "appointmentDate"]
+  isDefault: boolean("is_default").default(false),
+  isActive: boolean("is_active").default(true),
+  usageCount: integer("usage_count").default(0),
+  lastUsedAt: timestamp("last_used_at"),
+  createdAt: timestamp("created_at").default(sql`now()`),
+  updatedAt: timestamp("updated_at").default(sql`now()`)
+});
+
+export const marketingCampaigns = pgTable("marketing_campaigns", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: uuid("organization_id").notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  type: campaignTypeEnum("type").notNull(),
+  status: campaignStatusEnum("status").default("draft"),
+  templateId: uuid("template_id"), // Reference to message template
+  subject: text("subject"), // For email campaigns
+  content: text("content").notNull(),
+  audience: jsonb("audience"), // Filtering criteria for target audience
+  scheduledDate: timestamp("scheduled_date"),
+  sentDate: timestamp("sent_date"),
+  sentCount: integer("sent_count").default(0),
+  successCount: integer("success_count").default(0),
+  failedCount: integer("failed_count").default(0),
+  clickCount: integer("click_count").default(0),
+  openCount: integer("open_count").default(0),
+  estimatedRecipients: integer("estimated_recipients").default(0),
+  cost: decimal("cost", { precision: 10, scale: 2 }).default("0"),
+  createdBy: uuid("created_by"),
+  createdAt: timestamp("created_at").default(sql`now()`),
+  updatedAt: timestamp("updated_at").default(sql`now()`)
+});
+
+export const campaignRecipients = pgTable("campaign_recipients", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  campaignId: uuid("campaign_id").notNull(),
+  clientId: uuid("client_id").notNull(),
+  status: campaignRecipientStatusEnum("status").default("pending"),
+  messageId: text("message_id"), // SMS or Email message ID from provider
+  sentAt: timestamp("sent_at"),
+  deliveredAt: timestamp("delivered_at"),
+  openedAt: timestamp("opened_at"),
+  clickedAt: timestamp("clicked_at"),
+  error: text("error"),
+  phoneNumber: text("phone_number"),
+  email: text("email"),
+  variables: jsonb("variables"), // Personalized variables for this recipient
+  createdAt: timestamp("created_at").default(sql`now()`)
+});
+
 // Relations
 export const usersRelations = relations(users, ({ one, many }) => ({
   staff: one(staff, { fields: [users.id], references: [staff.userId] }),
@@ -634,6 +700,37 @@ export const insertFeatureFlagSchema = createInsertSchema(featureFlags).omit({
   createdAt: true
 });
 
+export const insertMessageTemplateSchema = createInsertSchema(messageTemplates).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  lastUsedAt: true,
+  usageCount: true
+});
+
+export const insertMarketingCampaignSchema = createInsertSchema(marketingCampaigns).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  sentDate: true,
+  sentCount: true,
+  successCount: true,
+  failedCount: true,
+  clickCount: true,
+  openCount: true
+}).extend({
+  cost: z.union([z.string(), z.number()]).optional().transform(val => val ? String(val) : "0")
+});
+
+export const insertCampaignRecipientSchema = createInsertSchema(campaignRecipients).omit({
+  id: true,
+  createdAt: true,
+  sentAt: true,
+  deliveredAt: true,
+  openedAt: true,
+  clickedAt: true
+});
+
 // Types
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -683,3 +780,9 @@ export type FileStorage = typeof fileStorage.$inferSelect;
 export type InsertFileStorage = z.infer<typeof insertFileStorageSchema>;
 export type FeatureFlag = typeof featureFlags.$inferSelect;
 export type InsertFeatureFlag = z.infer<typeof insertFeatureFlagSchema>;
+export type MessageTemplate = typeof messageTemplates.$inferSelect;
+export type InsertMessageTemplate = z.infer<typeof insertMessageTemplateSchema>;
+export type MarketingCampaign = typeof marketingCampaigns.$inferSelect;
+export type InsertMarketingCampaign = z.infer<typeof insertMarketingCampaignSchema>;
+export type CampaignRecipient = typeof campaignRecipients.$inferSelect;
+export type InsertCampaignRecipient = z.infer<typeof insertCampaignRecipientSchema>;

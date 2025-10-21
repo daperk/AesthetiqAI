@@ -2,6 +2,7 @@ import {
   users, organizations, subscriptionPlans, locations, staff, staffRoles, staffAvailability, staffServices,
   clients, clientLocations, services, appointments, memberships, membershipTiers, rewards, rewardOptions, 
   transactions, addOns, organizationAddOns, usageLogs, aiInsights, notifications, auditLogs, fileStorage, featureFlags,
+  messageTemplates, marketingCampaigns, campaignRecipients,
   type User, type InsertUser, type Organization, type InsertOrganization,
   type SubscriptionPlan, type InsertSubscriptionPlan, type Location, type InsertLocation,
   type Staff, type InsertStaff, type StaffRole, type InsertStaffRole,
@@ -13,7 +14,9 @@ import {
   type Transaction, type InsertTransaction, type AddOn, type InsertAddOn, type UsageLog, type InsertUsageLog,
   type AiInsight, type InsertAiInsight, type Notification, type InsertNotification,
   type AuditLog, type InsertAuditLog, type FileStorage, type InsertFileStorage,
-  type FeatureFlag, type InsertFeatureFlag
+  type FeatureFlag, type InsertFeatureFlag,
+  type MessageTemplate, type InsertMessageTemplate, type MarketingCampaign, type InsertMarketingCampaign,
+  type CampaignRecipient, type InsertCampaignRecipient
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, asc, gte, lte, like, count, sql } from "drizzle-orm";
@@ -166,6 +169,29 @@ export interface IStorage {
   // Audit Logs
   createAuditLog(log: InsertAuditLog): Promise<AuditLog>;
   getAuditLogsByOrganization(organizationId: string): Promise<AuditLog[]>;
+
+  // Message Templates
+  getMessageTemplatesByOrganization(organizationId: string): Promise<MessageTemplate[]>;
+  getMessageTemplatesByCategory(organizationId: string, category: string): Promise<MessageTemplate[]>;
+  getMessageTemplate(id: string): Promise<MessageTemplate | undefined>;
+  createMessageTemplate(template: InsertMessageTemplate): Promise<MessageTemplate>;
+  updateMessageTemplate(id: string, updates: Partial<InsertMessageTemplate>): Promise<MessageTemplate>;
+  deleteMessageTemplate(id: string): Promise<boolean>;
+  getDefaultTemplates(): Promise<MessageTemplate[]>;
+
+  // Marketing Campaigns
+  getMarketingCampaignsByOrganization(organizationId: string): Promise<MarketingCampaign[]>;
+  getMarketingCampaign(id: string): Promise<MarketingCampaign | undefined>;
+  createMarketingCampaign(campaign: InsertMarketingCampaign): Promise<MarketingCampaign>;
+  updateMarketingCampaign(id: string, updates: Partial<InsertMarketingCampaign>): Promise<MarketingCampaign>;
+  deleteMarketingCampaign(id: string): Promise<boolean>;
+  getCampaignAnalytics(campaignId: string): Promise<any>;
+
+  // Campaign Recipients
+  getCampaignRecipients(campaignId: string): Promise<CampaignRecipient[]>;
+  createCampaignRecipient(recipient: InsertCampaignRecipient): Promise<CampaignRecipient>;
+  updateCampaignRecipient(id: string, updates: Partial<InsertCampaignRecipient>): Promise<CampaignRecipient>;
+  bulkCreateCampaignRecipients(recipients: InsertCampaignRecipient[]): Promise<CampaignRecipient[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -953,6 +979,143 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(locations)
       .where(eq(locations.isActive, true))
       .orderBy(asc(locations.name));
+  }
+
+  // Message Templates
+  async getMessageTemplatesByOrganization(organizationId: string): Promise<MessageTemplate[]> {
+    return await db.select().from(messageTemplates)
+      .where(eq(messageTemplates.organizationId, organizationId))
+      .orderBy(desc(messageTemplates.createdAt));
+  }
+
+  async getMessageTemplatesByCategory(organizationId: string, category: string): Promise<MessageTemplate[]> {
+    return await db.select().from(messageTemplates)
+      .where(and(
+        eq(messageTemplates.organizationId, organizationId),
+        eq(messageTemplates.category, category as any)
+      ))
+      .orderBy(desc(messageTemplates.createdAt));
+  }
+
+  async getMessageTemplate(id: string): Promise<MessageTemplate | undefined> {
+    const [template] = await db.select().from(messageTemplates).where(eq(messageTemplates.id, id));
+    return template || undefined;
+  }
+
+  async createMessageTemplate(insertTemplate: InsertMessageTemplate): Promise<MessageTemplate> {
+    const [template] = await db.insert(messageTemplates).values(insertTemplate).returning();
+    return template;
+  }
+
+  async updateMessageTemplate(id: string, updates: Partial<InsertMessageTemplate>): Promise<MessageTemplate> {
+    const [template] = await db.update(messageTemplates)
+      .set({ ...updates, updatedAt: sql`now()` })
+      .where(eq(messageTemplates.id, id))
+      .returning();
+    return template;
+  }
+
+  async deleteMessageTemplate(id: string): Promise<boolean> {
+    const result = await db.delete(messageTemplates).where(eq(messageTemplates.id, id));
+    return true;
+  }
+
+  async getDefaultTemplates(): Promise<MessageTemplate[]> {
+    return await db.select().from(messageTemplates)
+      .where(eq(messageTemplates.isDefault, true))
+      .orderBy(asc(messageTemplates.category));
+  }
+
+  // Marketing Campaigns
+  async getMarketingCampaignsByOrganization(organizationId: string): Promise<MarketingCampaign[]> {
+    return await db.select().from(marketingCampaigns)
+      .where(eq(marketingCampaigns.organizationId, organizationId))
+      .orderBy(desc(marketingCampaigns.createdAt));
+  }
+
+  async getMarketingCampaign(id: string): Promise<MarketingCampaign | undefined> {
+    const [campaign] = await db.select().from(marketingCampaigns).where(eq(marketingCampaigns.id, id));
+    return campaign || undefined;
+  }
+
+  async createMarketingCampaign(insertCampaign: InsertMarketingCampaign): Promise<MarketingCampaign> {
+    const [campaign] = await db.insert(marketingCampaigns).values(insertCampaign).returning();
+    return campaign;
+  }
+
+  async updateMarketingCampaign(id: string, updates: Partial<InsertMarketingCampaign>): Promise<MarketingCampaign> {
+    const [campaign] = await db.update(marketingCampaigns)
+      .set({ ...updates, updatedAt: sql`now()` })
+      .where(eq(marketingCampaigns.id, id))
+      .returning();
+    return campaign;
+  }
+
+  async deleteMarketingCampaign(id: string): Promise<boolean> {
+    // Delete recipients first
+    await db.delete(campaignRecipients).where(eq(campaignRecipients.campaignId, id));
+    // Then delete campaign
+    await db.delete(marketingCampaigns).where(eq(marketingCampaigns.id, id));
+    return true;
+  }
+
+  async getCampaignAnalytics(campaignId: string): Promise<any> {
+    const [campaign] = await db.select().from(marketingCampaigns).where(eq(marketingCampaigns.id, campaignId));
+    
+    if (!campaign) {
+      return null;
+    }
+
+    const recipients = await db.select().from(campaignRecipients)
+      .where(eq(campaignRecipients.campaignId, campaignId));
+
+    const sentCount = recipients.filter(r => r.status === 'sent').length;
+    const failedCount = recipients.filter(r => r.status === 'failed').length;
+    const pendingCount = recipients.filter(r => r.status === 'pending').length;
+    const openedCount = recipients.filter(r => r.openedAt !== null).length;
+    const clickedCount = recipients.filter(r => r.clickedAt !== null).length;
+
+    return {
+      campaign,
+      analytics: {
+        totalRecipients: recipients.length,
+        sentCount,
+        failedCount,
+        pendingCount,
+        openedCount,
+        clickedCount,
+        openRate: recipients.length > 0 ? (openedCount / recipients.length * 100).toFixed(1) : 0,
+        clickRate: recipients.length > 0 ? (clickedCount / recipients.length * 100).toFixed(1) : 0,
+        successRate: recipients.length > 0 ? (sentCount / recipients.length * 100).toFixed(1) : 0
+      }
+    };
+  }
+
+  // Campaign Recipients
+  async getCampaignRecipients(campaignId: string): Promise<CampaignRecipient[]> {
+    return await db.select().from(campaignRecipients)
+      .where(eq(campaignRecipients.campaignId, campaignId))
+      .orderBy(desc(campaignRecipients.createdAt));
+  }
+
+  async createCampaignRecipient(insertRecipient: InsertCampaignRecipient): Promise<CampaignRecipient> {
+    const [recipient] = await db.insert(campaignRecipients).values(insertRecipient).returning();
+    return recipient;
+  }
+
+  async updateCampaignRecipient(id: string, updates: Partial<InsertCampaignRecipient>): Promise<CampaignRecipient> {
+    const [recipient] = await db.update(campaignRecipients)
+      .set(updates)
+      .where(eq(campaignRecipients.id, id))
+      .returning();
+    return recipient;
+  }
+
+  async bulkCreateCampaignRecipients(recipients: InsertCampaignRecipient[]): Promise<CampaignRecipient[]> {
+    if (recipients.length === 0) {
+      return [];
+    }
+    return await db.insert(campaignRecipients).values(recipients).returning();
   }
 }
 

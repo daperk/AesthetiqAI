@@ -4645,6 +4645,424 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // SMS and Email Marketing Endpoints
+  
+  // Send individual SMS
+  app.post("/api/sms/send", requireAuth, async (req, res) => {
+    try {
+      const { to, message, organizationId } = req.body;
+      
+      // Validate required fields
+      if (!to || !message) {
+        return res.status(400).json({ 
+          success: false, 
+          message: "Phone number and message are required" 
+        });
+      }
+      
+      // Verify user has access to organization
+      const userOrgId = await getUserOrganizationId(req.user!);
+      if (organizationId && organizationId !== userOrgId && req.user!.role !== 'super_admin') {
+        return res.status(403).json({ 
+          success: false, 
+          message: "Access denied to this organization" 
+        });
+      }
+      
+      const targetOrgId = organizationId || userOrgId;
+      if (!targetOrgId) {
+        return res.status(400).json({ 
+          success: false, 
+          message: "No organization found" 
+        });
+      }
+      
+      // Import Twilio service
+      const twilioService = await import("./services/twilio");
+      
+      // Send SMS
+      const result = await twilioService.sendSMS({
+        to,
+        message
+      });
+      
+      // Log usage
+      await storage.createUsageLog({
+        organizationId: targetOrgId,
+        feature: 'sms_send',
+        usage: 1,
+        metadata: { to, messageLength: message.length }
+      });
+      
+      res.json(result);
+    } catch (error) {
+      console.error("SMS send error:", error);
+      res.status(500).json({ 
+        success: false, 
+        message: "Failed to send SMS",
+        error: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  });
+  
+  // Send bulk SMS campaign
+  app.post("/api/sms/campaign", requireAuth, async (req, res) => {
+    try {
+      const { campaignId, recipients, template, organizationId } = req.body;
+      
+      // Verify user has access
+      const userOrgId = await getUserOrganizationId(req.user!);
+      const targetOrgId = organizationId || userOrgId;
+      
+      if (!targetOrgId) {
+        return res.status(400).json({ 
+          success: false, 
+          message: "No organization found" 
+        });
+      }
+      
+      if (organizationId && organizationId !== userOrgId && req.user!.role !== 'super_admin') {
+        return res.status(403).json({ 
+          success: false, 
+          message: "Access denied" 
+        });
+      }
+      
+      // Import services
+      const twilioService = await import("./services/twilio");
+      
+      // Send bulk SMS
+      const result = await twilioService.sendBulkSMS({
+        recipients,
+        template
+      });
+      
+      // Update campaign if provided
+      if (campaignId) {
+        await storage.updateMarketingCampaign(campaignId, {
+          status: 'sent',
+          sentDate: new Date(),
+          sentCount: result.sent,
+          failedCount: result.failed
+        });
+        
+        // Update recipients status
+        for (const recipientResult of result.results) {
+          const recipient = recipients.find((r: any) => r.to === recipientResult.to);
+          if (recipient?.clientId) {
+            await storage.createCampaignRecipient({
+              campaignId,
+              clientId: recipient.clientId,
+              status: recipientResult.success ? 'sent' : 'failed',
+              phoneNumber: recipientResult.to,
+              messageId: recipientResult.messageId,
+              error: recipientResult.error,
+              sentAt: recipientResult.success ? new Date() : undefined,
+              variables: recipient.variables
+            });
+          }
+        }
+      }
+      
+      // Log usage
+      await storage.createUsageLog({
+        organizationId: targetOrgId,
+        feature: 'sms_campaign',
+        usage: recipients.length,
+        metadata: { campaignId, sent: result.sent, failed: result.failed }
+      });
+      
+      res.json(result);
+    } catch (error) {
+      console.error("SMS campaign error:", error);
+      res.status(500).json({ 
+        success: false, 
+        message: "Failed to send SMS campaign",
+        error: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  });
+  
+  // Get message templates
+  app.get("/api/message-templates/:organizationId", requireAuth, async (req, res) => {
+    try {
+      const { organizationId } = req.params;
+      const { category } = req.query;
+      
+      // Verify access
+      const userOrgId = await getUserOrganizationId(req.user!);
+      if (organizationId !== userOrgId && req.user!.role !== 'super_admin') {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      let templates;
+      if (category) {
+        templates = await storage.getMessageTemplatesByCategory(organizationId, category as string);
+      } else {
+        templates = await storage.getMessageTemplatesByOrganization(organizationId);
+      }
+      
+      res.json(templates);
+    } catch (error) {
+      console.error("Get templates error:", error);
+      res.status(500).json({ message: "Failed to get templates" });
+    }
+  });
+  
+  // Create message template
+  app.post("/api/message-templates/:organizationId", requireAuth, async (req, res) => {
+    try {
+      const { organizationId } = req.params;
+      
+      // Verify access
+      const userOrgId = await getUserOrganizationId(req.user!);
+      if (organizationId !== userOrgId && req.user!.role !== 'super_admin') {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      // Import schema
+      const { insertMessageTemplateSchema } = await import("@shared/schema");
+      const validatedData = insertMessageTemplateSchema.parse({
+        ...req.body,
+        organizationId
+      });
+      
+      const template = await storage.createMessageTemplate(validatedData);
+      res.json(template);
+    } catch (error) {
+      console.error("Create template error:", error);
+      res.status(500).json({ message: "Failed to create template" });
+    }
+  });
+  
+  // Update message template
+  app.put("/api/message-templates/:organizationId/:templateId", requireAuth, async (req, res) => {
+    try {
+      const { organizationId, templateId } = req.params;
+      
+      // Verify access
+      const userOrgId = await getUserOrganizationId(req.user!);
+      if (organizationId !== userOrgId && req.user!.role !== 'super_admin') {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const template = await storage.updateMessageTemplate(templateId, req.body);
+      res.json(template);
+    } catch (error) {
+      console.error("Update template error:", error);
+      res.status(500).json({ message: "Failed to update template" });
+    }
+  });
+  
+  // Delete message template
+  app.delete("/api/message-templates/:organizationId/:templateId", requireAuth, async (req, res) => {
+    try {
+      const { organizationId, templateId } = req.params;
+      
+      // Verify access
+      const userOrgId = await getUserOrganizationId(req.user!);
+      if (organizationId !== userOrgId && req.user!.role !== 'super_admin') {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      await storage.deleteMessageTemplate(templateId);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Delete template error:", error);
+      res.status(500).json({ message: "Failed to delete template" });
+    }
+  });
+  
+  // Create marketing campaign
+  app.post("/api/marketing/campaigns/:organizationId", requireAuth, async (req, res) => {
+    try {
+      const { organizationId } = req.params;
+      
+      // Verify access
+      const userOrgId = await getUserOrganizationId(req.user!);
+      if (organizationId !== userOrgId && req.user!.role !== 'super_admin') {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      // Import schema
+      const { insertMarketingCampaignSchema } = await import("@shared/schema");
+      const validatedData = insertMarketingCampaignSchema.parse({
+        ...req.body,
+        organizationId,
+        createdBy: req.user!.id
+      });
+      
+      const campaign = await storage.createMarketingCampaign(validatedData);
+      
+      // If audience filters provided, calculate estimated recipients
+      if (req.body.audience) {
+        const clients = await storage.getClientsByOrganization(organizationId);
+        let filteredClients = clients;
+        
+        // Apply filters
+        const audience = req.body.audience;
+        if (audience.membershipTier) {
+          const memberships = await storage.getMembershipsByOrganization(organizationId);
+          const tierMembershipClientIds = memberships
+            .filter(m => m.tierName === audience.membershipTier && m.status === 'active')
+            .map(m => m.clientId);
+          filteredClients = filteredClients.filter(c => tierMembershipClientIds.includes(c.id));
+        }
+        
+        if (audience.lastVisitDays) {
+          const daysAgo = new Date();
+          daysAgo.setDate(daysAgo.getDate() - audience.lastVisitDays);
+          filteredClients = filteredClients.filter(c => c.lastVisit && c.lastVisit >= daysAgo);
+        }
+        
+        if (audience.birthdayMonth) {
+          const month = parseInt(audience.birthdayMonth);
+          filteredClients = filteredClients.filter(c => 
+            c.dateOfBirth && c.dateOfBirth.getMonth() + 1 === month
+          );
+        }
+        
+        if (audience.minTotalSpent) {
+          filteredClients = filteredClients.filter(c => 
+            parseFloat(c.totalSpent || "0") >= audience.minTotalSpent
+          );
+        }
+        
+        // Update estimated recipients
+        await storage.updateMarketingCampaign(campaign.id, {
+          estimatedRecipients: filteredClients.length
+        });
+        
+        campaign.estimatedRecipients = filteredClients.length;
+      }
+      
+      res.json(campaign);
+    } catch (error) {
+      console.error("Create campaign error:", error);
+      res.status(500).json({ message: "Failed to create campaign" });
+    }
+  });
+  
+  // Get marketing campaigns
+  app.get("/api/marketing/campaigns/:organizationId", requireAuth, async (req, res) => {
+    try {
+      const { organizationId } = req.params;
+      
+      // Verify access
+      const userOrgId = await getUserOrganizationId(req.user!);
+      if (organizationId !== userOrgId && req.user!.role !== 'super_admin') {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const campaigns = await storage.getMarketingCampaignsByOrganization(organizationId);
+      res.json(campaigns);
+    } catch (error) {
+      console.error("Get campaigns error:", error);
+      res.status(500).json({ message: "Failed to get campaigns" });
+    }
+  });
+  
+  // Get campaign analytics
+  app.get("/api/marketing/campaigns/:organizationId/:campaignId/analytics", requireAuth, async (req, res) => {
+    try {
+      const { organizationId, campaignId } = req.params;
+      
+      // Verify access
+      const userOrgId = await getUserOrganizationId(req.user!);
+      if (organizationId !== userOrgId && req.user!.role !== 'super_admin') {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const analytics = await storage.getCampaignAnalytics(campaignId);
+      res.json(analytics);
+    } catch (error) {
+      console.error("Get analytics error:", error);
+      res.status(500).json({ message: "Failed to get analytics" });
+    }
+  });
+  
+  // Send test SMS
+  app.post("/api/sms/test", requireAuth, requireRole("clinic_admin", "super_admin"), async (req, res) => {
+    try {
+      const { phoneNumber } = req.body;
+      
+      if (!phoneNumber) {
+        return res.status(400).json({ 
+          success: false, 
+          message: "Phone number is required" 
+        });
+      }
+      
+      // Import services
+      const twilioService = await import("./services/twilio");
+      
+      // Validate phone number
+      const validation = await twilioService.validatePhoneNumber(phoneNumber);
+      if (!validation.valid) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid phone number",
+          error: validation.error
+        });
+      }
+      
+      // Send test message
+      const result = await twilioService.sendSMS({
+        to: validation.formatted!,
+        message: "This is a test message from Aesthiq. Your SMS integration is working correctly!"
+      });
+      
+      res.json({
+        success: result.success,
+        message: result.success ? "Test SMS sent successfully" : "Failed to send test SMS",
+        messageId: result.messageId,
+        error: result.error,
+        details: result.details
+      });
+    } catch (error) {
+      console.error("Test SMS error:", error);
+      res.status(500).json({ 
+        success: false, 
+        message: "Failed to send test SMS",
+        error: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  });
+  
+  // Initialize default templates for organization
+  app.post("/api/message-templates/:organizationId/initialize", requireAuth, requireRole("clinic_admin", "super_admin"), async (req, res) => {
+    try {
+      const { organizationId } = req.params;
+      
+      // Verify access
+      const userOrgId = await getUserOrganizationId(req.user!);
+      if (organizationId !== userOrgId && req.user!.role !== 'super_admin') {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      // Import notification service
+      const { notificationService } = await import("./services/notifications");
+      
+      // Create default templates
+      await notificationService.createDefaultTemplates(organizationId);
+      
+      // Get all templates
+      const templates = await storage.getMessageTemplatesByOrganization(organizationId);
+      
+      res.json({
+        success: true,
+        message: "Default templates created successfully",
+        templates
+      });
+    } catch (error) {
+      console.error("Initialize templates error:", error);
+      res.status(500).json({ 
+        message: "Failed to initialize templates",
+        error: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  });
+
   // Test endpoint to verify Stripe Connect customer creation
   app.post("/api/test/stripe-connect-customer", requireAuth, requireRole("clinic_admin", "super_admin"), async (req, res) => {
     try {
