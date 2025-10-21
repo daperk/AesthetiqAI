@@ -13,7 +13,16 @@ import type { Service, Staff, Location } from "@shared/schema";
 // Use test key if environment variable is not set
 const stripeKey = import.meta.env.VITE_STRIPE_PUBLIC_KEY || 'pk_test_51QahdjA0YLTsXoNLrKJYCBKHgRPRQLdXD6J0Qz2g3aPWXW4WlEcLLnP8Srf9A2DrhU9NzF3gM3KZ5yG8bMf8BTWW00TqxPCOzx';
 
-const stripePromise = loadStripe(stripeKey);
+console.log('🔍 [STRIPE] Initializing with public key:', stripeKey?.substring(0, 20) + '...');
+console.log('🔍 [STRIPE] VITE_STRIPE_PUBLIC_KEY env var:', import.meta.env.VITE_STRIPE_PUBLIC_KEY ? 'SET' : 'NOT SET');
+
+const stripePromise = loadStripe(stripeKey).then(stripe => {
+  console.log('✅ [STRIPE] Stripe.js loaded successfully:', stripe ? 'SUCCESS' : 'FAILED');
+  return stripe;
+}).catch(error => {
+  console.error('❌ [STRIPE] Failed to load Stripe.js:', error);
+  return null;
+});
 
 interface BookingData {
   serviceId: string;
@@ -61,6 +70,7 @@ export function BookingWithPayment({
   const createPaymentIntent = async () => {
     try {
       setIsLoading(true);
+      console.log('🔍 [PAYMENT] Creating payment intent with booking data:', bookingData);
       
       // Create appointment with payment intent
       // Note: organizationId is not needed in the request - the server derives it from the service
@@ -69,14 +79,21 @@ export function BookingWithPayment({
       });
 
       const data = await response.json();
+      console.log('🔍 [PAYMENT] Payment intent response:', { 
+        hasClientSecret: !!data.clientSecret, 
+        appointmentId: data.appointmentId,
+        clientSecretPreview: data.clientSecret?.substring(0, 20) + '...'
+      });
       
       if (data.clientSecret) {
         setClientSecret(data.clientSecret);
         setAppointmentId(data.appointmentId);
+        console.log('✅ [PAYMENT] Client secret set successfully');
       } else {
         throw new Error("Failed to create payment intent");
       }
     } catch (error: any) {
+      console.error('❌ [PAYMENT] Failed to create payment intent:', error);
       toast({
         title: "Booking Failed",
         description: error.message || "Failed to initialize payment. Please try again.",

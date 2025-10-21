@@ -33,8 +33,15 @@ export function PaymentForm({
   const paymentAmount = isDepositOnly ? (depositAmount || 0) : amount;
   const remainingBalance = isDepositOnly ? amount - (depositAmount || 0) : 0;
 
+  // Debug: Log stripe and elements availability
+  console.log('🔍 [PAYMENT FORM] Stripe available:', !!stripe);
+  console.log('🔍 [PAYMENT FORM] Elements available:', !!elements);
+  console.log('🔍 [PAYMENT FORM] Payment ready:', isReady);
+  console.log('🔍 [PAYMENT FORM] Amount:', paymentAmount);
+
   // Track when Payment Element is ready
   const handleReady = () => {
+    console.log('✅ [PAYMENT FORM] PaymentElement is ready!');
     setIsReady(true);
   };
 
@@ -132,6 +139,10 @@ export function PaymentForm({
                 layout: "tabs",
               }}
               onReady={handleReady}
+              onLoadError={(error) => {
+                console.error('❌ [PAYMENT FORM] PaymentElement load error:', error);
+                setErrorMessage('Payment form failed to load. Please refresh and try again.');
+              }}
             />
           </div>
 
