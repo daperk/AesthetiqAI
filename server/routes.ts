@@ -2214,8 +2214,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Determine payment amount based on user selection and service config
-      const isDepositPayment = paymentType === 'deposit' && service.depositRequired;
-      const paymentAmount = isDepositPayment ? Number(service.depositAmount) : Number(service.price);
+      // Use the service's paymentType configuration to determine what to charge
+      // If service is set to "deposit", charge only the deposit amount
+      // If service is set to "full", charge the full price
+      const isDepositPayment = service.paymentType === 'deposit';
+      const paymentAmount = isDepositPayment ? Number(service.depositAmount || 0) : Number(service.price);
       
       // Get or create Stripe customer for payment
       if (!stripe) {

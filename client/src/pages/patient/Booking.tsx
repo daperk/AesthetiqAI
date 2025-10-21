@@ -38,7 +38,7 @@ export default function Booking() {
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
   const [selectedTime, setSelectedTime] = useState<string>("");
   const [selectedDateTime, setSelectedDateTime] = useState<string>("");
-  const [paymentType, setPaymentType] = useState<"full" | "deposit">("full");
+  // Payment type is determined by the service configuration, not user choice
   const [notes, setNotes] = useState("");
   const [showPaymentFlow, setShowPaymentFlow] = useState(false);
 
@@ -391,7 +391,7 @@ export default function Booking() {
             locationId: selectedLocation,
             startTime: startTime.toISOString(),
             endTime: endTime.toISOString(),
-            paymentType,
+            paymentType: (selectedService?.paymentType || "full") as "full" | "deposit",
             notes
           };
 
@@ -455,13 +455,14 @@ export default function Booking() {
                   </div>
                 </div>
 
-                {selectedService?.depositRequired && (
-                  <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                    <p className="text-sm font-medium text-blue-800 dark:text-blue-200">
-                      Deposit Required: ${selectedService.depositAmount}
+                {selectedService?.paymentType === 'deposit' && (
+                  <div className="p-4 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-800">
+                    <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                      Deposit Payment Only
                     </p>
-                    <p className="text-xs text-blue-600 dark:text-blue-300">
-                      Remaining balance of ${Number(selectedService.price) - Number(selectedService.depositAmount)} due at appointment
+                    <p className="text-xs text-amber-600 dark:text-amber-300 mt-1">
+                      Paying ${selectedService.depositAmount || 0} deposit today. 
+                      Remaining ${Number(selectedService.price) - Number(selectedService.depositAmount || 0)} due after service completion.
                     </p>
                   </div>
                 )}
@@ -470,7 +471,7 @@ export default function Booking() {
                   <div className="flex justify-between text-lg font-bold">
                     <span>Amount Due Today:</span>
                     <span>
-                      ${selectedService?.depositRequired 
+                      ${selectedService?.paymentType === 'deposit' 
                         ? selectedService?.depositAmount || 0
                         : selectedService?.price || 0}
                     </span>

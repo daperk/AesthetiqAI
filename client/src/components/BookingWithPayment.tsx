@@ -50,8 +50,10 @@ export function BookingWithPayment({
   const { organization } = useOrganization();
 
   // Determine payment amount based on service configuration
+  // If paymentType is "deposit", charge ONLY the deposit amount
+  // If paymentType is "full", charge the full price
   const isDepositOnly = service.paymentType === 'deposit';
-  const paymentAmount = isDepositOnly ? Number(service.depositAmount || service.price) : Number(service.price);
+  const paymentAmount = isDepositOnly ? Number(service.depositAmount || 0) : Number(service.price);
   const isDepositPayment = isDepositOnly;
 
   useEffect(() => {
