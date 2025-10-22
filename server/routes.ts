@@ -317,7 +317,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .filter(apt => new Date(apt.endTime) > now && apt.status !== 'cancelled')
         .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
 
-      // Enrich appointments with service, staff, and location names
+      // Enrich appointments with service, staff, and location names, including timezone
       const enrichedAppointments = await Promise.all(
         upcomingAppointments.map(async (apt) => {
           const service = await storage.getService(apt.serviceId);
@@ -328,7 +328,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             ...apt,
             serviceName: service?.name || 'Service',
             staffName: staff?.name || 'Staff member',
-            locationName: location?.name || 'Location'
+            locationName: location?.name || 'Location',
+            timezone: location?.timezone || 'America/New_York'
           };
         })
       );
@@ -2592,10 +2593,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Robust method that handles day transitions and DST correctly
         const [hour, minute] = timeString.split(':').map(Number);
         
-        // Step 1: Create a UTC probe at noon on the target day (safe middle point)
-        const probeUTC = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+        // Step 1: Create a UTC probe with the desired local time components
+        const probeUTC = new Date(Date.UTC(year, month - 1, day, hour, minute, 0));
         
-        // Step 2: Format this UTC time to get the clinic's local date/time using formatToParts
+        // Step 2: Format this UTC time to see what it is in the clinic's timezone
         const formatter = new Intl.DateTimeFormat('en-US', { 
           timeZone: timezone,
           year: 'numeric',
@@ -2610,18 +2611,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const probeLocalYear = parseInt(probeParts.find(p => p.type === 'year')?.value || `${year}`);
         const probeLocalMonth = parseInt(probeParts.find(p => p.type === 'month')?.value || `${month}`);
         const probeLocalDay = parseInt(probeParts.find(p => p.type === 'day')?.value || `${day}`);
-        const probeLocalHour = parseInt(probeParts.find(p => p.type === 'hour')?.value || '12');
+        const probeLocalHour = parseInt(probeParts.find(p => p.type === 'hour')?.value || '0');
         const probeLocalMinute = parseInt(probeParts.find(p => p.type === 'minute')?.value || '0');
         
-        // Step 3: Calculate millisecond difference between desired and actual local times
-        // Desired: year-month-day hour:minute in clinic timezone
-        // Actual: what the probe UTC time is in clinic timezone
-        const desiredLocal = new Date(year, month - 1, day, hour, minute, 0);
-        const actualLocal = new Date(probeLocalYear, probeLocalMonth - 1, probeLocalDay, probeLocalHour, probeLocalMinute, 0);
-        const deltaMsLocal = desiredLocal.getTime() - actualLocal.getTime();
+        // Step 3: Calculate the offset
+        // We want: hour:minute on 'day'
+        // The probe UTC shows as: probeLocalHour:probeLocalMinute on 'probeLocalDay'
+        // Calculate the offset accounting for potential day boundaries
+        let offsetMinutes = (hour - probeLocalHour) * 60 + (minute - probeLocalMinute);
         
-        // Step 4: Apply the same delta to the UTC probe to get the correct UTC time
-        const slotTime = new Date(probeUTC.getTime() + deltaMsLocal);
+        // Adjust for day boundaries
+        if (day !== probeLocalDay) {
+          if (probeLocalDay > day) {
+            // Probe shifted forward a day, so we need to subtract 24 hours
+            offsetMinutes -= 24 * 60;
+          } else {
+            // Probe shifted back a day, so we need to add 24 hours  
+            offsetMinutes += 24 * 60;
+          }
+        }
+        
+        // Step 4: Apply the offset to get the correct UTC time
+        const slotTime = new Date(probeUTC.getTime() + offsetMinutes * 60 * 1000);
         
         // Check if this slot conflicts with existing active appointments
         // Only consider scheduled/pending/confirmed appointments (exclude canceled/completed)

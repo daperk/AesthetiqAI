@@ -7,7 +7,7 @@ export type {
   Staff,
   Client,
   Service,
-  Appointment,
+  Appointment as BaseAppointment,
   Membership,
   Reward,
   Transaction,
@@ -19,6 +19,16 @@ export type {
   FileStorage,
   FeatureFlag
 } from "@shared/schema";
+
+import type { BaseAppointment } from "@shared/schema";
+
+// Enriched appointment type with additional display fields
+export interface Appointment extends BaseAppointment {
+  serviceName?: string;
+  staffName?: string;
+  locationName?: string;
+  timezone?: string;
+}
 
 // Additional frontend-specific types
 export interface DashboardStats {

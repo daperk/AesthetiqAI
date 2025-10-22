@@ -19,6 +19,25 @@ import {
 } from "lucide-react";
 import type { Appointment, Membership, Reward, Client, ChatMessage } from "@/types";
 
+// Helper function to format time in clinic's timezone
+const formatTimeInTimezone = (dateString: string, timezone: string = 'America/New_York') => {
+  const date = new Date(dateString);
+  return date.toLocaleTimeString('en-US', { 
+    timeZone: timezone,
+    hour: 'numeric', 
+    minute: '2-digit', 
+    hour12: true 
+  });
+};
+
+const formatDateInTimezone = (dateString: string, timezone: string = 'America/New_York', options: Intl.DateTimeFormatOptions = {}) => {
+  const date = new Date(dateString);
+  return date.toLocaleDateString('en-US', { 
+    timeZone: timezone,
+    ...options
+  });
+};
+
 export default function PatientDashboard() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -241,15 +260,11 @@ export default function PatientDashboard() {
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="text-xl font-semibold mb-2" data-testid="text-next-appointment-title">
-                    Your next appointment is {new Date(nextAppointment.startTime).toLocaleDateString('en-US', { 
+                    Your next appointment is {formatDateInTimezone(nextAppointment.startTime, nextAppointment.timezone, { 
                       month: 'long', 
                       day: 'numeric',
                       year: 'numeric'
-                    })} at {new Date(nextAppointment.startTime).toLocaleTimeString([], { 
-                      hour: 'numeric', 
-                      minute: '2-digit', 
-                      hour12: true 
-                    })}
+                    })} at {formatTimeInTimezone(nextAppointment.startTime, nextAppointment.timezone)}
                   </h2>
                   <p className="text-primary-foreground/90 mb-4">
                     {nextAppointment.serviceName || 'Appointment'} {nextAppointment.staffName ? `with ${nextAppointment.staffName}` : ''}
@@ -382,10 +397,10 @@ export default function PatientDashboard() {
                           <div className="flex items-center space-x-3">
                             <div className="text-center bg-primary/10 rounded-lg p-2 min-w-[70px]">
                               <div className="text-sm font-bold text-primary">
-                                {new Date(appointment.startTime).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                {formatDateInTimezone(appointment.startTime, appointment.timezone, { month: 'short', day: 'numeric' })}
                               </div>
                               <div className="text-xs text-muted-foreground">
-                                {new Date(appointment.startTime).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}
+                                {formatTimeInTimezone(appointment.startTime, appointment.timezone)}
                               </div>
                             </div>
                             <div>
@@ -510,10 +525,10 @@ export default function PatientDashboard() {
                         <div className="flex items-center space-x-4">
                           <div className="text-center bg-primary/10 rounded-lg p-3 min-w-[80px]">
                             <div className="text-lg font-bold text-primary">
-                              {new Date(appointment.startTime).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                              {formatDateInTimezone(appointment.startTime, appointment.timezone, { month: 'short', day: 'numeric' })}
                             </div>
                             <div className="text-sm text-muted-foreground">
-                              {new Date(appointment.startTime).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}
+                              {formatTimeInTimezone(appointment.startTime, appointment.timezone)}
                             </div>
                           </div>
                           <div>
