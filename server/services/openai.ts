@@ -55,14 +55,13 @@ export async function generateClientInsights(clientData: {
       messages: [
         {
           role: "system",
-          content: "You are an AI expert in beauty and wellness business analytics. Provide actionable insights for client relationship management."
+          content: "You are an AI expert in beauty and wellness business analytics. Provide actionable insights for client relationship management. IMPORTANT: You must respond with valid JSON only, no other text."
         },
         {
           role: "user",
           content: prompt
         }
-      ],
-      response_format: { type: "json_object" }
+      ]
     });
 
     const result = JSON.parse(response.choices[0].message.content || "{}");
@@ -108,14 +107,13 @@ export async function generateMarketingCopy(campaign: {
       messages: [
         {
           role: "system",
-          content: "You are an expert copywriter specializing in luxury beauty and wellness marketing. Create compelling, conversion-focused copy."
+          content: "You are an expert copywriter specializing in luxury beauty and wellness marketing. Create compelling, conversion-focused copy. IMPORTANT: You must respond with valid JSON only, no other text."
         },
         {
           role: "user",
           content: prompt
         }
-      ],
-      response_format: { type: "json_object" }
+      ]
     });
 
     const result = JSON.parse(response.choices[0].message.content || "{}");
@@ -157,14 +155,13 @@ export async function analyzePricingStrategy(serviceData: {
       messages: [
         {
           role: "system",
-          content: "You are a pricing strategy expert for luxury beauty and wellness businesses. Optimize for profitability while maintaining premium positioning."
+          content: "You are a pricing strategy expert for luxury beauty and wellness businesses. Optimize for profitability while maintaining premium positioning. IMPORTANT: You must respond with valid JSON only, no other text."
         },
         {
           role: "user",
           content: prompt
         }
-      ],
-      response_format: { type: "json_object" }
+      ]
     });
 
     const result = JSON.parse(response.choices[0].message.content || "{}");
@@ -206,14 +203,13 @@ export async function generateGrowthRecommendations(businessData: {
       messages: [
         {
           role: "system",
-          content: "You are a business growth consultant specializing in beauty and wellness practices. Provide data-driven, actionable recommendations."
+          content: "You are a business growth consultant specializing in beauty and wellness practices. Provide data-driven, actionable recommendations. IMPORTANT: You must respond with valid JSON only, no other text."
         },
         {
           role: "user",
           content: prompt
         }
-      ],
-      response_format: { type: "json_object" }
+      ]
     });
 
     const result = JSON.parse(response.choices[0].message.content || "{}");
@@ -281,14 +277,13 @@ export async function generateBusinessInsights(clinicData: {
       messages: [
         {
           role: "system",
-          content: "You are an AI business consultant specializing in beauty and wellness clinics. Provide specific, data-driven insights that will immediately improve revenue and customer satisfaction. Use the actual numbers provided to make concrete recommendations."
+          content: "You are an AI business consultant specializing in beauty and wellness clinics. Provide specific, data-driven insights that will immediately improve revenue and customer satisfaction. Use the actual numbers provided to make concrete recommendations. IMPORTANT: You must respond with valid JSON only, no other text."
         },
         {
           role: "user",
           content: prompt
         }
       ],
-      response_format: { type: "json_object" },
       temperature: 0.7,
       max_tokens: 2000
     });
