@@ -2291,16 +2291,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Get existing appointments for this staff member on this date
       const existingAppointments = await storage.getAppointmentsByStaff(staffId, new Date(date));
       
-      // Get business hours from location or use defaults
-      const businessHours = location?.businessHours as any || {
+      // Default business hours for new clinics (9am-6pm Mon-Sat, closed Sunday)
+      const defaultBusinessHours = {
         monday: { open: "09:00", close: "18:00" },
         tuesday: { open: "09:00", close: "18:00" },
         wednesday: { open: "09:00", close: "18:00" },
         thursday: { open: "09:00", close: "18:00" },
         friday: { open: "09:00", close: "18:00" },
         saturday: { open: "09:00", close: "18:00" },
-        sunday: { open: "09:00", close: "18:00" }
+        sunday: null // Closed on Sundays by default
       };
+      
+      // Get business hours from location or use defaults
+      // Handle NULL, empty object, or undefined by using defaults
+      let businessHours = location?.businessHours as any;
+      if (!businessHours || typeof businessHours !== 'object' || Object.keys(businessHours).length === 0) {
+        businessHours = defaultBusinessHours;
+      }
       
       // Get day of week
       const selectedDate = new Date(year, month - 1, day);
