@@ -337,8 +337,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
           }
           
+          // Convert timestamps to UTC ISO strings to ensure proper timezone handling
+          const startTimeUTC = apt.startTime instanceof Date 
+            ? apt.startTime.toISOString() 
+            : new Date(apt.startTime + 'Z').toISOString();
+          const endTimeUTC = apt.endTime instanceof Date 
+            ? apt.endTime.toISOString() 
+            : new Date(apt.endTime + 'Z').toISOString();
+          
           return {
             ...apt,
+            startTime: startTimeUTC,
+            endTime: endTimeUTC,
             serviceName: service?.name || 'Service',
             staffName,
             locationName: location?.name || 'Location',
