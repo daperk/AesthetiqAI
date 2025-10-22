@@ -52,8 +52,26 @@ export default function ClinicDashboard() {
     staleTime: 60000, // 1 minute
   });
 
-  const { data: todayAppointments, isLoading: appointmentsLoading } = useQuery<Appointment[]>({
-    queryKey: [`/api/appointments/${organization?.id}/today`],
+  // Fetch upcoming appointments (next 14 days)
+  const endDate = new Date();
+  endDate.setDate(endDate.getDate() + 14);
+  
+  const { data: upcomingAppointments, isLoading: appointmentsLoading } = useQuery<Appointment[]>({
+    queryKey: [`/api/appointments`, organization?.id, endDate.toISOString().split('T')[0]],
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        organizationId: organization?.id || '',
+        startDate: new Date().toISOString().split('T')[0],
+        endDate: endDate.toISOString().split('T')[0]
+      });
+      const response = await fetch(`/api/appointments?${params}`, {
+        credentials: 'include'
+      });
+      if (!response.ok) throw new Error('Failed to fetch appointments');
+      const data = await response.json();
+      // Filter to only show non-cancelled appointments
+      return data.filter((apt: any) => apt.status !== 'cancelled');
+    },
     enabled: !!organization?.id,
     staleTime: 30000, // 30 seconds
   });
@@ -223,13 +241,13 @@ export default function ClinicDashboard() {
                 <Card>
                   <CardContent className="p-6">
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm text-muted-foreground">Appointments Today</span>
+                      <span className="text-sm text-muted-foreground">Upcoming Appointments</span>
                       <Calendar className="w-4 h-4 text-primary" />
                     </div>
-                    <div className="text-2xl font-bold text-foreground" data-testid="text-today-appointments">
-                      {todayAppointments?.length || 0}
+                    <div className="text-2xl font-bold text-foreground" data-testid="text-upcoming-appointments">
+                      {upcomingAppointments?.length || 0}
                     </div>
-                    <div className="text-sm text-muted-foreground">{todayAppointments?.filter((apt: any) => apt.status !== 'completed')?.length || 0} remaining</div>
+                    <div className="text-sm text-muted-foreground">Next 14 days</div>
                   </CardContent>
                 </Card>
 
@@ -262,12 +280,12 @@ export default function ClinicDashboard() {
 
               {/* Main Content Area */}
               <div className="grid lg:grid-cols-3 gap-8">
-                {/* Today's Schedule */}
+                {/* Upcoming Appointments */}
                 <div className="lg:col-span-2">
                   <Card>
                     <CardHeader>
                       <div className="flex items-center justify-between">
-                        <CardTitle data-testid="text-todays-schedule-title">Today's Schedule</CardTitle>
+                        <CardTitle data-testid="text-upcoming-schedule-title">Upcoming Appointments</CardTitle>
                         <Button size="sm" data-testid="button-new-appointment">
                           <Plus className="w-4 h-4 mr-2" />
                           New Appointment
@@ -276,37 +294,41 @@ export default function ClinicDashboard() {
                     </CardHeader>
                     <CardContent>
                       <div className="space-y-4">
-                        {!todayAppointments || todayAppointments.length === 0 ? (
+                        {!upcomingAppointments || upcomingAppointments.length === 0 ? (
                           <div className="text-center py-8">
                             <Calendar className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
                             <p className="text-muted-foreground" data-testid="text-no-appointments">
-                              No appointments scheduled for today
+                              No upcoming appointments
                             </p>
                           </div>
                         ) : (
-                          todayAppointments
+                          upcomingAppointments
                             .sort((a: any, b: any) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
+                            .slice(0, 10) // Show first 10
                             .map((appointment: any) => {
-                              // Parse timestamp string in clinic's timezone
-                              // Appointments are stored as timestamps without timezone info
-                              const startTimeStr = appointment.startTime;
-                              const dateObj = new Date(startTimeStr);
+                              // API now returns UTC ISO strings (e.g., "2025-10-25T16:00:00.000Z")
+                              const dateObj = new Date(appointment.startTime);
+                              const timezone = appointment.locationTimezone || 'America/New_York';
                               
-                              // Extract UTC components and interpret as clinic local time
-                              const hours = dateObj.getUTCHours();
-                              const minutes = dateObj.getUTCMinutes();
+                              // Format date and time in clinic's timezone
+                              const dateStr = dateObj.toLocaleDateString('en-US', { 
+                                timeZone: timezone,
+                                month: 'short',
+                                day: 'numeric'
+                              });
                               
-                              // Format as 12-hour time
-                              const period = hours >= 12 ? 'PM' : 'AM';
-                              const displayHours = hours % 12 || 12;
-                              const displayMinutes = minutes.toString().padStart(2, '0');
-                              const timeStr = [`${displayHours}:${displayMinutes}`, period];
+                              const timeStr = dateObj.toLocaleTimeString('en-US', {
+                                timeZone: timezone,
+                                hour: 'numeric',
+                                minute: '2-digit',
+                                hour12: true
+                              });
                               
                               return (
                                 <div key={appointment.id} className="flex items-center space-x-4 p-4 bg-muted/30 rounded-lg" data-testid={`appointment-item-${appointment.id}`}>
-                                  <div className="text-center">
-                                    <div className="text-sm font-medium text-foreground">{timeStr[0]}</div>
-                                    <div className="text-xs text-muted-foreground">{timeStr[1]}</div>
+                                  <div className="text-center min-w-[80px]">
+                                    <div className="text-xs text-muted-foreground mb-1">{dateStr}</div>
+                                    <div className="text-sm font-medium text-foreground">{timeStr}</div>
                                   </div>
                                   <div className="flex-1">
                                     <div className="font-medium text-foreground">{appointment.serviceName || 'Service'}</div>
@@ -553,7 +575,7 @@ export default function ClinicDashboard() {
                     <CardContent>
                       <div className="space-y-2">
                         {/* Dynamic Quick Actions Based on Real Data */}
-                        {(!todayAppointments || todayAppointments.length === 0) && (
+                        {(!upcomingAppointments || upcomingAppointments.length === 0) && (
                           <Button variant="outline" className="w-full justify-start" data-testid="button-schedule-appointments">
                             <CalendarPlus className="w-4 h-4 mr-2" />
                             Schedule First Appointment
@@ -574,7 +596,7 @@ export default function ClinicDashboard() {
                           </Button>
                         )}
                         
-                        {(stats?.revenue?.today || 0) === 0 && (todayAppointments?.length || 0) > 0 && (
+                        {(stats?.revenue?.today || 0) === 0 && (upcomingAppointments?.length || 0) > 0 && (
                           <Button variant="outline" className="w-full justify-start" data-testid="button-process-payments">
                             <DollarSign className="w-4 h-4 mr-2" />
                             Process Payments
@@ -589,7 +611,7 @@ export default function ClinicDashboard() {
                         )}
                         
                         {/* Default actions when data conditions are met */}
-                        {((todayAppointments?.length || 0) > 0 || (stats?.clients?.total || 0) >= 5) && (
+                        {((upcomingAppointments?.length || 0) > 0 || (stats?.clients?.total || 0) >= 5) && (
                           <Button variant="outline" className="w-full justify-start" data-testid="button-send-rewards">
                             <Gift className="w-4 h-4 mr-2" />
                             Send Rewards
