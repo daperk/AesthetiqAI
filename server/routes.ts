@@ -342,7 +342,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .filter(apt => new Date(apt.startTime) > now && apt.status !== 'cancelled')
         .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
 
-      res.json(upcomingAppointments);
+      // Enrich appointments with service, staff, and location names
+      const enrichedAppointments = await Promise.all(
+        upcomingAppointments.map(async (apt) => {
+          const service = await storage.getService(apt.serviceId);
+          const staff = await storage.getUser(apt.staffId);
+          const location = await storage.getLocation(apt.locationId);
+          
+          return {
+            ...apt,
+            serviceName: service?.name || 'Service',
+            staffName: staff?.name || 'Staff member',
+            locationName: location?.name || 'Location'
+          };
+        })
+      );
+
+      res.json(enrichedAppointments);
     } catch (error) {
       console.error("Error fetching upcoming appointments:", error);
       res.status(500).json({ message: "Failed to fetch upcoming appointments" });
