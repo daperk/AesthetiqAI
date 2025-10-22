@@ -889,7 +889,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       await storage.invalidateResetToken(validToken.id);
       
-      res.json({ message: "Password reset successfully" });
+      // Get user info to help with redirect
+      const user = await storage.getUser(validToken.userId);
+      let organizationSlug = null;
+      
+      if (user) {
+        // Get organization slug for patients
+        const organizationId = await getUserOrganizationId(user);
+        if (organizationId) {
+          const organization = await storage.getOrganization(organizationId);
+          organizationSlug = organization?.slug || null;
+        }
+      }
+      
+      res.json({ 
+        message: "Password reset successfully",
+        user: {
+          role: user?.role,
+          organizationSlug
+        }
+      });
     } catch (error) {
       console.error("Reset password error:", error);
       res.status(500).json({ message: "Failed to reset password" });

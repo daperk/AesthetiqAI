@@ -20,12 +20,18 @@ export default function ResetPassword() {
       const response = await apiRequest("POST", "/api/auth/reset-password", data);
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       toast({
         title: "Password Reset Successful",
         description: "Your password has been reset. You can now log in with your new password.",
       });
-      setLocation("/login");
+      
+      // Redirect based on user role
+      if (data?.user?.role === "patient" && data?.user?.organizationSlug) {
+        setLocation(`/c/${data.user.organizationSlug}/patient/login`);
+      } else {
+        setLocation("/login");
+      }
     },
     onError: (error: any) => {
       toast({
