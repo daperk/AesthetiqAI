@@ -4300,8 +4300,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const stripeConnectAccountId = organization?.stripeConnectAccountId;
       
       // Check if prices changed - if so, create new Stripe price objects
-      const priceChanged = (updates.monthlyPrice && updates.monthlyPrice !== existingTier.monthlyPrice) ||
-                          (updates.yearlyPrice && updates.yearlyPrice !== existingTier.yearlyPrice);
+      // Parse string values to numbers for proper comparison
+      const newMonthlyPrice = updates.monthlyPrice ? parseFloat(updates.monthlyPrice.toString()) : null;
+      const newYearlyPrice = updates.yearlyPrice ? parseFloat(updates.yearlyPrice.toString()) : null;
+      const oldMonthlyPrice = existingTier.monthlyPrice ? parseFloat(existingTier.monthlyPrice.toString()) : null;
+      const oldYearlyPrice = existingTier.yearlyPrice ? parseFloat(existingTier.yearlyPrice.toString()) : null;
+      
+      const priceChanged = (newMonthlyPrice !== null && newMonthlyPrice !== oldMonthlyPrice) ||
+                          (newYearlyPrice !== null && newYearlyPrice !== oldYearlyPrice);
+      
+      console.log(`🔍 [PUT /api/membership-tiers] Checking price change:`, {
+        newMonthlyPrice,
+        oldMonthlyPrice,
+        newYearlyPrice,
+        oldYearlyPrice,
+        priceChanged,
+        hasStripeAccount: !!stripeConnectAccountId
+      });
       
       if (priceChanged && stripeConnectAccountId) {
         console.log(`🔄 [STRIPE] Price changed for tier ${existingTier.name}, creating new Stripe prices`);
