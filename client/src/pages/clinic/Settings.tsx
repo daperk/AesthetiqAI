@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,15 @@ import {
   Save, RefreshCw
 } from "lucide-react";
 
+interface Location {
+  id: string;
+  organizationId: string;
+  name: string;
+  businessHours?: {
+    [key: string]: { open: string; close: string } | null;
+  };
+}
+
 interface MessageTemplate {
   id: string;
   name: string;
@@ -33,12 +42,61 @@ interface MessageTemplate {
   category: string;
 }
 
+type DayBusinessHours = {
+  open: string;
+  close: string;
+  isClosed: boolean;
+};
+
 export default function Settings() {
   const { user } = useAuth();
   const { organization } = useOrganization();
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("general");
   const [editingTemplate, setEditingTemplate] = useState<string | null>(null);
+
+  // Business hours state for each day
+  const [businessHours, setBusinessHours] = useState<Record<string, DayBusinessHours>>({
+    monday: { open: "09:00", close: "18:00", isClosed: false },
+    tuesday: { open: "09:00", close: "18:00", isClosed: false },
+    wednesday: { open: "09:00", close: "18:00", isClosed: false },
+    thursday: { open: "09:00", close: "18:00", isClosed: false },
+    friday: { open: "09:00", close: "18:00", isClosed: false },
+    saturday: { open: "09:00", close: "18:00", isClosed: false },
+    sunday: { open: "09:00", close: "18:00", isClosed: true },
+  });
+
+  // Fetch locations
+  const { data: locations, isLoading: locationsLoading } = useQuery<Location[]>({
+    queryKey: ["/api/locations"],
+    enabled: !!organization?.id,
+  });
+
+  // Get primary location (first location for now)
+  const primaryLocation = locations?.[0];
+
+  // Initialize business hours from location data
+  useEffect(() => {
+    if (primaryLocation?.businessHours) {
+      const updatedHours: Record<string, DayBusinessHours> = {};
+      const days = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
+      
+      days.forEach(day => {
+        const dayHours = primaryLocation.businessHours?.[day];
+        if (dayHours === null || dayHours === undefined) {
+          updatedHours[day] = { open: "09:00", close: "18:00", isClosed: true };
+        } else {
+          updatedHours[day] = {
+            open: dayHours.open || "09:00",
+            close: dayHours.close || "18:00",
+            isClosed: false
+          };
+        }
+      });
+      
+      setBusinessHours(updatedHours);
+    }
+  }, [primaryLocation]);
 
   // Fetch message templates
   const { data: templates, isLoading: templatesLoading } = useQuery<MessageTemplate[]>({
@@ -85,6 +143,56 @@ export default function Settings() {
       });
     },
   });
+
+  // Save business hours mutation
+  const saveBusinessHoursMutation = useMutation({
+    mutationFn: async () => {
+      if (!primaryLocation) throw new Error("No location found");
+
+      // Transform state into API format (null for closed days)
+      const formattedHours: Record<string, { open: string; close: string } | null> = {};
+      Object.keys(businessHours).forEach(day => {
+        const dayHours = businessHours[day];
+        formattedHours[day] = dayHours.isClosed ? null : {
+          open: dayHours.open,
+          close: dayHours.close
+        };
+      });
+
+      const response = await apiRequest(
+        "PUT",
+        `/api/locations/${primaryLocation.id}`,
+        { businessHours: formattedHours }
+      );
+      if (!response.ok) throw new Error("Failed to save business hours");
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/locations"] });
+      toast({
+        title: "Business hours saved",
+        description: "Your business hours have been updated successfully.",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error saving business hours",
+        description: error instanceof Error ? error.message : "An error occurred",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Handler to update business hours for a specific day
+  const updateDayHours = (day: string, field: 'open' | 'close' | 'isClosed', value: string | boolean) => {
+    setBusinessHours(prev => ({
+      ...prev,
+      [day]: {
+        ...prev[day],
+        [field]: value
+      }
+    }));
+  };
 
   if (!organization) {
     return (
@@ -197,28 +305,63 @@ export default function Settings() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                {["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].map((day) => (
-                  <div key={day} className="flex items-center justify-between">
-                    <Label className="w-24">{day}</Label>
-                    <div className="flex items-center space-x-2">
-                      <Input
-                        type="time"
-                        defaultValue="09:00"
-                        className="w-32"
-                        data-testid={`input-${day.toLowerCase()}-open`}
-                      />
-                      <span>to</span>
-                      <Input
-                        type="time"
-                        defaultValue="17:00"
-                        className="w-32"
-                        data-testid={`input-${day.toLowerCase()}-close`}
-                      />
-                      <Switch data-testid={`switch-${day.toLowerCase()}-closed`} />
-                      <span className="text-sm text-muted-foreground">Closed</span>
-                    </div>
+                {locationsLoading ? (
+                  <div className="flex justify-center py-4">
+                    <LoadingSpinner />
                   </div>
-                ))}
+                ) : !primaryLocation ? (
+                  <Alert>
+                    <AlertDescription>No location found. Please create a location first.</AlertDescription>
+                  </Alert>
+                ) : (
+                  <>
+                    {["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].map((day) => {
+                      const dayKey = day.toLowerCase();
+                      const dayHours = businessHours[dayKey];
+                      
+                      return (
+                        <div key={day} className="flex items-center justify-between">
+                          <Label className="w-24">{day}</Label>
+                          <div className="flex items-center space-x-2">
+                            <Input
+                              type="time"
+                              value={dayHours.open}
+                              onChange={(e) => updateDayHours(dayKey, 'open', e.target.value)}
+                              disabled={dayHours.isClosed}
+                              className="w-32"
+                              data-testid={`input-${dayKey}-open`}
+                            />
+                            <span>to</span>
+                            <Input
+                              type="time"
+                              value={dayHours.close}
+                              onChange={(e) => updateDayHours(dayKey, 'close', e.target.value)}
+                              disabled={dayHours.isClosed}
+                              className="w-32"
+                              data-testid={`input-${dayKey}-close`}
+                            />
+                            <Switch
+                              checked={dayHours.isClosed}
+                              onCheckedChange={(checked) => updateDayHours(dayKey, 'isClosed', checked)}
+                              data-testid={`switch-${dayKey}-closed`}
+                            />
+                            <span className="text-sm text-muted-foreground">Closed</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    <div className="pt-4 border-t">
+                      <Button
+                        onClick={() => saveBusinessHoursMutation.mutate()}
+                        disabled={saveBusinessHoursMutation.isPending}
+                        data-testid="button-save-business-hours"
+                      >
+                        <Save className="w-4 h-4 mr-2" />
+                        {saveBusinessHoursMutation.isPending ? "Saving..." : "Save Business Hours"}
+                      </Button>
+                    </div>
+                  </>
+                )}
               </CardContent>
             </Card>
           </TabsContent>

@@ -3724,6 +3724,80 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Update location - including business hours
+  app.put("/api/locations/:id", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const orgId = await getUserOrganizationId(req.user!);
+      
+      if (!orgId) {
+        return res.status(400).json({ message: "User organization not found" });
+      }
+
+      // Verify the location belongs to user's organization (security)
+      const existingLocation = await storage.getLocation(id);
+      if (!existingLocation) {
+        return res.status(404).json({ message: "Location not found" });
+      }
+
+      if (existingLocation.organizationId !== orgId) {
+        return res.status(403).json({ message: "You do not have permission to update this location" });
+      }
+
+      // Validate business hours format if provided
+      if (req.body.businessHours !== undefined && req.body.businessHours !== null) {
+        const dayHoursSchema = z.object({
+          open: z.string().regex(/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/, "Invalid time format (expected HH:MM)"),
+          close: z.string().regex(/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/, "Invalid time format (expected HH:MM)")
+        }).nullable();
+
+        const businessHoursSchema = z.object({
+          monday: dayHoursSchema,
+          tuesday: dayHoursSchema,
+          wednesday: dayHoursSchema,
+          thursday: dayHoursSchema,
+          friday: dayHoursSchema,
+          saturday: dayHoursSchema,
+          sunday: dayHoursSchema
+        });
+
+        try {
+          const validatedHours = businessHoursSchema.parse(req.body.businessHours);
+          req.body.businessHours = validatedHours;
+        } catch (error) {
+          if (error instanceof z.ZodError) {
+            return res.status(400).json({ 
+              message: "Invalid business hours format", 
+              errors: error.errors 
+            });
+          }
+          throw error;
+        }
+      }
+
+      // Update location with provided data (including businessHours)
+      const updates: any = {};
+      if (req.body.businessHours !== undefined) updates.businessHours = req.body.businessHours;
+      if (req.body.name !== undefined) updates.name = req.body.name;
+      if (req.body.address !== undefined) updates.address = req.body.address;
+      if (req.body.phone !== undefined) updates.phone = req.body.phone;
+      if (req.body.email !== undefined) updates.email = req.body.email;
+      if (req.body.timezone !== undefined) updates.timezone = req.body.timezone;
+      if (req.body.publicSettings !== undefined) updates.publicSettings = req.body.publicSettings;
+      if (req.body.settings !== undefined) updates.settings = req.body.settings;
+      if (req.body.isActive !== undefined) updates.isActive = req.body.isActive;
+
+      const updatedLocation = await storage.updateLocation(id, updates);
+      
+      await auditLog(req, "update", "location", id, updates);
+      
+      res.json(updatedLocation);
+    } catch (error) {
+      console.error("Failed to update location:", error);
+      res.status(500).json({ message: "Failed to update location" });
+    }
+  });
+
   app.get("/api/services", async (req, res) => {
     try {
       console.log('🔍 [GET /api/services] Request received:', {
