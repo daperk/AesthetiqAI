@@ -937,7 +937,30 @@ export class DatabaseStorage implements IStorage {
 
   // Memberships
   async getMembershipsByOrganization(organizationId: string): Promise<Membership[]> {
-    return await db.select().from(memberships)
+    return await db
+      .select({
+        id: memberships.id,
+        organizationId: memberships.organizationId,
+        clientId: memberships.clientId,
+        tierName: memberships.tierName,
+        monthlyFee: memberships.monthlyFee,
+        benefits: memberships.benefits,
+        discountPercentage: memberships.discountPercentage,
+        monthlyCredits: memberships.monthlyCredits,
+        usedCredits: memberships.usedCredits,
+        status: memberships.status,
+        startDate: memberships.startDate,
+        endDate: memberships.endDate,
+        stripeSubscriptionId: memberships.stripeSubscriptionId,
+        autoRenew: memberships.autoRenew,
+        createdAt: memberships.createdAt,
+        clientFirstName: sql<string | undefined>`${clients.firstName}`,
+        clientLastName: sql<string | undefined>`${clients.lastName}`,
+        clientEmail: sql<string | undefined>`COALESCE(${clients.email}, ${users.email})`,
+      })
+      .from(memberships)
+      .leftJoin(clients, eq(memberships.clientId, clients.id))
+      .leftJoin(users, eq(clients.userId, users.id))
       .where(eq(memberships.organizationId, organizationId))
       .orderBy(desc(memberships.createdAt));
   }

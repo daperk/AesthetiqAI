@@ -3657,6 +3657,175 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Update membership status and credits
+  app.patch("/api/memberships/:id", requireRole("clinic_admin", "staff"), async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      // Validate request body - only allow specific fields to be updated
+      const updateSchema = z.object({
+        status: z.enum(['active', 'suspended', 'cancelled']).optional(),
+        monthlyCredits: z.number().min(0).optional(),
+        usedCredits: z.number().min(0).optional(),
+      });
+      
+      const validatedUpdates = updateSchema.parse(req.body);
+      
+      // Get membership to verify it exists
+      const existingMembership = await storage.getMembership(id);
+      if (!existingMembership) {
+        return res.status(404).json({ message: "Membership not found" });
+      }
+      
+      // Verify membership belongs to user's organization
+      const userOrgId = await getUserOrganizationId(req.user!);
+      if (req.user!.role !== "super_admin" && existingMembership.organizationId !== userOrgId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      // Update membership with validated data only
+      const membership = await storage.updateMembership(id, validatedUpdates);
+      await auditLog(req, "update", "membership", membership.id, validatedUpdates);
+      
+      res.json(membership);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      console.error("Error updating membership:", error);
+      res.status(500).json({ message: "Failed to update membership" });
+    }
+  });
+
+  // Retry payment for suspended membership
+  app.post("/api/memberships/:id/retry-payment", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      console.log(`🔍 [RETRY PAYMENT] Starting retry for membership ${id}`);
+      
+      // Get membership
+      const membership = await storage.getMembership(id);
+      if (!membership) {
+        console.log(`❌ [RETRY PAYMENT] Membership ${id} not found`);
+        return res.status(404).json({ message: "Membership not found" });
+      }
+      
+      console.log(`🔍 [RETRY PAYMENT] Membership status: ${membership.status}`);
+      
+      // Verify membership is suspended
+      if (membership.status !== 'suspended') {
+        console.log(`❌ [RETRY PAYMENT] Membership ${id} is not suspended (status: ${membership.status})`);
+        return res.status(400).json({ message: "Membership is not pending payment" });
+      }
+      
+      // Get client to verify ownership
+      const client = await storage.getClientByUser(req.user!.id);
+      if (!client || client.id !== membership.clientId) {
+        console.log(`❌ [RETRY PAYMENT] Access denied - client ${client?.id} !== membership client ${membership.clientId}`);
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      console.log(`✅ [RETRY PAYMENT] Client verified: ${client.id}`);
+      
+      // Get organization for Stripe Connect account
+      const organization = await storage.getOrganization(membership.organizationId);
+      if (!organization?.stripeConnectAccountId) {
+        console.log(`❌ [RETRY PAYMENT] No Stripe Connect account for org ${membership.organizationId}`);
+        return res.status(400).json({ message: "Payment processing not configured" });
+      }
+      
+      console.log(`✅ [RETRY PAYMENT] Organization has Stripe Connect: ${organization.stripeConnectAccountId}`);
+      
+      // Get the membership tier to find the correct Stripe price ID
+      const tiers = await storage.getMembershipTiersByOrganization(membership.organizationId);
+      const tier = tiers.find(t => t.name === membership.tierName);
+      
+      if (!tier) {
+        console.log(`❌ [RETRY PAYMENT] Tier ${membership.tierName} not found for org ${membership.organizationId}`);
+        return res.status(404).json({ message: "Membership tier not found" });
+      }
+      
+      // Determine which price ID to use (monthly or yearly based on monthly fee)
+      // If the monthly fee matches the yearly price, it's a yearly subscription
+      const isYearly = tier.yearlyPrice && parseFloat(membership.monthlyFee) === parseFloat(tier.yearlyPrice.toString());
+      const priceId = isYearly ? tier.stripePriceIdYearly : tier.stripePriceIdMonthly;
+      
+      if (!priceId) {
+        console.log(`❌ [RETRY PAYMENT] No price ID configured for tier ${tier.name}`);
+        return res.status(400).json({ message: "Membership pricing not configured" });
+      }
+      
+      console.log(`✅ [RETRY PAYMENT] Using price ID: ${priceId} (${isYearly ? 'yearly' : 'monthly'})`);
+      
+      // Get or verify Stripe customer ID
+      let stripeCustomerId = client.stripeCustomerId;
+      if (!stripeCustomerId) {
+        if (!client.email) {
+          console.log(`❌ [RETRY PAYMENT] Client ${client.id} has no email address`);
+          return res.status(400).json({ message: "Customer email is required for payment processing" });
+        }
+        
+        console.log(`🔍 [RETRY PAYMENT] Creating new customer for ${client.email}`);
+        const customer = await stripeService.createCustomer(
+          client.email,
+          `${client.firstName || ''} ${client.lastName || ''}`.trim(),
+          organization.id,
+          organization.stripeConnectAccountId
+        );
+        stripeCustomerId = customer.id;
+        await storage.updateClient(client.id, { stripeCustomerId });
+        console.log(`✅ [RETRY PAYMENT] Customer created: ${customer.id}`);
+      }
+      
+      // Build success and cancel URLs
+      const baseUrl = process.env.REPLIT_DEV_DOMAIN || 'http://localhost:5000';
+      const successUrl = `${baseUrl}/patient?payment=success&membership=${membership.id}`;
+      const cancelUrl = `${baseUrl}/patient?payment=cancelled&membership=${membership.id}`;
+      
+      console.log(`🔍 [RETRY PAYMENT] Creating checkout session for customer ${stripeCustomerId}`);
+      
+      // Create Stripe checkout session for subscription payment
+      const checkoutSession = await stripe!.checkout.sessions.create({
+        customer: stripeCustomerId,
+        payment_method_types: ['card'],
+        mode: 'subscription',
+        line_items: [{
+          price: priceId,
+          quantity: 1,
+        }],
+        subscription_data: {
+          metadata: {
+            membershipId: membership.id,
+            organizationId: membership.organizationId,
+            clientId: client.id,
+          },
+        },
+        success_url: successUrl,
+        cancel_url: cancelUrl,
+        metadata: {
+          membershipId: membership.id,
+          organizationId: membership.organizationId,
+          clientId: client.id,
+        },
+      }, {
+        stripeAccount: organization.stripeConnectAccountId,
+      });
+      
+      console.log(`✅ [RETRY PAYMENT] Checkout session created: ${checkoutSession.id}`);
+      
+      await auditLog(req, "retry_payment_initiated", "membership", membership.id, { 
+        checkoutSessionId: checkoutSession.id,
+        priceId 
+      });
+      
+      res.json({ checkoutUrl: checkoutSession.url });
+    } catch (error) {
+      console.error("❌ [RETRY PAYMENT] Error:", error);
+      res.status(500).json({ message: "Failed to create payment session" });
+    }
+  });
+
   // Rewards routes
   // Get current user's rewards - MUST come before parameterized route
   app.get("/api/rewards/my-rewards", requireAuth, async (req, res) => {

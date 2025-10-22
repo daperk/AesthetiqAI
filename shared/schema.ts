@@ -787,7 +787,11 @@ export type Appointment = typeof appointments.$inferSelect;
 export type InsertAppointment = z.infer<typeof insertAppointmentSchema>;
 export type MembershipTier = typeof membershipTiers.$inferSelect;
 export type InsertMembershipTier = z.infer<typeof insertMembershipTierSchema>;
-export type Membership = typeof memberships.$inferSelect;
+export type Membership = typeof memberships.$inferSelect & {
+  clientFirstName?: string;
+  clientLastName?: string;
+  clientEmail?: string;
+};
 export type InsertMembership = z.infer<typeof insertMembershipSchema>;
 export type Reward = typeof rewards.$inferSelect;
 export type InsertReward = z.infer<typeof insertRewardSchema>;

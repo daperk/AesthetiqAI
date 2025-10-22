@@ -364,6 +364,34 @@ export default function PatientDashboard() {
                  membership?.status === 'suspended' ? "Payment processing..." : 
                  "Join to save"}
               </div>
+              {membership?.status === 'suspended' && (
+                <Button 
+                  size="sm" 
+                  className="mt-3 w-full"
+                  onClick={async () => {
+                    try {
+                      toast({
+                        title: "Complete Payment",
+                        description: "Redirecting you to complete your membership payment...",
+                      });
+                      const response = await apiRequest("POST", `/api/memberships/${membership.id}/retry-payment`, {});
+                      const data = await response.json();
+                      if (data.checkoutUrl) {
+                        window.location.href = data.checkoutUrl;
+                      }
+                    } catch (error) {
+                      toast({
+                        title: "Error",
+                        description: "Failed to initiate payment. Please try again.",
+                        variant: "destructive",
+                      });
+                    }
+                  }}
+                  data-testid="button-complete-payment"
+                >
+                  Complete Payment
+                </Button>
+              )}
             </CardContent>
           </Card>
 

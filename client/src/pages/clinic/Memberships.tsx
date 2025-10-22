@@ -7,6 +7,13 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { 
+  DropdownMenu, 
+  DropdownMenuContent, 
+  DropdownMenuItem, 
+  DropdownMenuTrigger, 
+  DropdownMenuSeparator 
+} from "@/components/ui/dropdown-menu";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -57,6 +64,12 @@ export default function Memberships() {
   const [isCreateTierDialogOpen, setIsCreateTierDialogOpen] = useState(false);
   const [isEditTierDialogOpen, setIsEditTierDialogOpen] = useState(false);
   const [editingTier, setEditingTier] = useState<MembershipTier | null>(null);
+  const [selectedMembership, setSelectedMembership] = useState<Membership | null>(null);
+  const [isManageDialogOpen, setIsManageDialogOpen] = useState(false);
+  const [managementFormData, setManagementFormData] = useState({
+    status: '',
+    monthlyCredits: 0,
+  });
   
   const [newTier, setNewTier] = useState({
     name: "",
@@ -132,6 +145,29 @@ export default function Memberships() {
     },
   });
 
+  // Update membership mutation
+  const updateMembershipMutation = useMutation({
+    mutationFn: async ({ id, updates }: { id: string; updates: any }) => {
+      const response = await apiRequest("PATCH", `/api/memberships/${id}`, updates);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/memberships"] });
+      setIsManageDialogOpen(false);
+      toast({
+        title: "Success",
+        description: "Membership updated successfully",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to update membership",
+        variant: "destructive",
+      });
+    },
+  });
+
   // Update tier mutation
   const updateTierMutation = useMutation({
     mutationFn: async (formData: FormData) => {
@@ -198,6 +234,30 @@ export default function Memberships() {
       m.status === "active" ? sum + parseFloat(m.monthlyFee.toString()) : sum, 0) || 0;
     
     return { totalMembers, activeMembers, pendingMembers, totalMRR };
+  };
+
+  const handleViewMemberDetails = (membership: Membership) => {
+    toast({
+      title: "Member Details",
+      description: `${membership.clientFirstName} ${membership.clientLastName} - ${membership.tierName}`,
+    });
+  };
+
+  const handleManageMembership = (membership: Membership) => {
+    setSelectedMembership(membership);
+    setManagementFormData({
+      status: membership.status || 'active',
+      monthlyCredits: Number(membership.monthlyCredits) || 0,
+    });
+    setIsManageDialogOpen(true);
+  };
+
+  const handleCancelMembership = (membership: Membership) => {
+    toast({
+      title: "Cancel Membership",
+      description: `Cancel membership for ${membership.clientFirstName} ${membership.clientLastName}?`,
+      variant: "destructive",
+    });
   };
 
   // Show loading while checking payment status or loading data
@@ -623,7 +683,11 @@ export default function Memberships() {
                             <Crown className="w-5 h-5 text-primary" />
                           </div>
                           <div>
-                            <div className="font-medium text-foreground">Client Name</div>
+                            <div className="font-medium text-foreground" data-testid={`text-client-name-${membership.id}`}>
+                              {membership.clientFirstName && membership.clientLastName 
+                                ? `${membership.clientFirstName} ${membership.clientLastName}`
+                                : membership.clientEmail || "Unknown Client"}
+                            </div>
                             <div className="text-sm text-muted-foreground">
                               {membership.tierName} • Joined {new Date(membership.startDate).toLocaleDateString()}
                             </div>
@@ -655,9 +719,28 @@ export default function Memberships() {
                               : "Inactive"}
                           </Badge>
                           
-                          <Button variant="ghost" size="sm" data-testid={`button-member-menu-${membership.id}`}>
-                            <MoreHorizontal className="w-4 h-4" />
-                          </Button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="sm" data-testid={`button-member-menu-${membership.id}`}>
+                                <MoreHorizontal className="w-4 h-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => handleViewMemberDetails(membership)}>
+                                View Details
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleManageMembership(membership)}>
+                                Manage Membership
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem 
+                                onClick={() => handleCancelMembership(membership)}
+                                className="text-red-600"
+                              >
+                                Cancel Membership
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </div>
                       </div>
                     ))}
@@ -666,6 +749,72 @@ export default function Memberships() {
               </CardContent>
             </Card>
           </TabsContent>
+
+          {/* Membership Management Dialog */}
+          <Dialog open={isManageDialogOpen} onOpenChange={setIsManageDialogOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Manage Membership</DialogTitle>
+              </DialogHeader>
+              {selectedMembership && (
+                <div className="space-y-4">
+                  <div>
+                    <Label>Client</Label>
+                    <p className="text-sm text-muted-foreground">
+                      {selectedMembership.clientFirstName} {selectedMembership.clientLastName}
+                    </p>
+                  </div>
+                  <div>
+                    <Label>Membership Tier</Label>
+                    <p className="text-sm text-muted-foreground">{selectedMembership.tierName}</p>
+                  </div>
+                  <div>
+                    <Label>Status</Label>
+                    <Select 
+                      value={managementFormData.status} 
+                      onValueChange={(value) => setManagementFormData(prev => ({ ...prev, status: value }))}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="active">Active</SelectItem>
+                        <SelectItem value="suspended">Suspended</SelectItem>
+                        <SelectItem value="cancelled">Cancelled</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label>Monthly Credits</Label>
+                    <Input 
+                      type="number" 
+                      value={managementFormData.monthlyCredits}
+                      onChange={(e) => setManagementFormData(prev => ({ ...prev, monthlyCredits: Number(e.target.value) }))}
+                      placeholder="Enter monthly credits"
+                    />
+                  </div>
+                  <div className="flex justify-end space-x-2">
+                    <Button variant="outline" onClick={() => setIsManageDialogOpen(false)}>
+                      Cancel
+                    </Button>
+                    <Button 
+                      onClick={() => {
+                        if (selectedMembership) {
+                          updateMembershipMutation.mutate({
+                            id: selectedMembership.id,
+                            updates: managementFormData,
+                          });
+                        }
+                      }}
+                      disabled={updateMembershipMutation.isPending}
+                    >
+                      {updateMembershipMutation.isPending ? "Saving..." : "Save Changes"}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </DialogContent>
+          </Dialog>
 
           <TabsContent value="analytics">
             <div className="grid lg:grid-cols-2 gap-6">
