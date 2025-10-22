@@ -195,7 +195,10 @@ export default function PatientDashboard() {
                     size="sm"
                     variant="secondary"
                     className="bg-white text-primary hover:bg-white/90 font-medium"
-                    onClick={() => setLocation("/patient/dashboard#membership")}
+                    onClick={() => {
+                      const membershipTab = document.querySelector('[value="membership"]') as HTMLButtonElement;
+                      if (membershipTab) membershipTab.click();
+                    }}
                     data-testid="button-join-membership"
                   >
                     Join Now
@@ -213,10 +216,18 @@ export default function PatientDashboard() {
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="text-xl font-semibold mb-2" data-testid="text-next-appointment-title">
-                    Your next appointment is tomorrow at 2:00 PM
+                    Your next appointment is {new Date(nextAppointment.startTime).toLocaleDateString('en-US', { 
+                      month: 'long', 
+                      day: 'numeric',
+                      year: 'numeric'
+                    })} at {new Date(nextAppointment.startTime).toLocaleTimeString([], { 
+                      hour: 'numeric', 
+                      minute: '2-digit', 
+                      hour12: true 
+                    })}
                   </h2>
                   <p className="text-primary-foreground/90 mb-4">
-                    Deluxe Facial with Dr. Sarah Johnson
+                    {nextAppointment.serviceName || 'Appointment'} {nextAppointment.staffName ? `with ${nextAppointment.staffName}` : ''}
                   </p>
                   <div className="flex items-center space-x-4">
                     <Button variant="secondary" size="sm" data-testid="button-view-appointment">
@@ -340,12 +351,12 @@ export default function PatientDashboard() {
                       {upcomingAppointments.slice(0, 3).map((appointment) => (
                         <div 
                           key={appointment.id}
-                          className="flex items-center justify-between p-4 border rounded-lg"
+                          className="flex items-center justify-between p-4 border rounded-lg hover:border-primary transition-colors"
                           data-testid={`appointment-item-${appointment.id}`}
                         >
                           <div className="flex items-center space-x-3">
-                            <div className="text-center">
-                              <div className="text-sm font-medium text-foreground">
+                            <div className="text-center bg-primary/10 rounded-lg p-2 min-w-[70px]">
+                              <div className="text-sm font-bold text-primary">
                                 {new Date(appointment.startTime).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                               </div>
                               <div className="text-xs text-muted-foreground">
@@ -353,11 +364,22 @@ export default function PatientDashboard() {
                               </div>
                             </div>
                             <div>
-                              <div className="font-medium text-foreground">Service Name</div>
-                              <div className="text-sm text-muted-foreground">Provider Name</div>
+                              <div className="font-medium text-foreground">{appointment.serviceName || 'Service'}</div>
+                              <div className="text-sm text-muted-foreground">
+                                {appointment.staffName ? `with ${appointment.staffName}` : 'Staff member'}
+                              </div>
                             </div>
                           </div>
-                          <Badge className="bg-green-100 text-green-800">Confirmed</Badge>
+                          <Badge 
+                            className={
+                              appointment.status === 'confirmed' ? 'bg-green-100 text-green-800' :
+                              appointment.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                              appointment.status === 'cancelled' ? 'bg-red-100 text-red-800' :
+                              'bg-blue-100 text-blue-800'
+                            }
+                          >
+                            {appointment.status}
+                          </Badge>
                         </div>
                       ))}
                     </div>
@@ -426,68 +448,201 @@ export default function PatientDashboard() {
           <TabsContent value="appointments">
             <Card>
               <CardHeader>
-                <CardTitle data-testid="text-appointment-history-title">Appointment History</CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle data-testid="text-appointment-history-title">Upcoming Appointments</CardTitle>
+                  <Button 
+                    onClick={() => setLocation("/patient/booking")}
+                    size="sm"
+                    data-testid="button-book-new-appointment"
+                  >
+                    <CalendarPlus className="w-4 h-4 mr-2" />
+                    Book Appointment
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent>
-                <div className="text-center py-8">
-                  <Calendar className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-                  <p className="text-muted-foreground" data-testid="text-appointment-history-placeholder">
-                    Your appointment history will appear here
-                  </p>
-                </div>
+                {!upcomingAppointments || upcomingAppointments.length === 0 ? (
+                  <div className="text-center py-8">
+                    <Calendar className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                    <p className="text-muted-foreground mb-4" data-testid="text-no-appointments">
+                      No appointments scheduled
+                    </p>
+                    <Button 
+                      onClick={() => setLocation("/patient/booking")}
+                      data-testid="button-book-first-appointment-tab"
+                    >
+                      Book Your First Appointment
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {upcomingAppointments.map((appointment) => (
+                      <div 
+                        key={appointment.id}
+                        className="flex items-center justify-between p-4 border rounded-lg hover:border-primary transition-colors"
+                        data-testid={`appointment-${appointment.id}`}
+                      >
+                        <div className="flex items-center space-x-4">
+                          <div className="text-center bg-primary/10 rounded-lg p-3 min-w-[80px]">
+                            <div className="text-lg font-bold text-primary">
+                              {new Date(appointment.startTime).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                            </div>
+                            <div className="text-sm text-muted-foreground">
+                              {new Date(appointment.startTime).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="font-semibold text-foreground">
+                              {appointment.serviceName || 'Service'}
+                            </div>
+                            <div className="text-sm text-muted-foreground">
+                              {appointment.staffName ? `with ${appointment.staffName}` : 'Staff member'}
+                            </div>
+                            <div className="text-xs text-muted-foreground mt-1">
+                              {appointment.locationName || 'Location'}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-3">
+                          <Badge 
+                            className={
+                              appointment.status === 'confirmed' ? 'bg-green-100 text-green-800' :
+                              appointment.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                              appointment.status === 'cancelled' ? 'bg-red-100 text-red-800' :
+                              'bg-blue-100 text-blue-800'
+                            }
+                          >
+                            {appointment.status}
+                          </Badge>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
 
           <TabsContent value="membership">
-            <Card>
-              <CardHeader>
-                <CardTitle data-testid="text-membership-details-title">Membership Details</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {membership ? (
-                  <div className="space-y-6">
-                    {/* Membership Card */}
+            <div className="space-y-6">
+              {/* Current Membership Card */}
+              {membership && membership.status === 'active' && (
+                <Card className="border-primary">
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="flex items-center gap-2">
+                        <Crown className="w-5 h-5 text-primary" />
+                        Your Active Membership
+                      </CardTitle>
+                      <Badge className="bg-green-100 text-green-800">Active</Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
                     <div className="bg-gradient-to-br from-primary to-accent rounded-lg p-6 text-white">
                       <div className="flex items-center justify-between mb-4">
                         <div>
-                          <div className="text-lg font-semibold">{membership.tierName} Membership</div>
+                          <div className="text-xl font-bold">{membership.tierName}</div>
                           <div className="text-primary-foreground/80 text-sm">
                             Active until {membership.endDate ? new Date(membership.endDate).toLocaleDateString() : 'Ongoing'}
                           </div>
                         </div>
-                        <Crown className="w-8 h-8" />
+                        <Crown className="w-10 h-10" />
                       </div>
                       <div className="grid grid-cols-2 gap-4 text-sm">
                         <div>
-                          <div className="text-primary-foreground/80">Monthly Credit</div>
-                          <div className="font-semibold">
+                          <div className="text-primary-foreground/80">Monthly Credits</div>
+                          <div className="font-semibold text-lg">
                             ${membership.usedCredits || 0} / ${membership.monthlyCredits}
                           </div>
                         </div>
                         <div>
-                          <div className="text-primary-foreground/80">Benefits</div>
-                          <div className="font-semibold">Premium perks included</div>
+                          <div className="text-primary-foreground/80">Discount</div>
+                          <div className="font-semibold text-lg">{membership.discount || 20}% off</div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                ) : (
-                  <div className="text-center py-8">
-                    <Crown className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-                    <p className="text-muted-foreground mb-4" data-testid="text-no-membership">
-                      You don't have an active membership
-                    </p>
-                    <Button 
-                      onClick={() => setLocation("/patient/membership")}
-                      data-testid="button-explore-memberships"
-                    >
-                      Explore Membership Plans
-                    </Button>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Available Membership Tiers */}
+              <Card>
+                <CardHeader>
+                  <CardTitle data-testid="text-membership-plans-title">
+                    {membership && membership.status === 'active' ? 'Upgrade or Change Your Membership' : 'Available Membership Plans'}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {!membershipTiers || membershipTiers.length === 0 ? (
+                    <div className="text-center py-8">
+                      <Crown className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                      <p className="text-muted-foreground">No membership plans available</p>
+                    </div>
+                  ) : (
+                    <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {membershipTiers.map((tier: any) => {
+                        const isActive = membership?.tierId === tier.id && membership?.status === 'active';
+                        return (
+                          <Card 
+                            key={tier.id} 
+                            className={`relative ${isActive ? 'border-primary ring-2 ring-primary' : ''}`}
+                            data-testid={`membership-tier-${tier.id}`}
+                          >
+                            {isActive && (
+                              <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
+                                <Badge className="bg-primary text-primary-foreground">Current Plan</Badge>
+                              </div>
+                            )}
+                            <CardHeader>
+                              <CardTitle className="text-lg">{tier.name}</CardTitle>
+                            </CardHeader>
+                            <CardContent className="space-y-4">
+                              <div>
+                                <div className="text-3xl font-bold text-primary">
+                                  ${tier.monthlyPrice}
+                                  <span className="text-sm text-muted-foreground">/month</span>
+                                </div>
+                              </div>
+                              
+                              <div className="space-y-2 text-sm">
+                                <div className="flex items-center gap-2">
+                                  <CreditCard className="w-4 h-4 text-primary" />
+                                  <span>${tier.monthlyCredits} monthly credits</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <Star className="w-4 h-4 text-primary" />
+                                  <span>{tier.discount}% discount on services</span>
+                                </div>
+                                {tier.pointsMultiplier > 1 && (
+                                  <div className="flex items-center gap-2">
+                                    <Gift className="w-4 h-4 text-primary" />
+                                    <span>{tier.pointsMultiplier}x reward points</span>
+                                  </div>
+                                )}
+                              </div>
+
+                              {tier.description && (
+                                <p className="text-sm text-muted-foreground">{tier.description}</p>
+                              )}
+
+                              <Button 
+                                className="w-full"
+                                variant={isActive ? "outline" : "default"}
+                                disabled={isActive}
+                                onClick={() => setLocation("/patient/membership")}
+                                data-testid={`button-select-tier-${tier.id}`}
+                              >
+                                {isActive ? 'Current Plan' : membership ? 'Switch Plan' : 'Join Now'}
+                              </Button>
+                            </CardContent>
+                          </Card>
+                        );
+                      })}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
 
           <TabsContent value="rewards">
