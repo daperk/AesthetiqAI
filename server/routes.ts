@@ -2479,12 +2479,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let currentHour = startHour;
       let currentMinute = startMinute;
       
+      // Get current time for filtering past slots on today's date
+      const now = new Date();
+      const isToday = selectedDate.toDateString() === now.toDateString();
+      
       while (currentHour < endHour || (currentHour === endHour && currentMinute < endMinute)) {
-        // Create slot time in UTC for comparison with database times
-        const slotTime = new Date(Date.UTC(year, month - 1, day, currentHour, currentMinute, 0, 0));
+        // Create slot time in LOCAL timezone (not UTC)
+        // This properly handles timezone conversions when comparing with database appointment times
+        const slotTime = new Date(year, month - 1, day, currentHour, currentMinute, 0, 0);
         
         // Format time for display (HH:MM in clinic's local time)
         const timeString = `${String(currentHour).padStart(2, '0')}:${String(currentMinute).padStart(2, '0')}`;
+        
+        // Skip past time slots if this is today
+        if (isToday && slotTime < now) {
+          // Increment by interval and continue
+          currentMinute += intervalMinutes;
+          if (currentMinute >= 60) {
+            currentHour += Math.floor(currentMinute / 60);
+            currentMinute = currentMinute % 60;
+          }
+          continue;
+        }
         
         // Check if this slot conflicts with existing appointments
         const isAvailable = !existingAppointments.some(apt => {

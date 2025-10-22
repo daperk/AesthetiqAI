@@ -314,7 +314,14 @@ export default function Booking() {
                   mode="single"
                   selected={selectedDate}
                   onSelect={setSelectedDate}
-                  disabled={(date) => date < new Date()} // Only disable past dates
+                  disabled={(date) => {
+                    // Compare dates without time component
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    const checkDate = new Date(date);
+                    checkDate.setHours(0, 0, 0, 0);
+                    return checkDate < today;
+                  }}
                   className="rounded-md border"
                   data-testid="calendar-date-picker"
                 />
