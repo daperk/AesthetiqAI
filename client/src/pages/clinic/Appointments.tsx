@@ -65,10 +65,11 @@ export default function Appointments() {
     staleTime: 30000,
   });
 
-  const { data: clients } = useQuery<Client[]>({
+  const { data: clients, refetch: refetchClients } = useQuery<Client[]>({
     queryKey: ["/api/clients", organization?.id],
     enabled: !!organization?.id,
-    staleTime: 5 * 60000,
+    staleTime: 0, // Always refetch to show newly created patients immediately
+    gcTime: 0, // Don't cache results
   });
 
   const { data: staff } = useQuery<Staff[]>({
@@ -136,6 +137,14 @@ export default function Appointments() {
 
   const handleInputChange = (field: string, value: string) => {
     setNewAppointment(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleDialogOpenChange = (open: boolean) => {
+    setIsCreateDialogOpen(open);
+    // Refetch clients when dialog opens to show newly created patients
+    if (open) {
+      refetchClients();
+    }
   };
 
   const getStatusColor = (status: string) => {
@@ -220,7 +229,7 @@ export default function Appointments() {
             </SelectContent>
           </Select>
           
-          <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+          <Dialog open={isCreateDialogOpen} onOpenChange={handleDialogOpenChange}>
               <DialogTrigger asChild>
                 <Button data-testid="button-create-appointment">
                   <Plus className="w-4 h-4 mr-2" />

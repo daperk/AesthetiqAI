@@ -2098,9 +2098,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const appointmentData = insertAppointmentSchema.parse(req.body);
       
-      // Check for appointment conflicts
+      // Check for appointment conflicts (scoped to organization for multi-tenant isolation)
       const conflicts = await storage.getAppointmentsByStaff(
-        appointmentData.staffId, 
+        appointmentData.staffId,
+        appointmentData.organizationId,
         new Date(appointmentData.startTime)
       );
       
@@ -2432,8 +2433,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // The date comes from the frontend calendar which gives us YYYY-MM-DD
       const [year, month, day] = date.split('T')[0].split('-').map(Number);
       
-      // Get existing appointments for this staff member on this date
-      const existingAppointments = await storage.getAppointmentsByStaff(staffId, new Date(date));
+      // Get existing appointments for this staff member on this date (scoped to organization)
+      const existingAppointments = await storage.getAppointmentsByStaff(staffId, staff.organizationId, new Date(date));
       console.log(`🔍 [AVAILABILITY] Date: ${date}, Staff: ${staffId}`);
       console.log(`🔍 [AVAILABILITY] Existing appointments: ${existingAppointments.length}`);
       if (existingAppointments.length > 0) {
@@ -2514,8 +2515,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
           continue;
         }
         
-        // Check if this slot conflicts with existing appointments
+        // Check if this slot conflicts with existing active appointments
+        // Only consider scheduled/pending/confirmed appointments (exclude canceled/completed)
         const isAvailable = !existingAppointments.some(apt => {
+          // Skip canceled or completed appointments
+          if (apt.status === 'canceled' || apt.status === 'completed') {
+            return false;
+          }
+          
           const aptStart = new Date(apt.startTime);
           const aptEnd = new Date(apt.endTime);
           return slotTime >= aptStart && slotTime < aptEnd;

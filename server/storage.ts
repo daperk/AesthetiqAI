@@ -122,7 +122,7 @@ export interface IStorage {
   // Appointments
   getAppointmentsByOrganization(organizationId: string, startDate?: Date, endDate?: Date): Promise<Appointment[]>;
   getAppointmentsByClient(clientId: string): Promise<Appointment[]>;
-  getAppointmentsByStaff(staffId: string, date?: Date): Promise<Appointment[]>;
+  getAppointmentsByStaff(staffId: string, organizationId: string, date?: Date): Promise<Appointment[]>;
   getAppointment(id: string): Promise<Appointment | undefined>;
   createAppointment(appointment: InsertAppointment): Promise<Appointment>;
   updateAppointment(id: string, updates: Partial<InsertAppointment>): Promise<Appointment>;
@@ -596,8 +596,8 @@ export class DatabaseStorage implements IStorage {
       });
       
       if (isAvailable) {
-        // Check if staff has any conflicting appointments
-        const appointments = await this.getAppointmentsByStaff(staffMember.id, startTime);
+        // Check if staff has any conflicting appointments (scoped to organization)
+        const appointments = await this.getAppointmentsByStaff(staffMember.id, organizationId, startTime);
         const hasConflict = appointments.some(apt => {
           return (apt.startTime < endTime && apt.endTime > startTime) && 
                  apt.status !== 'canceled';
@@ -770,8 +770,11 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(appointments.startTime));
   }
 
-  async getAppointmentsByStaff(staffId: string, date?: Date): Promise<Appointment[]> {
-    let query = db.select().from(appointments).where(eq(appointments.staffId, staffId));
+  async getAppointmentsByStaff(staffId: string, organizationId: string, date?: Date): Promise<Appointment[]> {
+    let conditions = [
+      eq(appointments.staffId, staffId),
+      eq(appointments.organizationId, organizationId)
+    ];
     
     if (date) {
       const startOfDay = new Date(date);
@@ -779,13 +782,13 @@ export class DatabaseStorage implements IStorage {
       const endOfDay = new Date(date);
       endOfDay.setHours(23, 59, 59, 999);
       
-      query = query.where(and(
-        gte(appointments.startTime, startOfDay),
-        lte(appointments.startTime, endOfDay)
-      ));
+      conditions.push(gte(appointments.startTime, startOfDay));
+      conditions.push(lte(appointments.startTime, endOfDay));
     }
     
-    return await query.orderBy(asc(appointments.startTime));
+    return await db.select().from(appointments)
+      .where(and(...conditions))
+      .orderBy(asc(appointments.startTime));
   }
 
   async getAppointment(id: string): Promise<Appointment | undefined> {
