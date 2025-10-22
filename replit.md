@@ -165,6 +165,15 @@ Aesthiq uses Stripe Connect's **Destination Charges** pattern for bookings and *
 - Example: At 10:18 AM Miami time, slots now correctly show from 10:30 AM onwards (not 2:30 PM)
 - Note: Edge cases around midnight boundaries and DST transitions documented for future enhancement
 
+**Appointment Display Enhancements**
+- Fixed appointment display in clinic dashboard and appointments tab to show actual data instead of placeholders
+- API endpoints now enrich appointments with client names, service names, staff names, and location data
+- Staff name resolution: Uses `staff.title` if available, falls back to user's firstName/lastName
+- Appointment times now display in clinic's local timezone instead of browser timezone
+- Both `/api/appointments` and `/api/appointments/:organizationId/today` endpoints return enriched data
+- Frontend components (Dashboard.tsx, Appointments.tsx) properly display: clientName, serviceName, staffName with fallbacks
+- Example: "Jane Doe - Renewal Essentials - Clinic Administrator" instead of "Client - Service Name - Staff"
+
 **Technical Details**
 - Login uses `emailOrUsername` field (Passport Local Strategy)
 - Password hashing: 12 rounds for passwords, 10 rounds for reset tokens
