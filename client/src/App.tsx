@@ -14,6 +14,8 @@ import Register from "@/pages/auth/Register";
 import PatientSignup from "@/pages/auth/PatientSignup";
 import PatientLogin from "@/pages/auth/PatientLogin";
 import ClinicRegister from "@/pages/auth/ClinicRegister";
+import ForgotPassword from "@/pages/auth/ForgotPassword";
+import ResetPassword from "@/pages/auth/ResetPassword";
 import Subscribe from "@/pages/pricing/Subscribe";
 
 // Super Admin Pages
@@ -65,6 +67,8 @@ function Router() {
       <Route path="/" component={Home} />
       <Route path="/login" component={Login} />
       <Route path="/register" component={Register} />
+      <Route path="/forgot-password" component={ForgotPassword} />
+      <Route path="/reset-password/:token" component={ResetPassword} />
       <Route path="/c/:slug/login" component={PatientLogin} />
       <Route path="/c/:slug/register" component={PatientSignup} />
       <Route path="/c/:slug" component={PatientSignup} />

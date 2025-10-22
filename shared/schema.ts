@@ -32,6 +32,15 @@ export const users = pgTable("users", {
   updatedAt: timestamp("updated_at").default(sql`now()`)
 });
 
+export const passwordResetTokens = pgTable("password_reset_tokens", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: uuid("user_id").notNull(),
+  token: varchar("token", { length: 255 }).notNull().unique(),
+  expiresAt: timestamp("expires_at").notNull(),
+  used: boolean("used").default(false),
+  createdAt: timestamp("created_at").default(sql`now()`)
+});
+
 export const organizations = pgTable("organizations", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
@@ -578,6 +587,11 @@ export const insertUserSchema = createInsertSchema(users).omit({
   updatedAt: true
 });
 
+export const insertPasswordResetTokenSchema = createInsertSchema(passwordResetTokens).omit({
+  id: true,
+  createdAt: true
+});
+
 export const insertOrganizationSchema = createInsertSchema(organizations).omit({
   id: true,
   createdAt: true,
@@ -745,6 +759,8 @@ export const insertCampaignRecipientSchema = createInsertSchema(campaignRecipien
 // Types
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
+export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;
+export type InsertPasswordResetToken = z.infer<typeof insertPasswordResetTokenSchema>;
 export type Organization = typeof organizations.$inferSelect;
 export type InsertOrganization = z.infer<typeof insertOrganizationSchema>;
 export type SubscriptionPlan = typeof subscriptionPlans.$inferSelect;

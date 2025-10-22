@@ -2,7 +2,7 @@ import {
   users, organizations, subscriptionPlans, locations, staff, staffRoles, staffAvailability, staffServices,
   clients, clientLocations, services, appointments, memberships, membershipTiers, rewards, rewardOptions, 
   transactions, addOns, organizationAddOns, usageLogs, aiInsights, notifications, auditLogs, fileStorage, featureFlags,
-  messageTemplates, marketingCampaigns, campaignRecipients,
+  messageTemplates, marketingCampaigns, campaignRecipients, passwordResetTokens,
   type User, type InsertUser, type Organization, type InsertOrganization,
   type SubscriptionPlan, type InsertSubscriptionPlan, type Location, type InsertLocation,
   type Staff, type InsertStaff, type StaffRole, type InsertStaffRole,
@@ -16,7 +16,7 @@ import {
   type AuditLog, type InsertAuditLog, type FileStorage, type InsertFileStorage,
   type FeatureFlag, type InsertFeatureFlag,
   type MessageTemplate, type InsertMessageTemplate, type MarketingCampaign, type InsertMarketingCampaign,
-  type CampaignRecipient, type InsertCampaignRecipient
+  type CampaignRecipient, type InsertCampaignRecipient, type PasswordResetToken, type InsertPasswordResetToken
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, asc, gte, lte, like, count, sql } from "drizzle-orm";
@@ -29,6 +29,12 @@ export interface IStorage {
   createUser(user: InsertUser): Promise<User>;
   updateUser(id: string, updates: Partial<InsertUser>): Promise<User>;
   updateUserStripeInfo(id: string, customerId: string, subscriptionId?: string): Promise<User>;
+
+  // Password Reset Tokens
+  createResetToken(userId: string, token: string, expiresAt: Date): Promise<PasswordResetToken>;
+  getResetToken(token: string): Promise<PasswordResetToken | undefined>;
+  markTokenAsUsed(token: string): Promise<void>;
+  deleteExpiredTokens(): Promise<void>;
 
   // Organizations
   getOrganization(id: string): Promise<Organization | undefined>;
@@ -233,6 +239,39 @@ export class DatabaseStorage implements IStorage {
       .where(eq(users.id, id))
       .returning();
     return user;
+  }
+
+  // Password Reset Tokens
+  async createResetToken(userId: string, token: string, expiresAt: Date): Promise<PasswordResetToken> {
+    const [resetToken] = await db.insert(passwordResetTokens).values({
+      userId,
+      token,
+      expiresAt,
+      used: false
+    }).returning();
+    return resetToken;
+  }
+
+  async getResetToken(token: string): Promise<PasswordResetToken | undefined> {
+    const [resetToken] = await db.select()
+      .from(passwordResetTokens)
+      .where(and(
+        eq(passwordResetTokens.token, token),
+        eq(passwordResetTokens.used, false),
+        gte(passwordResetTokens.expiresAt, new Date())
+      ));
+    return resetToken || undefined;
+  }
+
+  async markTokenAsUsed(token: string): Promise<void> {
+    await db.update(passwordResetTokens)
+      .set({ used: true })
+      .where(eq(passwordResetTokens.token, token));
+  }
+
+  async deleteExpiredTokens(): Promise<void> {
+    await db.delete(passwordResetTokens)
+      .where(lte(passwordResetTokens.expiresAt, new Date()));
   }
 
   // Organizations

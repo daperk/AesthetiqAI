@@ -5,6 +5,7 @@ import { Strategy as LocalStrategy } from "passport-local";
 import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
 import bcrypt from "bcryptjs";
+import crypto from "crypto";
 import { storage } from "./storage";
 import { pool } from "./db";
 import * as stripeService from "./services/stripe";
@@ -769,6 +770,121 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
     
     res.json({ user: { ...req.user, password: undefined } });
+  });
+
+  app.post("/api/auth/forgot-password", async (req, res) => {
+    try {
+      const { email } = req.body;
+      
+      if (!email) {
+        return res.status(400).json({ message: "Email is required" });
+      }
+
+      const user = await storage.getUserByEmail(email);
+      
+      if (user) {
+        const resetToken = crypto.randomBytes(32).toString('hex');
+        const expiresAt = new Date();
+        expiresAt.setHours(expiresAt.getHours() + 24);
+        
+        await storage.createResetToken(user.id, resetToken, expiresAt);
+        
+        const resetLink = `${req.protocol}://${req.get('host')}/reset-password/${resetToken}`;
+        
+        const emailContent = `
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Reset Your Password - Aesthiq</title>
+          </head>
+          <body style="margin: 0; padding: 0; font-family: 'Arial', 'Helvetica', sans-serif; background-color: #f5f5f5;">
+            <div style="max-width: 600px; margin: 40px auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+              <div style="background: linear-gradient(135deg, #B8860B 0%, #DAA520 100%); padding: 40px 30px; text-align: center;">
+                <h1 style="color: #ffffff; margin: 0; font-size: 32px; font-weight: 300; letter-spacing: 1px;">Password Reset</h1>
+              </div>
+              <div style="padding: 40px 30px;">
+                <h2 style="color: #333333; font-size: 24px; margin: 0 0 20px 0;">Reset Your Password</h2>
+                <p style="color: #666666; font-size: 16px; line-height: 1.6; margin: 0 0 25px 0;">
+                  You requested a password reset for your Aesthiq account. Click the button below to set a new password.
+                </p>
+                <div style="text-align: center; margin: 35px 0;">
+                  <a href="${resetLink}" 
+                     style="display: inline-block; background: linear-gradient(135deg, #B8860B 0%, #DAA520 100%); 
+                            color: white; text-decoration: none; padding: 16px 40px; border-radius: 30px; 
+                            font-size: 16px; font-weight: 600; letter-spacing: 0.5px; 
+                            box-shadow: 0 4px 15px rgba(184, 134, 11, 0.3);">
+                    Reset Password
+                  </a>
+                </div>
+                <p style="color: #999999; font-size: 13px; text-align: center; margin: 20px 0;">
+                  Or copy and paste this link into your browser:<br>
+                  <span style="color: #B8860B; word-break: break-all;">${resetLink}</span>
+                </p>
+                <p style="color: #666666; font-size: 14px; line-height: 1.6; margin: 25px 0 0 0;">
+                  <strong>This link will expire in 24 hours.</strong><br><br>
+                  If you didn't request this password reset, please ignore this email. Your password will remain unchanged.
+                </p>
+              </div>
+              <div style="background-color: #333333; padding: 20px 30px; text-align: center;">
+                <p style="color: #ffffff; font-size: 12px; margin: 0;">© ${new Date().getFullYear()} Aesthiq. All rights reserved.</p>
+              </div>
+            </div>
+          </body>
+          </html>
+        `;
+        
+        const textContent = `Reset Your Password - Aesthiq\n\n` +
+          `You requested a password reset. Click the link below to set a new password:\n\n` +
+          `${resetLink}\n\n` +
+          `This link will expire in 24 hours.\n\n` +
+          `If you didn't request this password reset, please ignore this email.`;
+        
+        await sendEmail({
+          to: email,
+          subject: "Reset Your Password - Aesthiq",
+          html: emailContent,
+          text: textContent
+        });
+      }
+      
+      res.json({ message: "If an account exists with this email, a password reset link has been sent." });
+    } catch (error) {
+      console.error("Forgot password error:", error);
+      res.status(500).json({ message: "Failed to process password reset request" });
+    }
+  });
+
+  app.post("/api/auth/reset-password", async (req, res) => {
+    try {
+      const { token, newPassword } = req.body;
+      
+      if (!token || !newPassword) {
+        return res.status(400).json({ message: "Token and new password are required" });
+      }
+      
+      if (newPassword.length < 8) {
+        return res.status(400).json({ message: "Password must be at least 8 characters long" });
+      }
+      
+      const resetToken = await storage.getResetToken(token);
+      
+      if (!resetToken) {
+        return res.status(400).json({ message: "Invalid or expired reset token" });
+      }
+      
+      const hashedPassword = await bcrypt.hash(newPassword, 12);
+      
+      await storage.updateUser(resetToken.userId, { password: hashedPassword });
+      
+      await storage.markTokenAsUsed(token);
+      
+      res.json({ message: "Password reset successfully" });
+    } catch (error) {
+      console.error("Reset password error:", error);
+      res.status(500).json({ message: "Failed to reset password" });
+    }
   });
 
   app.post("/api/auth/logout", (req, res) => {
@@ -2636,6 +2752,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let stripeProductId, stripePriceId, stripeDepositPriceId;
       
       if (stripeConnectAccountId && serviceData.price) {
+        console.log(`🔍 [SERVICE-STRIPE] Attempting to create product for service: ${serviceData.name}`);
+        console.log(`🔍 [SERVICE-STRIPE] Connect Account: ${stripeConnectAccountId}`);
+        console.log(`🔍 [SERVICE-STRIPE] Service Price: $${serviceData.price}`);
+        
         try {
           // Always create a Stripe product for the service
           const product = await stripeService.createProduct({
@@ -2652,7 +2772,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             connectAccountId: stripeConnectAccountId
           });
 
-          console.log(`✅ [STRIPE] Created service product ${stripeProductId} and price ${stripePriceId} on Connect account ${stripeConnectAccountId} for service: ${serviceData.name} (Price: $${serviceData.price})`);
+          console.log(`✅ [SERVICE-STRIPE] Success: Product ${stripeProductId}, Price ${stripePriceId}`);
 
           // Additionally create deposit price if required
           if (serviceData.depositRequired && serviceData.depositAmount) {
@@ -2661,17 +2781,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
               amount: Math.round(parseFloat(serviceData.depositAmount.toString()) * 100), // Convert deposit to cents
               connectAccountId: stripeConnectAccountId
             });
-            console.log(`✅ [STRIPE] Created deposit price ${stripeDepositPriceId} for service: ${serviceData.name} (Deposit: $${serviceData.depositAmount})`);
+            console.log(`✅ [SERVICE-STRIPE] Deposit price created: ${stripeDepositPriceId} (Amount: $${serviceData.depositAmount})`);
           }
 
         } catch (stripeError) {
-          console.error('❌ [STRIPE] Failed to create service product/prices:', stripeError);
+          console.error(`❌ [SERVICE-STRIPE] Failed to create Stripe product:`, stripeError);
+          console.error(`❌ [SERVICE-STRIPE] Error details:`, {
+            message: stripeError instanceof Error ? stripeError.message : 'Unknown error',
+            accountId: stripeConnectAccountId,
+            serviceName: serviceData.name
+          });
           // Continue without Stripe integration for now
         }
       } else if (!stripeConnectAccountId) {
-        console.log(`⚠️ [STRIPE] No Stripe Connect account found for organization - skipping Stripe product creation`);
+        console.log(`⚠️ [SERVICE-STRIPE] No Stripe Connect account found for organization - skipping Stripe product creation`);
       } else {
-        console.log(`⚠️ [STRIPE] No service price specified for: ${serviceData.name} - skipping Stripe product creation`);
+        console.log(`⚠️ [SERVICE-STRIPE] No service price specified for: ${serviceData.name} - skipping Stripe product creation`);
       }
 
       // Add organization ID and Stripe IDs to service data
@@ -3802,46 +3927,75 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log(`⚠️ Organization ${organizationId} does not have Stripe Connect configured`);
       }
 
-      // Prepare invitation link
-      const invitationLink = `${req.protocol}://${req.get('host')}/c/${organization.slug}/register`;
+      // Create user account immediately
+      const randomPassword = crypto.randomBytes(32).toString('hex');
+      const hashedPassword = await bcrypt.hash(randomPassword, 12);
+      const username = email.split('@')[0] + '-' + crypto.randomBytes(4).toString('hex');
       
-      // Get first location for contact info (if available)
+      let user;
+      try {
+        user = await storage.createUser({
+          email,
+          username,
+          password: hashedPassword,
+          firstName,
+          lastName,
+          phone: phone || null,
+          role: 'patient'
+        });
+        
+        console.log(`✅ User account created: ${user.id}`);
+        
+        await storage.updateClient(client.id, { userId: user.id, status: 'active' });
+        console.log(`✅ Client linked to user account`);
+      } catch (userError) {
+        console.error('❌ Failed to create user account:', userError);
+        return res.status(500).json({ 
+          message: "Failed to create user account",
+          error: userError instanceof Error ? userError.message : 'Unknown error'
+        });
+      }
+      
+      const resetToken = crypto.randomBytes(32).toString('hex');
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + 7);
+      
+      await storage.createResetToken(user.id, resetToken, expiresAt);
+      
+      const resetLink = `${req.protocol}://${req.get('host')}/reset-password/${resetToken}`;
+      
       const locations = await storage.getLocationsByOrganization(organizationId);
       const primaryLocation = locations[0];
       
-      // Prepare email content
       const emailContent = `
         <!DOCTYPE html>
         <html lang="en">
         <head>
           <meta charset="UTF-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>You're Invited to ${organization.name}</title>
+          <title>Welcome to ${organization.name} - Set Your Password</title>
         </head>
         <body style="margin: 0; padding: 0; font-family: 'Arial', 'Helvetica', sans-serif; background-color: #f5f5f5;">
           <div style="max-width: 600px; margin: 40px auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-            <!-- Header -->
             <div style="background: linear-gradient(135deg, #B8860B 0%, #DAA520 100%); padding: 40px 30px; text-align: center;">
               <h1 style="color: #ffffff; margin: 0; font-size: 32px; font-weight: 300; letter-spacing: 1px;">
                 ${organization.name}
               </h1>
               <p style="color: #fff; margin: 10px 0 0 0; font-size: 14px; opacity: 0.95;">
-                Exclusive Invitation to Our Patient Portal
+                Welcome to Our Patient Portal
               </p>
             </div>
             
-            <!-- Content -->
             <div style="padding: 40px 30px;">
               <h2 style="color: #333333; font-size: 24px; margin: 0 0 20px 0;">
                 Welcome, ${firstName}!
               </h2>
               
               <p style="color: #666666; font-size: 16px; line-height: 1.6; margin: 0 0 25px 0;">
-                You've been personally invited to join <strong>${organization.name}</strong>'s exclusive patient portal. 
-                Experience premium aesthetic care with our state-of-the-art services and personalized treatment plans.
+                Your account has been created at <strong>${organization.name}</strong>. 
+                Click below to set your password and access your patient portal.
               </p>
               
-              <!-- Features Section -->
               <div style="background-color: #f9f9f9; border-left: 4px solid #B8860B; padding: 20px; margin: 25px 0;">
                 <h3 style="color: #333333; font-size: 18px; margin: 0 0 15px 0;">
                   Your Member Benefits:
@@ -3856,21 +4010,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 </ul>
               </div>
               
-              <!-- CTA Button -->
               <div style="text-align: center; margin: 35px 0;">
-                <a href="${invitationLink}" 
+                <a href="${resetLink}" 
                    style="display: inline-block; background: linear-gradient(135deg, #B8860B 0%, #DAA520 100%); 
                           color: white; text-decoration: none; padding: 16px 40px; border-radius: 30px; 
                           font-size: 16px; font-weight: 600; letter-spacing: 0.5px; 
-                          box-shadow: 0 4px 15px rgba(184, 134, 11, 0.3);
-                          transition: all 0.3s ease;">
-                  Accept Your Invitation
+                          box-shadow: 0 4px 15px rgba(184, 134, 11, 0.3);">
+                  Set My Password
                 </a>
               </div>
               
               <p style="color: #999999; font-size: 13px; text-align: center; margin: 20px 0;">
                 Or copy and paste this link into your browser:<br>
-                <span style="color: #B8860B; word-break: break-all;">${invitationLink}</span>
+                <span style="color: #B8860B; word-break: break-all;">${resetLink}</span>
+              </p>
+              <p style="color: #666666; font-size: 14px; line-height: 1.6; margin: 25px 0 0 0;">
+                <strong>This link will expire in 7 days.</strong>
               </p>
             </div>
             
@@ -3910,10 +4065,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       `;
 
       // Prepare plain text version of the email
-      const textContent = `You're invited to join ${organization.name}!\n\n` +
+      const textContent = `Welcome to ${organization.name} - Set Your Password\n\n` +
         `Hi ${firstName},\n\n` +
-        `${organization.name} has invited you to join their exclusive patient portal.\n\n` +
-        `Accept your invitation: ${invitationLink}\n\n` +
+        `Your account has been created at ${organization.name}. Click below to set your password and access your patient portal.\n\n` +
+        `Set your password: ${resetLink}\n\n` +
         `Your Member Benefits:\n` +
         `- Online appointment booking\n` +
         `- Exclusive memberships\n` +
@@ -3921,6 +4076,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         `- Treatment history tracking\n` +
         `- Special member-only offers\n` +
         `- Priority access to new services\n\n` +
+        `This link will expire in 7 days.\n\n` +
         `Contact Information:\n` +
         `${primaryLocation ? primaryLocation.name : organization.name}\n` +
         `${primaryLocation?.phone || organization.phone || 'Contact us for more info'}\n` +
@@ -3931,7 +4087,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Send invitation email using the improved email helper
       const emailResult = await sendEmail({
         to: email,
-        subject: `Exclusive Invitation from ${organization.name}`,
+        subject: `Welcome to ${organization.name} - Set Your Password`,
         html: emailContent,
         text: textContent,
         fromName: organization.name
