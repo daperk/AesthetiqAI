@@ -18,8 +18,16 @@ import { apiRequest } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { 
   Calendar as CalendarIcon, Clock, User, MapPin, Plus, Search,
-  Filter, MoreHorizontal, CheckCircle, XCircle, AlertCircle
+  Filter, MoreHorizontal, CheckCircle, XCircle, AlertCircle,
+  Edit, Trash2, UserX, CheckCheck
 } from "lucide-react";
+import { 
+  DropdownMenu, 
+  DropdownMenuContent, 
+  DropdownMenuItem, 
+  DropdownMenuTrigger,
+  DropdownMenuSeparator 
+} from "@/components/ui/dropdown-menu";
 import type { Appointment, Client, Staff, Service } from "@/types";
 
 export default function Appointments() {
@@ -54,25 +62,53 @@ export default function Appointments() {
     return `${year}-${month}-${day}`;
   };
 
-  // Fetch all upcoming appointments (next 30 days) OR specific date
-  const endDate = new Date();
-  endDate.setDate(endDate.getDate() + 30);
+  // Calculate date range based on view mode
+  const getDateRange = () => {
+    const today = new Date();
+    let startDate: Date, endDate: Date;
+
+    if (selectedDate) {
+      // If a specific date is selected, use it
+      startDate = new Date(selectedDate);
+      endDate = new Date(selectedDate);
+    } else {
+      // Use view mode to determine range
+      switch (viewMode) {
+        case "day":
+          // Show today only
+          startDate = new Date(today);
+          endDate = new Date(today);
+          break;
+        case "week":
+          // Show current week (Sunday to Saturday)
+          startDate = new Date(today);
+          startDate.setDate(today.getDate() - today.getDay()); // Go to Sunday
+          endDate = new Date(startDate);
+          endDate.setDate(startDate.getDate() + 6); // Go to Saturday
+          break;
+        case "month":
+          // Show current month
+          startDate = new Date(today.getFullYear(), today.getMonth(), 1);
+          endDate = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+          break;
+        default:
+          // Default to next 30 days
+          startDate = new Date(today);
+          endDate = new Date(today);
+          endDate.setDate(today.getDate() + 30);
+      }
+    }
+
+    return {
+      startDate: getLocalDateString(startDate),
+      endDate: getLocalDateString(endDate)
+    };
+  };
 
   const { data: appointments, isLoading: appointmentsLoading } = useQuery<Appointment[]>({
-    queryKey: ["appointments", organization?.id, selectedDate ? getLocalDateString(selectedDate) : 'all-upcoming'],
+    queryKey: ["appointments", organization?.id, selectedDate ? getLocalDateString(selectedDate) : viewMode],
     queryFn: async () => {
-      let startDateStr, endDateStr;
-      
-      if (selectedDate) {
-        // Specific date selected - use local date without UTC conversion
-        startDateStr = getLocalDateString(selectedDate);
-        endDateStr = getLocalDateString(selectedDate);
-      } else {
-        // Show all upcoming (next 30 days) - use local dates
-        const today = new Date();
-        startDateStr = getLocalDateString(today);
-        endDateStr = getLocalDateString(endDate);
-      }
+      const { startDate: startDateStr, endDate: endDateStr } = getDateRange();
       
       const params = new URLSearchParams({
         organizationId: organization?.id || '',
@@ -88,8 +124,8 @@ export default function Appointments() {
       }
       
       const data = await response.json();
-      // Filter to only show non-cancelled appointments
-      return data.filter((apt: any) => apt.status !== 'cancelled');
+      // Filter to only show non-canceled appointments
+      return data.filter((apt: any) => apt.status !== 'canceled');
     },
     enabled: !!organization?.id,
     staleTime: 30000,
@@ -155,6 +191,53 @@ export default function Appointments() {
         description: isConflict 
           ? "This time slot is already booked. Please choose a different time."
           : "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Update appointment status mutation
+  const updateAppointmentStatusMutation = useMutation({
+    mutationFn: async ({ appointmentId, status }: { appointmentId: string; status: string }) => {
+      const response = await apiRequest("PATCH", `/api/appointments/${appointmentId}`, { status });
+      return response.json();
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["appointments", organization?.id] });
+      const statusLabel = variables.status === 'canceled' ? 'canceled' : 
+                          variables.status === 'completed' ? 'completed' :
+                          variables.status === 'no_show' ? 'marked as no-show' : 'updated';
+      toast({
+        title: "Appointment updated",
+        description: `Appointment has been ${statusLabel}.`,
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Failed to update appointment",
+        description: "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Delete appointment mutation
+  const deleteAppointmentMutation = useMutation({
+    mutationFn: async (appointmentId: string) => {
+      const response = await apiRequest("DELETE", `/api/appointments/${appointmentId}`, {});
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["appointments", organization?.id] });
+      toast({
+        title: "Appointment deleted",
+        description: "The appointment has been permanently deleted.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Failed to delete appointment",
+        description: "Please try again.",
         variant: "destructive",
       });
     },
@@ -459,11 +542,17 @@ export default function Appointments() {
                 <div className="flex items-center justify-between">
                   <div>
                     <CardTitle data-testid="text-appointments-list-title">
-                      {!selectedDate 
-                        ? "All Upcoming Appointments"
-                        : selectedDate.toDateString() === new Date().toDateString()
+                      {selectedDate 
+                        ? selectedDate.toDateString() === new Date().toDateString()
+                          ? "Today's Appointments"
+                          : `Appointments for ${selectedDate.toLocaleDateString()}`
+                        : viewMode === "day"
                         ? "Today's Appointments"
-                        : `Appointments for ${selectedDate.toLocaleDateString()}`
+                        : viewMode === "week"
+                        ? "This Week's Appointments"
+                        : viewMode === "month"
+                        ? "This Month's Appointments"
+                        : "All Upcoming Appointments"
                       }
                     </CardTitle>
                     {selectedDate && (
@@ -474,7 +563,7 @@ export default function Appointments() {
                         onClick={() => setSelectedDate(undefined)}
                         data-testid="button-clear-date-filter"
                       >
-                        View all upcoming appointments
+                        Back to {viewMode} view
                       </Button>
                     )}
                   </div>
@@ -547,9 +636,82 @@ export default function Appointments() {
                             </div>
                           </Badge>
                           
-                          <Button variant="ghost" size="sm" data-testid={`button-appointment-menu-${appointment.id}`}>
-                            <MoreHorizontal className="w-4 h-4" />
-                          </Button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="sm" data-testid={`button-appointment-menu-${appointment.id}`}>
+                                <MoreHorizontal className="w-4 h-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem 
+                                onClick={() => {
+                                  // TODO: Implement edit functionality
+                                  toast({
+                                    title: "Edit appointment",
+                                    description: "Edit functionality coming soon!",
+                                  });
+                                }}
+                                data-testid={`menu-edit-${appointment.id}`}
+                              >
+                                <Edit className="w-4 h-4 mr-2" />
+                                Edit
+                              </DropdownMenuItem>
+                              
+                              {appointment.status !== 'completed' && (
+                                <DropdownMenuItem 
+                                  onClick={() => updateAppointmentStatusMutation.mutate({ 
+                                    appointmentId: appointment.id, 
+                                    status: 'completed' 
+                                  })}
+                                  data-testid={`menu-complete-${appointment.id}`}
+                                >
+                                  <CheckCheck className="w-4 h-4 mr-2" />
+                                  Mark as Complete
+                                </DropdownMenuItem>
+                              )}
+                              
+                              {appointment.status !== 'no_show' && (
+                                <DropdownMenuItem 
+                                  onClick={() => updateAppointmentStatusMutation.mutate({ 
+                                    appointmentId: appointment.id, 
+                                    status: 'no_show' 
+                                  })}
+                                  data-testid={`menu-noshow-${appointment.id}`}
+                                >
+                                  <UserX className="w-4 h-4 mr-2" />
+                                  Mark as No-Show
+                                </DropdownMenuItem>
+                              )}
+                              
+                              {appointment.status !== 'canceled' && (
+                                <DropdownMenuItem 
+                                  onClick={() => updateAppointmentStatusMutation.mutate({ 
+                                    appointmentId: appointment.id, 
+                                    status: 'canceled' 
+                                  })}
+                                  data-testid={`menu-cancel-${appointment.id}`}
+                                >
+                                  <XCircle className="w-4 h-4 mr-2" />
+                                  Cancel
+                                </DropdownMenuItem>
+                              )}
+                              
+                              <DropdownMenuSeparator />
+                              
+                              <DropdownMenuItem 
+                                onClick={() => {
+                                  if (confirm('Are you sure you want to delete this appointment? This action cannot be undone.')) {
+                                    deleteAppointmentMutation.mutate(appointment.id);
+                                  }
+                                }}
+                                className="text-destructive focus:text-destructive"
+                                data-testid={`menu-delete-${appointment.id}`}
+                              >
+                                <Trash2 className="w-4 h-4 mr-2" />
+                                Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </div>
                       </div>
                       );
