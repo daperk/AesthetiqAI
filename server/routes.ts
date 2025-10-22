@@ -2493,27 +2493,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Get current time for filtering past slots on today's date
       const now = new Date();
-      const isToday = selectedDate.toDateString() === now.toDateString();
-      console.log(`🔍 [AVAILABILITY] Current time: ${now.toISOString()}, Is today: ${isToday}`);
+      
+      // Get current time in clinic's timezone using toLocaleString
+      const nowInClinicTzString = now.toLocaleString('en-US', { timeZone: timezone, hour12: false });
+      const nowInClinicTz = new Date(nowInClinicTzString);
+      
+      // Check if selected date is today in the clinic's timezone
+      const isToday = nowInClinicTz.getFullYear() === year && 
+                     nowInClinicTz.getMonth() === month - 1 && 
+                     nowInClinicTz.getDate() === day;
+      
+      console.log(`🔍 [AVAILABILITY] Server time (UTC): ${now.toISOString()}`);
+      console.log(`🔍 [AVAILABILITY] Clinic time (${timezone}): ${nowInClinicTzString}`);
+      console.log(`🔍 [AVAILABILITY] Is today: ${isToday}`);
+      
+      // Get current hour/minute in clinic's timezone for same-day filtering
+      const clinicCurrentHour = nowInClinicTz.getHours();
+      const clinicCurrentMinute = nowInClinicTz.getMinutes();
       
       while (currentHour < endHour || (currentHour === endHour && currentMinute < endMinute)) {
-        // Create slot time in LOCAL timezone (not UTC)
-        // This properly handles timezone conversions when comparing with database appointment times
-        const slotTime = new Date(year, month - 1, day, currentHour, currentMinute, 0, 0);
-        
         // Format time for display (HH:MM in clinic's local time)
         const timeString = `${String(currentHour).padStart(2, '0')}:${String(currentMinute).padStart(2, '0')}`;
         
         // Skip past time slots if this is today
-        if (isToday && slotTime < now) {
-          // Increment by interval and continue
-          currentMinute += intervalMinutes;
-          if (currentMinute >= 60) {
-            currentHour += Math.floor(currentMinute / 60);
-            currentMinute = currentMinute % 60;
+        // Simple hour/minute comparison in clinic's local time
+        if (isToday) {
+          const slotIsInPast = (currentHour < clinicCurrentHour) || 
+                              (currentHour === clinicCurrentHour && currentMinute <= clinicCurrentMinute);
+          if (slotIsInPast) {
+            // Increment by interval and continue
+            currentMinute += intervalMinutes;
+            if (currentMinute >= 60) {
+              currentHour += Math.floor(currentMinute / 60);
+              currentMinute = currentMinute % 60;
+            }
+            continue;
           }
-          continue;
         }
+        
+        // Create slot time in the clinic's timezone for appointment conflict checking
+        // Parse the date/time string in the clinic's timezone to get proper UTC timestamp
+        const slotDateString = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T${timeString}:00`;
+        const slotTime = new Date(new Date(slotDateString).toLocaleString('en-US', { timeZone: timezone }));
         
         // Check if this slot conflicts with existing active appointments
         // Only consider scheduled/pending/confirmed appointments (exclude canceled/completed)
