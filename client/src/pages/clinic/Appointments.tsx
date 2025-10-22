@@ -66,26 +66,26 @@ export default function Appointments() {
   });
 
   const { data: clients, refetch: refetchClients } = useQuery<Client[]>({
-    queryKey: ["/api/clients", organization?.id],
+    queryKey: ["/api/clients"],
     enabled: !!organization?.id,
     staleTime: 0, // Always refetch to show newly created patients immediately
     gcTime: 0, // Don't cache results
   });
 
   const { data: staff } = useQuery<Staff[]>({
-    queryKey: ["/api/staff", organization?.id],
+    queryKey: ["/api/staff"],
     enabled: !!organization?.id,
     staleTime: 5 * 60000,
   });
 
   const { data: services } = useQuery<Service[]>({
-    queryKey: ["/api/services", organization?.id],
+    queryKey: ["/api/services"],
     enabled: !!organization?.id,
     staleTime: 5 * 60000,
   });
 
   const { data: locations } = useQuery<any[]>({
-    queryKey: ["/api/locations", organization?.id],
+    queryKey: ["/api/locations"],
     enabled: !!organization?.id,
     staleTime: 5 * 60000,
   });
