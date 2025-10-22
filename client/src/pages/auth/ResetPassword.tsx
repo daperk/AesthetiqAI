@@ -28,7 +28,7 @@ export default function ResetPassword() {
       
       // Redirect based on user role
       if (data?.user?.role === "patient" && data?.user?.organizationSlug) {
-        setLocation(`/c/${data.user.organizationSlug}/patient/login`);
+        setLocation(`/c/${data.user.organizationSlug}/login`);
       } else {
         setLocation("/login");
       }
