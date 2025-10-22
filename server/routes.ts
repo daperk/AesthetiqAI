@@ -10,35 +10,7 @@ import { storage } from "./storage";
 import { pool } from "./db";
 import * as stripeService from "./services/stripe";
 import { stripe } from "./services/stripe";
-import sgMail from "@sendgrid/mail";
-
-// Initialize SendGrid globally with better configuration
-const SENDGRID_CONFIG = {
-  apiKey: process.env.SENDGRID_API_KEY,
-  fromEmail: process.env.SENDGRID_FROM_EMAIL || process.env.FROM_EMAIL || 'aesthiqhere@gmail.com',
-  fromName: process.env.SENDGRID_FROM_NAME || 'Aesthiq',
-  isConfigured: !!process.env.SENDGRID_API_KEY,
-  debugMode: process.env.NODE_ENV === 'development'
-};
-
-// Initialize SendGrid if API key is available
-if (SENDGRID_CONFIG.apiKey) {
-  try {
-    sgMail.setApiKey(SENDGRID_CONFIG.apiKey);
-    console.log('✅ SendGrid initialized successfully');
-    console.log(`📧 Default sender: ${SENDGRID_CONFIG.fromEmail}`);
-    if (SENDGRID_CONFIG.debugMode) {
-      console.log('🔍 SendGrid Debug Mode: Enabled');
-    }
-  } catch (error) {
-    console.error('❌ Failed to initialize SendGrid:', error);
-    SENDGRID_CONFIG.isConfigured = false;
-  }
-} else {
-  console.warn('⚠️ SendGrid API key not configured. Email sending will be disabled.');
-  console.log('   Set SENDGRID_API_KEY environment variable to enable email sending.');
-  console.log('   Optionally set SENDGRID_FROM_EMAIL for custom sender address.');
-}
+import { sendEmail, getEmailServiceStatus } from "./services/sendgrid";
 
 // Helper function to calculate reward points based on membership tier and spend
 async function calculateRewardPoints(clientId: string, organizationId: string, amountSpent: number): Promise<number> {
@@ -397,20 +369,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Email configuration status endpoint
   app.get("/api/email/status", requireAuth, async (req, res) => {
     try {
+      const emailServiceStatus = getEmailServiceStatus();
       const status = {
-        configured: SENDGRID_CONFIG.isConfigured,
-        fromEmail: SENDGRID_CONFIG.fromEmail,
-        fromName: SENDGRID_CONFIG.fromName,
-        debugMode: SENDGRID_CONFIG.debugMode,
+        configured: emailServiceStatus.configured,
+        fromEmail: emailServiceStatus.fromEmail,
+        fromName: 'Aesthiq',
+        debugMode: emailServiceStatus.debugMode,
         configurationHelp: null as string | null,
         verificationRequired: false
       };
 
-      if (!SENDGRID_CONFIG.isConfigured) {
+      if (!emailServiceStatus.configured) {
         status.configurationHelp = "SendGrid is not configured. Please set the SENDGRID_API_KEY environment variable to enable email sending.";
       } else {
         status.verificationRequired = true;
-        status.configurationHelp = `Email sending is configured. Make sure ${SENDGRID_CONFIG.fromEmail} is verified in your SendGrid account.`;
+        status.configurationHelp = `Email sending is configured. Make sure ${emailServiceStatus.fromEmail} is verified in your SendGrid account.`;
       }
 
       res.json(status);
@@ -774,22 +747,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/auth/forgot-password", async (req, res) => {
     try {
+      console.log("📧 Forgot password request received:", { email: req.body.email });
+      
       const { email } = req.body;
       
       if (!email) {
+        console.log("❌ No email provided");
         return res.status(400).json({ message: "Email is required" });
       }
 
       const user = await storage.getUserByEmail(email);
+      console.log("👤 User lookup result:", { found: !!user, email });
       
       if (user) {
-        const resetToken = crypto.randomBytes(32).toString('hex');
+        const rawToken = crypto.randomBytes(32).toString('hex');
+        console.log("🔑 Token generated, length:", rawToken.length);
+        
+        const hashedToken = await bcrypt.hash(rawToken, 10);
+        console.log("🔐 Token hashed");
+        
         const expiresAt = new Date();
         expiresAt.setHours(expiresAt.getHours() + 24);
+        console.log("⏰ Token expiry set:", expiresAt.toISOString());
         
-        await storage.createResetToken(user.id, resetToken, expiresAt);
+        console.log("💾 Creating reset token in database...");
+        await storage.createResetToken(user.id, hashedToken, expiresAt);
+        console.log("✅ Reset token created successfully");
         
-        const resetLink = `${req.protocol}://${req.get('host')}/reset-password/${resetToken}`;
+        const resetLink = `${req.protocol}://${req.get('host')}/reset-password/${rawToken}`;
+        console.log("📧 Preparing to send email to:", email);
         
         const emailContent = `
           <!DOCTYPE html>
@@ -841,17 +827,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
           `This link will expire in 24 hours.\n\n` +
           `If you didn't request this password reset, please ignore this email.`;
         
-        await sendEmail({
+        const emailResult = await sendEmail({
           to: email,
           subject: "Reset Your Password - Aesthiq",
           html: emailContent,
           text: textContent
         });
+        
+        if (emailResult.success) {
+          console.log("✅ Email sent successfully, message ID:", emailResult.messageId);
+        } else {
+          console.warn("⚠️ Email failed to send:", emailResult.error);
+          console.warn("   Email details:", emailResult.details);
+        }
       }
       
+      console.log("✅ Forgot password flow completed successfully");
       res.json({ message: "If an account exists with this email, a password reset link has been sent." });
-    } catch (error) {
-      console.error("Forgot password error:", error);
+    } catch (error: any) {
+      console.error("❌ Forgot password error:", error);
+      console.error("   Error name:", error.name);
+      console.error("   Error message:", error.message);
+      console.error("   Error stack:", error.stack);
+      if (error.cause) {
+        console.error("   Error cause:", error.cause);
+      }
       res.status(500).json({ message: "Failed to process password reset request" });
     }
   });
@@ -868,17 +868,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Password must be at least 8 characters long" });
       }
       
-      const resetToken = await storage.getResetToken(token);
+      const allValidTokens = await storage.getAllValidResetTokens();
       
-      if (!resetToken) {
+      let validToken = null;
+      for (const dbToken of allValidTokens) {
+        const isMatch = await bcrypt.compare(token, dbToken.token);
+        if (isMatch) {
+          validToken = dbToken;
+          break;
+        }
+      }
+      
+      if (!validToken) {
         return res.status(400).json({ message: "Invalid or expired reset token" });
       }
       
       const hashedPassword = await bcrypt.hash(newPassword, 12);
       
-      await storage.updateUser(resetToken.userId, { password: hashedPassword });
+      await storage.updateUser(validToken.userId, { password: hashedPassword });
       
-      await storage.markTokenAsUsed(token);
+      await storage.invalidateResetToken(validToken.id);
       
       res.json({ message: "Password reset successfully" });
     } catch (error) {
@@ -1348,19 +1357,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
           temporaryPassword: temporaryPassword // Only for initial display, should not be stored
         },
         emailStatus: {
-          sent: emailResult.sent,
-          message: emailResult.sent 
+          sent: emailResult.success,
+          message: emailResult.success 
             ? '✅ Invitation email sent successfully'
-            : emailResult.error?.code === 'NO_CONFIG'
-              ? '⚠️ Email service not configured - staff created but email not sent'
-              : `⚠️ Staff created but email failed to send: ${emailResult.error?.message}`,
+            : `⚠️ Staff created but email failed to send: ${emailResult.error || 'Unknown error'}`,
           error: emailResult.error,
-          debugInfo: SENDGRID_CONFIG.debugMode ? emailResult.debugInfo : undefined
+          debugInfo: emailResult.details
         }
       };
 
       // Log the final status
-      if (emailResult.sent) {
+      if (emailResult.success) {
         console.log(`✅ Full staff invitation completed for ${email}:`, {
           staffId: staff.id,
           userId: user.id,
@@ -3761,91 +3768,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-
-  // Helper function to send emails with better error handling
-  const sendEmail = async (emailData: {
-    to: string;
-    subject: string;
-    html: string;
-    text: string;
-    fromName?: string;
-  }) => {
-    const result = {
-      sent: false,
-      error: null as any,
-      debugInfo: {} as any
-    };
-
-    // Check if SendGrid is configured
-    if (!SENDGRID_CONFIG.isConfigured) {
-      result.error = {
-        message: 'Email service not configured',
-        code: 'NO_CONFIG',
-        details: 'SENDGRID_API_KEY environment variable is not set'
-      };
-      console.warn('📧 Email not sent - SendGrid not configured');
-      return result;
-    }
-
-    try {
-      // Prepare the message with fallback values
-      const msg = {
-        to: emailData.to,
-        from: {
-          email: SENDGRID_CONFIG.fromEmail,
-          name: emailData.fromName || SENDGRID_CONFIG.fromName
-        },
-        subject: emailData.subject,
-        html: emailData.html,
-        text: emailData.text,
-      };
-
-      // Log email attempt in debug mode
-      if (SENDGRID_CONFIG.debugMode) {
-        console.log('📧 Attempting to send email:', {
-          to: msg.to,
-          from: msg.from,
-          subject: msg.subject,
-          timestamp: new Date().toISOString()
-        });
-      }
-
-      // Send the email
-      const [response] = await sgMail.send(msg);
-      
-      result.sent = true;
-      result.debugInfo = {
-        statusCode: response.statusCode,
-        messageId: response.headers['x-message-id'],
-        timestamp: new Date().toISOString()
-      };
-
-      console.log('✅ Email sent successfully:', {
-        to: emailData.to,
-        subject: emailData.subject,
-        messageId: result.debugInfo.messageId
-      });
-
-    } catch (error: any) {
-      result.error = {
-        message: error.message || 'Failed to send email',
-        code: error.code || 'SEND_FAILED',
-        details: error.response?.body?.errors?.[0]?.message || error.toString()
-      };
-
-      // Enhanced error logging
-      console.error('❌ Email sending failed:', {
-        to: emailData.to,
-        error: result.error,
-        timestamp: new Date().toISOString(),
-        // Include SendGrid-specific error details if available
-        sendgridError: error.response?.body || null
-      });
-    }
-
-    return result;
-  };
-
   // Patient invitation endpoint
   app.post("/api/patients/invite", requireAuth, async (req, res) => {
     try {
@@ -3956,13 +3878,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      const resetToken = crypto.randomBytes(32).toString('hex');
+      const rawToken = crypto.randomBytes(32).toString('hex');
+      const hashedToken = await bcrypt.hash(rawToken, 10);
       const expiresAt = new Date();
       expiresAt.setDate(expiresAt.getDate() + 7);
       
-      await storage.createResetToken(user.id, resetToken, expiresAt);
+      await storage.createResetToken(user.id, hashedToken, expiresAt);
       
-      const resetLink = `${req.protocol}://${req.get('host')}/reset-password/${resetToken}`;
+      const resetLink = `${req.protocol}://${req.get('host')}/reset-password/${rawToken}`;
       
       const locations = await storage.getLocationsByOrganization(organizationId);
       const primaryLocation = locations[0];
@@ -4121,19 +4044,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
           sentTo: email
         },
         emailStatus: {
-          sent: emailResult.sent,
-          message: emailResult.sent 
+          sent: emailResult.success,
+          message: emailResult.success 
             ? '✅ Invitation email sent successfully'
-            : emailResult.error?.code === 'NO_CONFIG'
-              ? '⚠️ Email service not configured - patient invited but email not sent'
-              : `⚠️ Patient invited but email failed to send: ${emailResult.error?.message}`,
+            : `⚠️ Patient invited but email failed to send: ${emailResult.error || 'Unknown error'}`,
           error: emailResult.error,
-          debugInfo: SENDGRID_CONFIG.debugMode ? emailResult.debugInfo : undefined
+          debugInfo: emailResult.details
         }
       };
 
       // Log the final status
-      if (emailResult.sent) {
+      if (emailResult.success) {
         console.log(`✅ Full invitation completed for ${email}:`, {
           patientId: client.id,
           organization: organization.name,
@@ -4199,11 +4120,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         fromName: "Aesthiq Test"
       });
 
-      if (emailResult.sent) {
+      if (emailResult.success) {
         res.json({
           success: true,
           message: "Test email sent successfully",
-          debugInfo: emailResult.debugInfo
+          debugInfo: emailResult.details
         });
       } else {
         res.status(500).json({

@@ -32,8 +32,9 @@ export interface IStorage {
 
   // Password Reset Tokens
   createResetToken(userId: string, token: string, expiresAt: Date): Promise<PasswordResetToken>;
-  getResetToken(token: string): Promise<PasswordResetToken | undefined>;
-  markTokenAsUsed(token: string): Promise<void>;
+  getResetTokensByUserId(userId: string): Promise<PasswordResetToken[]>;
+  getAllValidResetTokens(): Promise<PasswordResetToken[]>;
+  invalidateResetToken(tokenId: string): Promise<void>;
   deleteExpiredTokens(): Promise<void>;
 
   // Organizations
@@ -252,21 +253,25 @@ export class DatabaseStorage implements IStorage {
     return resetToken;
   }
 
-  async getResetToken(token: string): Promise<PasswordResetToken | undefined> {
-    const [resetToken] = await db.select()
+  async getResetTokensByUserId(userId: string): Promise<PasswordResetToken[]> {
+    return await db.select()
+      .from(passwordResetTokens)
+      .where(eq(passwordResetTokens.userId, userId));
+  }
+
+  async getAllValidResetTokens(): Promise<PasswordResetToken[]> {
+    return await db.select()
       .from(passwordResetTokens)
       .where(and(
-        eq(passwordResetTokens.token, token),
         eq(passwordResetTokens.used, false),
         gte(passwordResetTokens.expiresAt, new Date())
       ));
-    return resetToken || undefined;
   }
 
-  async markTokenAsUsed(token: string): Promise<void> {
+  async invalidateResetToken(tokenId: string): Promise<void> {
     await db.update(passwordResetTokens)
       .set({ used: true })
-      .where(eq(passwordResetTokens.token, token));
+      .where(eq(passwordResetTokens.id, tokenId));
   }
 
   async deleteExpiredTokens(): Promise<void> {
