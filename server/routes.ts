@@ -2434,6 +2434,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Get existing appointments for this staff member on this date
       const existingAppointments = await storage.getAppointmentsByStaff(staffId, new Date(date));
+      console.log(`🔍 [AVAILABILITY] Date: ${date}, Staff: ${staffId}`);
+      console.log(`🔍 [AVAILABILITY] Existing appointments: ${existingAppointments.length}`);
+      if (existingAppointments.length > 0) {
+        existingAppointments.forEach(apt => {
+          console.log(`  - ${apt.startTime} to ${apt.endTime} (${apt.status})`);
+        });
+      }
       
       // Default business hours for new clinics (9am-6pm Mon-Sat, closed Sunday)
       const defaultBusinessHours = {
@@ -2451,6 +2458,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let businessHours = location?.businessHours as any;
       if (!businessHours || typeof businessHours !== 'object' || Object.keys(businessHours).length === 0) {
         businessHours = defaultBusinessHours;
+        console.log(`🔍 [AVAILABILITY] Using default business hours`);
+      } else {
+        console.log(`🔍 [AVAILABILITY] Using location business hours:`, JSON.stringify(businessHours));
       }
       
       // Get day of week
@@ -2458,6 +2468,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
       const dayName = dayNames[selectedDate.getDay()];
       const dayHours = businessHours[dayName];
+      console.log(`🔍 [AVAILABILITY] Day: ${dayName}, Hours: ${JSON.stringify(dayHours)}`);
       
       // If clinic is closed on this day, return empty slots
       if (!dayHours || !dayHours.open || !dayHours.close) {
@@ -2482,6 +2493,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Get current time for filtering past slots on today's date
       const now = new Date();
       const isToday = selectedDate.toDateString() === now.toDateString();
+      console.log(`🔍 [AVAILABILITY] Current time: ${now.toISOString()}, Is today: ${isToday}`);
       
       while (currentHour < endHour || (currentHour === endHour && currentMinute < endMinute)) {
         // Create slot time in LOCAL timezone (not UTC)
@@ -2524,6 +2536,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
+      console.log(`🔍 [AVAILABILITY] Generated ${slots.length} slots`);
+      console.log(`🔍 [AVAILABILITY] Available slots: ${slots.filter(s => s.available).length}`);
+      console.log(`🔍 [AVAILABILITY] Unavailable slots: ${slots.filter(s => !s.available).length}`);
+      
       res.json({
         date: `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
         timezone,
