@@ -57,7 +57,10 @@ const membershipFormSchema = z.object({
   name: z.string().min(1, "Membership name is required"),
   description: z.string().min(1, "Description is required"),
   monthlyPrice: z.string().min(1, "Monthly price is required"),
-  yearlyPrice: z.string().optional()
+  yearlyPrice: z.string().optional(),
+  discountPercentage: z.string().optional(),
+  monthlyCredits: z.string().optional(),
+  benefits: z.string().optional()
 });
 
 const rewardFormSchema = z.object({
@@ -224,7 +227,10 @@ export default function BusinessSetup() {
       name: "",
       description: "",
       monthlyPrice: "",
-      yearlyPrice: ""
+      yearlyPrice: "",
+      discountPercentage: "",
+      monthlyCredits: "",
+      benefits: ""
     }
   });
 
@@ -424,6 +430,9 @@ export default function BusinessSetup() {
         description: data.description,
         monthlyPrice: parseFloat(data.monthlyPrice),
         yearlyPrice: data.yearlyPrice ? parseFloat(data.yearlyPrice) : null,
+        discountPercentage: data.discountPercentage ? parseFloat(data.discountPercentage) : null,
+        monthlyCredits: data.monthlyCredits ? parseFloat(data.monthlyCredits) : null,
+        benefits: data.benefits ? data.benefits.split(',').map(b => b.trim()) : [],
         isActive: true
       });
       return response.json();
@@ -1263,6 +1272,34 @@ export default function BusinessSetup() {
                         </FormItem>
                       )}
                     />
+
+                    <FormField
+                      control={membershipForm.control}
+                      name="discountPercentage"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Discount (%)</FormLabel>
+                          <FormControl>
+                            <Input type="number" min="0" max="100" placeholder="10" {...field} data-testid="input-discount-percentage" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={membershipForm.control}
+                      name="monthlyCredits"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Monthly Credits ($)</FormLabel>
+                          <FormControl>
+                            <Input type="number" step="0.01" placeholder="100.00" {...field} data-testid="input-monthly-credits" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
                   </div>
 
                   <FormField
@@ -1277,6 +1314,24 @@ export default function BusinessSetup() {
                             className="min-h-[100px]"
                             {...field}
                             data-testid="textarea-membership-description"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={membershipForm.control}
+                    name="benefits"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Benefits (comma-separated)</FormLabel>
+                        <FormControl>
+                          <Textarea 
+                            placeholder="10% discount, Priority booking, Monthly gift"
+                            {...field}
+                            data-testid="input-benefits"
                           />
                         </FormControl>
                         <FormMessage />

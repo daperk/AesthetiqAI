@@ -176,8 +176,10 @@ export default function Memberships() {
       const response = await apiRequest("PUT", `/api/membership-tiers/${editingTier.id}`, {
         name: formData.get("tierName"),
         monthlyPrice: formData.get("monthlyPrice"),
+        yearlyPrice: formData.get("yearlyPrice") || null,
         discountPercentage: formData.get("discountPercentage"),
         monthlyCredits: formData.get("monthlyCredits"),
+        benefits: formData.get("benefits") ? (formData.get("benefits") as string).split(',').map(b => b.trim()) : []
       });
       return response.json();
     },
@@ -527,6 +529,22 @@ export default function Memberships() {
                       />
                     </div>
                     <div className="space-y-2">
+                      <Label htmlFor="edit-yearly-price">Yearly Price ($) - Optional</Label>
+                      <Input
+                        id="edit-yearly-price"
+                        name="yearlyPrice"
+                        type="number"
+                        placeholder="990.00"
+                        min="0"
+                        step="0.01"
+                        defaultValue={editingTier?.yearlyPrice?.toString() || ""}
+                        data-testid="input-yearly-price"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
                       <Label htmlFor="edit-discount">Discount (%)</Label>
                       <Input
                         id="edit-discount"
@@ -539,18 +557,28 @@ export default function Memberships() {
                         data-testid="input-discount-percentage"
                       />
                     </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-monthly-credits">Monthly Credits ($)</Label>
+                      <Input
+                        id="edit-monthly-credits"
+                        name="monthlyCredits"
+                        type="number"
+                        placeholder="50"
+                        min="0"
+                        defaultValue={editingTier?.monthlyCredits?.toString() || ""}
+                        data-testid="input-monthly-credits"
+                      />
+                    </div>
                   </div>
                   
                   <div className="space-y-2">
-                    <Label htmlFor="edit-monthly-credits">Monthly Credits ($)</Label>
-                    <Input
-                      id="edit-monthly-credits"
-                      name="monthlyCredits"
-                      type="number"
-                      placeholder="50"
-                      min="0"
-                      defaultValue={editingTier?.monthlyCredits?.toString() || ""}
-                      data-testid="input-monthly-credits"
+                    <Label htmlFor="edit-benefits">Benefits (comma-separated)</Label>
+                    <Textarea
+                      id="edit-benefits"
+                      name="benefits"
+                      placeholder="10% discount, Priority booking, Monthly gift"
+                      defaultValue={editingTier?.benefits?.join(', ') || ""}
+                      data-testid="input-benefits"
                     />
                   </div>
                   
