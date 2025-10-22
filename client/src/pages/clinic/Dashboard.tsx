@@ -287,15 +287,20 @@ export default function ClinicDashboard() {
                           todayAppointments
                             .sort((a: any, b: any) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
                             .map((appointment: any) => {
-                              const startTime = new Date(appointment.startTime);
-                              // Use clinic's timezone if available, otherwise use browser's timezone
-                              const timezone = appointment.locationTimezone || undefined;
-                              const timeStr = startTime.toLocaleTimeString('en-US', { 
-                                hour: 'numeric', 
-                                minute: '2-digit',
-                                hour12: true,
-                                timeZone: timezone
-                              }).split(' ');
+                              // Parse timestamp string in clinic's timezone
+                              // Appointments are stored as timestamps without timezone info
+                              const startTimeStr = appointment.startTime;
+                              const dateObj = new Date(startTimeStr);
+                              
+                              // Extract UTC components and interpret as clinic local time
+                              const hours = dateObj.getUTCHours();
+                              const minutes = dateObj.getUTCMinutes();
+                              
+                              // Format as 12-hour time
+                              const period = hours >= 12 ? 'PM' : 'AM';
+                              const displayHours = hours % 12 || 12;
+                              const displayMinutes = minutes.toString().padStart(2, '0');
+                              const timeStr = [`${displayHours}:${displayMinutes}`, period];
                               
                               return (
                                 <div key={appointment.id} className="flex items-center space-x-4 p-4 bg-muted/30 rounded-lg" data-testid={`appointment-item-${appointment.id}`}>

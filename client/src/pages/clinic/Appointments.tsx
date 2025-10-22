@@ -449,9 +449,6 @@ export default function Appointments() {
                 ) : (
                   <div className="space-y-4">
                     {filteredAppointments.map((appointment) => {
-                      // Use clinic's timezone if available, otherwise use browser's timezone
-                      const timezone = (appointment as any).locationTimezone || undefined;
-                      
                       return (
                         <div 
                           key={appointment.id}
@@ -461,12 +458,16 @@ export default function Appointments() {
                           <div className="flex items-center space-x-4">
                             <div className="text-center">
                               <div className="text-sm font-medium text-foreground">
-                                {new Date(appointment.startTime).toLocaleTimeString('en-US', { 
-                                  hour: 'numeric', 
-                                  minute: '2-digit', 
-                                  hour12: true,
-                                  timeZone: timezone
-                                })}
+                                {(() => {
+                                  // Parse timestamp in clinic's timezone (stored as UTC components representing local time)
+                                  const dateObj = new Date(appointment.startTime);
+                                  const hours = dateObj.getUTCHours();
+                                  const minutes = dateObj.getUTCMinutes();
+                                  const period = hours >= 12 ? 'PM' : 'AM';
+                                  const displayHours = hours % 12 || 12;
+                                  const displayMinutes = minutes.toString().padStart(2, '0');
+                                  return `${displayHours}:${displayMinutes} ${period}`;
+                                })()}
                               </div>
                               <div className="text-xs text-muted-foreground">
                                 {Math.round((new Date(appointment.endTime).getTime() - new Date(appointment.startTime).getTime()) / (1000 * 60))} min
