@@ -107,7 +107,8 @@ export default function Booking() {
       return apiRequest("GET", `/api/availability/${selectedProvider!.id}?${params.toString()}`).then(res => res.json());
     },
     enabled: !!selectedProvider && !!selectedDate && !!selectedLocation,
-    staleTime: 30000,
+    staleTime: 0, // Always fetch fresh availability data
+    gcTime: 0, // Don't cache results
   });
 
   const bookAppointmentMutation = useMutation({
