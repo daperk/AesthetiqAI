@@ -314,47 +314,53 @@ export default function Booking() {
                   mode="single"
                   selected={selectedDate}
                   onSelect={setSelectedDate}
-                  disabled={(date) => date < new Date() || date.getDay() === 0} // Disable past dates and Sundays
+                  disabled={(date) => date < new Date()} // Only disable past dates
                   className="rounded-md border"
                   data-testid="calendar-date-picker"
                 />
+                <p className="text-sm text-muted-foreground mt-2">
+                  Select any date to see available time slots
+                </p>
               </div>
               
               {selectedDate && (
                 <div>
-                  <Label className="text-sm font-medium mb-2 block">Available Times</Label>
-                  <div className="grid grid-cols-2 gap-3">
-                    {availability?.slots?.map((slot) => (
-                      <Button
-                        key={slot.time}
-                        variant={selectedTime === slot.time ? "default" : "outline"}
-                        disabled={!slot.available}
-                        onClick={() => {
-                          setSelectedTime(slot.time);
-                          setSelectedDateTime(slot.datetime || "");
-                        }}
-                        className="justify-center"
-                        data-testid={`time-slot-${slot.time}`}
-                      >
-                        {formatTimeTo12Hour(slot.time)}
-                      </Button>
-                    )) || (
-                      // Default time slots if no availability data
-                      <>
-                        {["09:00", "10:00", "11:00", "14:00", "15:00", "16:00"].map((time) => (
+                  <Label className="text-sm font-medium mb-2 block">
+                    Available Times for {selectedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                  </Label>
+                  {availability ? (
+                    availability.slots && availability.slots.length > 0 ? (
+                      <div className="grid grid-cols-2 gap-3">
+                        {availability.slots.map((slot) => (
                           <Button
-                            key={time}
-                            variant={selectedTime === time ? "default" : "outline"}
-                            onClick={() => setSelectedTime(time)}
+                            key={slot.time}
+                            variant={selectedTime === slot.time ? "default" : "outline"}
+                            disabled={!slot.available}
+                            onClick={() => {
+                              setSelectedTime(slot.time);
+                              setSelectedDateTime(slot.datetime || "");
+                            }}
                             className="justify-center"
-                            data-testid={`time-slot-${time}`}
+                            data-testid={`time-slot-${slot.time}`}
                           >
-                            {formatTimeTo12Hour(time)}
+                            {formatTimeTo12Hour(slot.time)}
                           </Button>
                         ))}
-                      </>
-                    )}
-                  </div>
+                      </div>
+                    ) : (
+                      <div className="p-4 border rounded-lg bg-muted/30 text-center">
+                        <Clock className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
+                        <p className="text-sm font-medium">No appointments available</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          This day is fully booked or unavailable. Please select another date.
+                        </p>
+                      </div>
+                    )
+                  ) : (
+                    <div className="flex items-center justify-center p-8">
+                      <LoadingSpinner />
+                    </div>
+                  )}
                 </div>
               )}
             </div>

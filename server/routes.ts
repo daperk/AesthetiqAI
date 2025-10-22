@@ -442,24 +442,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // FIX: Get Stripe Connect account for logged-in patient (no slug needed)
   app.get("/api/organizations/my/stripe-connect", requireAuth, async (req, res) => {
     try {
+      console.log('🔍 [STRIPE CONNECT MY] Looking up for user:', req.user!.id, 'role:', req.user!.role);
+      
       // Get patient's client record to find their organization
       const client = await storage.getClientByUser(req.user!.id);
+      console.log('🔍 [STRIPE CONNECT MY] Client found:', !!client, client ? `orgId: ${client.organizationId}` : 'NO CLIENT');
+      
       if (!client) {
         return res.status(404).json({ message: "Client record not found" });
       }
 
       const organization = await storage.getOrganization(client.organizationId);
+      console.log('🔍 [STRIPE CONNECT MY] Organization found:', !!organization, organization ? `active: ${organization.isActive}, hasStripe: ${!!organization.stripeConnectAccountId}` : 'NO ORG');
+      
       if (!organization || !organization.isActive) {
         return res.status(404).json({ message: "Clinic not found" });
       }
 
+      console.log('✅ [STRIPE CONNECT MY] Returning Connect account:', organization.stripeConnectAccountId?.substring(0, 15) + '...');
+      
       // Return Connect account ID for frontend Stripe initialization
       res.json({
         stripeConnectAccountId: organization.stripeConnectAccountId || null,
         hasStripeConnected: !!organization.stripeConnectAccountId
       });
     } catch (error) {
-      console.error("Stripe Connect lookup error:", error);
+      console.error("❌ [STRIPE CONNECT MY] Error:", error);
       res.status(500).json({ message: "Failed to lookup payment configuration" });
     }
   });
