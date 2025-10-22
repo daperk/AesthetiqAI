@@ -418,28 +418,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get Stripe Connect account ID for payment frontend integration (by slug)
-  app.get("/api/organizations/:slug/stripe-connect", async (req, res) => {
-    try {
-      const { slug } = req.params;
-      const organization = await storage.getOrganizationBySlug(slug);
-      
-      if (!organization || !organization.isActive) {
-        return res.status(404).json({ message: "Clinic not found" });
-      }
-
-      // Return Connect account ID for frontend Stripe initialization
-      res.json({
-        stripeConnectAccountId: organization.stripeConnectAccountId || null,
-        hasStripeConnected: !!organization.stripeConnectAccountId
-      });
-    } catch (error) {
-      console.error("Stripe Connect lookup error:", error);
-      res.status(500).json({ message: "Failed to lookup payment configuration" });
-    }
-  });
-
-  // FIX: Get Stripe Connect account for logged-in patient (no slug needed)
+  // IMPORTANT: Specific routes must come BEFORE parameterized routes in Express
+  // Get Stripe Connect account for logged-in patient (no slug needed)
   app.get("/api/organizations/my/stripe-connect", requireAuth, async (req, res) => {
     try {
       console.log('🔍 [STRIPE CONNECT MY] Looking up for user:', req.user!.id, 'role:', req.user!.role);
@@ -468,6 +448,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error) {
       console.error("❌ [STRIPE CONNECT MY] Error:", error);
+      res.status(500).json({ message: "Failed to lookup payment configuration" });
+    }
+  });
+
+  // Get Stripe Connect account ID for payment frontend integration (by slug)
+  app.get("/api/organizations/:slug/stripe-connect", async (req, res) => {
+    try {
+      const { slug } = req.params;
+      const organization = await storage.getOrganizationBySlug(slug);
+      
+      if (!organization || !organization.isActive) {
+        return res.status(404).json({ message: "Clinic not found" });
+      }
+
+      // Return Connect account ID for frontend Stripe initialization
+      res.json({
+        stripeConnectAccountId: organization.stripeConnectAccountId || null,
+        hasStripeConnected: !!organization.stripeConnectAccountId
+      });
+    } catch (error) {
+      console.error("Stripe Connect lookup error:", error);
       res.status(500).json({ message: "Failed to lookup payment configuration" });
     }
   });
