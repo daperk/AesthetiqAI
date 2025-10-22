@@ -204,10 +204,11 @@ export function MembershipSubscriptionDialog({
       const data = await response.json();
 
       if (data.requiresPayment && data.clientSecret) {
+        // Payment required - show Stripe payment form
         setClientSecret(data.clientSecret);
         setRequiresPayment(true);
       } else {
-        // Free membership or no payment required
+        // Free membership (development only) or no payment required
         toast({
           title: "Membership Activated!",
           description: `Welcome to ${tier.name}! Your membership is now active.`,

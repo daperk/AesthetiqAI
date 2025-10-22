@@ -2747,14 +2747,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let requiresPayment = false;
       
       if (!priceId) {
+        // SECURITY: Only allow free memberships in development environment
+        if (process.env.NODE_ENV === 'production') {
+          console.error(`🚨 [SECURITY] Attempted to create free membership in production for tier ${tier.name}`);
+          return res.status(400).json({ 
+            message: "Payment is required for membership subscriptions. Please contact support if you believe this is an error." 
+          });
+        }
+        
         console.log(`⚠️ [STRIPE] No price ID configured for tier ${tier.name}, creating free membership for development`);
         
-        // Create active membership without Stripe integration (for development/testing)
+        // Create active membership without Stripe integration (for development/testing ONLY)
         membership = await storage.createMembership({
           clientId: client.id,
           tierName: tier.name, // Use actual tier name instead of tierId
           startDate: new Date(),
-          status: 'active', // Active immediately since no payment required
+          status: 'active', // Active immediately since no payment required (DEV ONLY)
           organizationId: client.organizationId,
           monthlyFee: billingCycle === 'yearly' ? tier.yearlyPrice || tier.monthlyPrice : tier.monthlyPrice,
           stripeSubscriptionId: null
@@ -4381,12 +4389,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const invoice = event.data.object;
         const subscriptionId = invoice.subscription;
         
+        console.log(`💳 [WEBHOOK] Payment succeeded for subscription: ${subscriptionId}`);
+        
         if (subscriptionId) {
           // Find membership by subscription ID and activate it
           const membership = await storage.getMembershipByStripeSubscriptionId(subscriptionId);
-          if (membership && membership.status === 'suspended') {
-            // Activate the membership
+          
+          if (!membership) {
+            console.log(`⚠️ [WEBHOOK] No membership found for subscription: ${subscriptionId}`);
+          } else if (membership.status !== 'suspended') {
+            console.log(`⚠️ [WEBHOOK] Membership ${membership.id} already active, skipping activation`);
+          } else {
+            // SECURITY: Only activate if payment actually succeeded
+            console.log(`✅ [WEBHOOK] Activating membership ${membership.id} for tier: ${membership.tierName}`);
             await storage.updateMembership(membership.id, { status: 'active' });
+            console.log(`🎉 [WEBHOOK] Membership ${membership.id} successfully activated`);
             
             // Award reward points for membership purchase (with idempotency check)
             const existingRewards = await storage.getRewardsByClient(membership.clientId);
