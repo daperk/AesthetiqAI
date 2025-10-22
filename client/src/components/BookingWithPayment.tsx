@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
 import { Elements } from "@stripe/react-stripe-js";
-import { loadStripe } from "@stripe/stripe-js";
+import { loadStripe, Stripe } from "@stripe/stripe-js";
 import { PaymentForm } from "./PaymentForm";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Calendar, Clock, MapPin, User, DollarSign } from "lucide-react";
+import { Loader2, Calendar, Clock, MapPin, User, DollarSign, AlertCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { apiRequest } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import type { Service, Staff, Location } from "@shared/schema";
@@ -13,16 +14,6 @@ import type { Service, Staff, Location } from "@shared/schema";
 if (!import.meta.env.VITE_STRIPE_PUBLIC_KEY) {
   throw new Error('Missing VITE_STRIPE_PUBLIC_KEY environment variable');
 }
-
-console.log('🔍 [STRIPE] Initializing with public key:', import.meta.env.VITE_STRIPE_PUBLIC_KEY.substring(0, 20) + '...');
-
-const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLIC_KEY).then(stripe => {
-  console.log('✅ [STRIPE] Stripe.js loaded successfully:', stripe ? 'SUCCESS' : 'FAILED');
-  return stripe;
-}).catch(error => {
-  console.error('❌ [STRIPE] Failed to load Stripe.js:', error);
-  return null;
-});
 
 interface BookingData {
   serviceId: string;
@@ -54,6 +45,9 @@ export function BookingWithPayment({
   const [clientSecret, setClientSecret] = useState<string>("");
   const [isLoading, setIsLoading] = useState(true);
   const [appointmentId, setAppointmentId] = useState<string>("");
+  const [loadingStripe, setLoadingStripe] = useState(true);
+  const [stripeError, setStripeError] = useState<string | null>(null);
+  const [stripePromise, setStripePromise] = useState<Promise<Stripe | null> | null>(null);
   const { toast } = useToast();
 
   // Determine payment amount based on service configuration
@@ -63,9 +57,28 @@ export function BookingWithPayment({
   const paymentAmount = isDepositOnly ? Number(service.depositAmount || 0) : Number(service.price);
   const isDepositPayment = isDepositOnly;
 
+  // Initialize Stripe on component mount (platform account for destination charges)
   useEffect(() => {
-    createPaymentIntent();
+    console.log('🔍 [STRIPE] Initializing with platform public key (destination charge)...');
+    const promise = loadStripe(import.meta.env.VITE_STRIPE_PUBLIC_KEY).then(stripe => {
+      console.log('✅ [STRIPE] Stripe.js loaded successfully:', stripe ? 'SUCCESS' : 'FAILED');
+      return stripe;
+    }).catch(error => {
+      console.error('❌ [STRIPE] Failed to load Stripe.js:', error);
+      setStripeError('Failed to initialize payment system');
+      return null;
+    });
+    
+    setStripePromise(promise);
+    setLoadingStripe(false);
   }, []);
+
+  // Create payment intent after Stripe is initialized
+  useEffect(() => {
+    if (!loadingStripe && !stripeError) {
+      createPaymentIntent();
+    }
+  }, [loadingStripe, stripeError]);
 
   const createPaymentIntent = async () => {
     try {
@@ -143,20 +156,40 @@ export function BookingWithPayment({
     return `${minutes} minutes`;
   };
 
-  if (isLoading) {
+  if (loadingStripe || isLoading) {
     return (
       <Card className="w-full max-w-2xl mx-auto">
         <CardContent className="flex items-center justify-center py-12">
           <div className="text-center space-y-4">
             <Loader2 className="h-8 w-8 animate-spin mx-auto" />
-            <p className="text-muted-foreground">Preparing your appointment...</p>
+            <p className="text-muted-foreground">
+              {loadingStripe ? 'Initializing payment system...' : 'Preparing your appointment...'}
+            </p>
           </div>
         </CardContent>
       </Card>
     );
   }
 
-  if (!clientSecret) {
+  if (stripeError) {
+    return (
+      <Card className="w-full max-w-2xl mx-auto">
+        <CardContent className="py-12">
+          <div className="text-center space-y-4">
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{stripeError}</AlertDescription>
+            </Alert>
+            <Button onClick={onCancel} data-testid="button-back">
+              Go Back
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!clientSecret || !stripePromise) {
     return (
       <Card className="w-full max-w-2xl mx-auto">
         <CardContent className="py-12">
@@ -238,7 +271,7 @@ export function BookingWithPayment({
       </Card>
 
       {/* Payment Form */}
-      {clientSecret ? (
+      {clientSecret && stripePromise ? (
         <Elements 
           stripe={stripePromise} 
           options={{ 

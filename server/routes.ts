@@ -444,6 +444,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get Stripe Connect account ID for payment frontend integration
+  app.get("/api/organizations/:slug/stripe-connect", async (req, res) => {
+    try {
+      const { slug } = req.params;
+      const organization = await storage.getOrganizationBySlug(slug);
+      
+      if (!organization || !organization.isActive) {
+        return res.status(404).json({ message: "Clinic not found" });
+      }
+
+      // Return Connect account ID for frontend Stripe initialization
+      res.json({
+        stripeConnectAccountId: organization.stripeConnectAccountId || null,
+        hasStripeConnected: !!organization.stripeConnectAccountId
+      });
+    } catch (error) {
+      console.error("Stripe Connect lookup error:", error);
+      res.status(500).json({ message: "Failed to lookup payment configuration" });
+    }
+  });
+
   // Authentication routes
   app.post("/api/auth/register", async (req, res) => {
     try {
@@ -2226,36 +2247,61 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const isDepositPayment = service.paymentType === 'deposit';
       const paymentAmount = isDepositPayment ? Number(service.depositAmount || 0) : Number(service.price);
       
-      // Create Stripe PaymentIntent on platform account
+      // Create Stripe PaymentIntent using DESTINATION CHARGE pattern
       if (!stripe) {
         return res.status(500).json({ message: "Payment system not configured" });
       }
       
       const organization = await storage.getOrganization(service.organizationId);
-      console.log(`🔍 [PAYMENT INTENT] Creating payment intent for org: ${organization?.name} on platform account`);
       
-      // Payment intent data - don't include customer to avoid conflicts between accounts
+      // CRITICAL: Must have Connect account for multi-tenant isolation
+      if (!organization?.stripeConnectAccountId) {
+        return res.status(400).json({ 
+          message: "Payment system not configured. Clinic must complete Stripe Connect onboarding first.",
+          error_code: "STRIPE_CONNECT_REQUIRED"
+        });
+      }
+
+      // Calculate platform commission based on organization's subscription plan
+      const orgPlan = organization.subscriptionPlanId ? 
+        await storage.getSubscriptionPlan(organization.subscriptionPlanId) : null;
+      
+      // Commission rates: Professional=12%, Enterprise=10%, default=12%
+      const commissionPercent = orgPlan?.tier === 'enterprise' ? 10 : 12;
+      const applicationFeeAmount = Math.round((paymentAmount * commissionPercent / 100) * 100); // in cents
+      
+      console.log(`🔍 [PAYMENT INTENT] Creating DESTINATION CHARGE for org: ${organization.name}`);
+      console.log(`🔍 [PAYMENT INTENT] Amount: $${paymentAmount}, Commission: ${commissionPercent}% ($${applicationFeeAmount/100})`);
+      console.log(`🔍 [PAYMENT INTENT] Destination Connect account: ${organization.stripeConnectAccountId}`);
+      
+      // DESTINATION CHARGE: Created on platform account, funds transferred to Connect account
+      // This allows application_fee_amount and on_behalf_of for proper commission collection
       const paymentIntentData: any = {
         amount: Math.round(paymentAmount * 100), // Convert to cents
         currency: 'usd',
         automatic_payment_methods: {
           enabled: true,
         },
+        application_fee_amount: applicationFeeAmount, // Platform commission
+        transfer_data: {
+          destination: organization.stripeConnectAccountId, // Clinic receives funds (minus commission)
+        },
+        on_behalf_of: organization.stripeConnectAccountId, // Charge appears on clinic's Stripe account
         metadata: {
           serviceId: service.id,
           organizationId: service.organizationId,
           clientId: client.id,
           clientEmail: client.email || '',
           clientName: `${client.firstName} ${client.lastName}`,
-          paymentType: isDepositPayment ? "deposit" : "full_payment"
+          paymentType: isDepositPayment ? "deposit" : "full_payment",
+          platformCommission: `${commissionPercent}%`
         }
       };
       
-      // Create payment intent on platform account (for now - Connect payouts will be handled separately)
-      // NOTE: Creating on platform account to match frontend publishable key
+      // Create destination charge on PLATFORM account (funds go to clinic's Connect account)
       const paymentIntent = await stripe.paymentIntents.create(paymentIntentData);
       
-      console.log(`✅ [PAYMENT INTENT] Payment intent created: ${paymentIntent.id} on platform account`);
+      console.log(`✅ [PAYMENT INTENT] Destination charge created: ${paymentIntent.id}`);
 
       // Create appointment with pending status - only marked as scheduled after payment confirmation
       const appointment = await storage.createAppointment({
@@ -2787,18 +2833,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
         let stripeCustomerId = req.user!.stripeCustomerId;
         console.log(`🔍 [MEMBERSHIP UPGRADE] Checking customer - User: ${req.user!.email}, existing customer ID: ${stripeCustomerId}`);
         
+        // CRITICAL: Must have Connect account for multi-tenant isolation
+        if (!organization?.stripeConnectAccountId) {
+          return res.status(400).json({ 
+            message: "Payment system not configured. Please complete Stripe Connect onboarding first.",
+            error_code: "STRIPE_CONNECT_REQUIRED"
+          });
+        }
+
         if (!stripeCustomerId) {
-          console.log(`🔍 [MEMBERSHIP UPGRADE] Creating new customer on platform account (matching booking flow)`);
+          console.log(`🔍 [MEMBERSHIP UPGRADE] Creating new customer on Connect account: ${organization.stripeConnectAccountId}`);
           
-          // Create customer on PLATFORM account to match frontend publishable key (same as booking)
+          // Create customer on CLINIC'S Connect account for tenant isolation
           const customer = await stripeService.createCustomer(
             req.user!.email,
             `${req.user!.firstName || ''} ${req.user!.lastName || ''}`,
             client.organizationId,
-            undefined // No Connect account - use platform account like booking does
+            organization.stripeConnectAccountId // MUST use Connect account
           );
           stripeCustomerId = customer.id;
-          console.log(`✅ [MEMBERSHIP UPGRADE] Customer created: ${customer.id} on platform account`);
+          console.log(`✅ [MEMBERSHIP UPGRADE] Customer created: ${customer.id} on Connect account`);
           
           // Update user with Stripe customer ID
           await storage.updateUser(req.user!.id, { stripeCustomerId });
@@ -2807,12 +2861,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
           await storage.updateClient(client.id, { stripeCustomerId });
         }
 
-        // Create Stripe subscription on PLATFORM account (same as booking payment flow)
+        // Calculate platform commission based on organization's subscription plan
+        const orgPlan = organization.subscriptionPlanId ? 
+          await storage.getSubscriptionPlan(organization.subscriptionPlanId) : null;
+        
+        // Commission rates: Professional=12%, Enterprise=10%, default=12%
+        const commissionPercent = orgPlan?.tier === 'enterprise' ? 10 : 12;
+        
+        console.log(`🔍 [MEMBERSHIP UPGRADE] Commission: ${commissionPercent}% for plan ${orgPlan?.tier || 'default'}`);
+
+        // Create Stripe subscription on CLINIC'S Connect account with application fee
         const subscriptionResult = await stripeService.createSubscription(
           stripeCustomerId,
           priceId,
           undefined,
-          undefined // No Connect account - use platform account to match frontend key
+          organization.stripeConnectAccountId, // MUST use Connect account
+          commissionPercent // Platform commission percentage
         );
 
         // Create inactive membership record until payment confirmed

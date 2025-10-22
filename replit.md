@@ -46,12 +46,45 @@ Preferred communication style: Simple, everyday language.
 - **Predictive Analytics**: Customer behavior analysis and retention modeling
 - **Automated Content Generation**: Marketing materials and client communication templates
 
-### Payment Processing
-- **Stripe Integration**: Subscription billing, one-time payments, and platform fee collection
-- **Stripe Connect**: Marketplace functionality for clinic payouts and revenue sharing
-- **Multi-tier Pricing**: Dynamic subscription plans with usage-based add-ons
-- **Automated Dunning**: Failed payment recovery and subscription management
-- **Content Security Policy**: Configured following Stripe's official requirements (https://docs.stripe.com/security/guide#content-security-policy) to allow Stripe Elements, including:
+### Payment Processing & Multi-Tenant Money Flow
+
+**Architecture Overview:**
+Aesthiq uses Stripe Connect's **Destination Charges** pattern for bookings and **Direct Charges with Application Fees** for memberships to ensure proper multi-tenant isolation and commission collection.
+
+**Money Flow - Booking Payments (Destination Charges):**
+1. Patient pays for service (e.g., $150)
+2. Payment created on **platform Stripe account** using destination charge
+3. Platform automatically collects commission (10-12% based on subscription tier)
+4. Remaining funds ($132-135) automatically transferred to **clinic's Connect account**
+5. Charge appears on clinic's Stripe dashboard (via `on_behalf_of`)
+
+**Money Flow - Membership Subscriptions (Direct Charges):**
+1. Patient subscribes to membership tier (e.g., $100/month)
+2. Customer and subscription created on **clinic's Connect account**
+3. Payment collected directly on clinic's Connect account
+4. Platform automatically collects commission percentage (10-12%) via `application_fee_percent`
+5. Clinic receives net amount after commission
+
+**Commission Rates:**
+- Professional Plan: 12% commission
+- Enterprise Plan: 10% commission
+
+**Platform Billing (Clinic Subscriptions):**
+- Clinics pay platform $79-149/month subscription fee
+- Created on **platform Stripe account** (separate from patient payments)
+- Organization-level Stripe customer/subscription IDs stored in database
+
+**Technical Implementation:**
+- **Frontend**: Uses platform publishable key for both bookings and memberships
+  - Bookings: Standard initialization (platform account)
+  - Memberships: Initialize with `stripeAccount` option pointing to clinic's Connect account
+- **Backend**: 
+  - Bookings: `stripe.paymentIntents.create()` with `transfer_data.destination` and `application_fee_amount`
+  - Memberships: `stripe.subscriptions.create()` with `stripeAccount` and `application_fee_percent`
+- **API Endpoint**: `GET /api/organizations/:slug/stripe-connect` returns clinic's Connect account ID
+- **Tenant Isolation**: Each clinic has unique Connect account ID, ensuring payment/customer data never mixes
+
+**Content Security Policy**: Configured following Stripe's official requirements (https://docs.stripe.com/security/guide#content-security-policy):
   - `https://api.stripe.com` and `https://m.stripe.network` for API calls and 3DS/SCA telemetry
   - `https://js.stripe.com` and `https://*.js.stripe.com` for Stripe.js library and Elements iframes
   - `https://hooks.stripe.com` for payment method redirects and 3D Secure

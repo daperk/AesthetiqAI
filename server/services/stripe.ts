@@ -125,7 +125,8 @@ export async function createSubscription(
   customerId: string,
   priceId: string,
   trialDays?: number,
-  connectAccountId?: string
+  connectAccountId?: string,
+  applicationFeePercent?: number
 ): Promise<SubscriptionResult> {
   if (!stripe) throw new Error("Stripe not configured");
   const subscriptionData: Stripe.SubscriptionCreateParams = {
@@ -137,6 +138,11 @@ export async function createSubscription(
 
   if (trialDays) {
     subscriptionData.trial_period_days = trialDays;
+  }
+
+  // Add application fee percentage for platform commission (Connect accounts only)
+  if (connectAccountId && applicationFeePercent) {
+    subscriptionData.application_fee_percent = applicationFeePercent;
   }
 
   const subscription = connectAccountId 

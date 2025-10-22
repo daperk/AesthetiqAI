@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
-import { loadStripe } from "@stripe/stripe-js";
+import { loadStripe, Stripe } from "@stripe/stripe-js";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -10,21 +10,11 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/api";
-import { Loader2, Crown, CreditCard, Star, Gift, Check, DollarSign } from "lucide-react";
+import { Loader2, Crown, CreditCard, Star, Gift, Check, DollarSign, AlertCircle } from "lucide-react";
 
 if (!import.meta.env.VITE_STRIPE_PUBLIC_KEY) {
   throw new Error('Missing VITE_STRIPE_PUBLIC_KEY environment variable');
 }
-
-console.log('🔍 [STRIPE] Initializing with public key:', import.meta.env.VITE_STRIPE_PUBLIC_KEY.substring(0, 20) + '...');
-
-const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLIC_KEY).then(stripe => {
-  console.log('✅ [STRIPE] Stripe.js loaded successfully:', stripe ? 'SUCCESS' : 'FAILED');
-  return stripe;
-}).catch(error => {
-  console.error('❌ [STRIPE] Failed to load Stripe.js:', error);
-  return null;
-});
 
 interface MembershipTier {
   id: string;
@@ -49,12 +39,14 @@ function PaymentStep({
   clientSecret, 
   tier, 
   billingCycle,
+  stripePromise,
   onSuccess,
   onCancel 
 }: { 
   clientSecret: string; 
   tier: MembershipTier;
   billingCycle: 'monthly' | 'yearly';
+  stripePromise: Promise<Stripe | null>;
   onSuccess: () => void;
   onCancel: () => void;
 }) {
@@ -183,6 +175,60 @@ export function MembershipSubscriptionDialog({
   const [isProcessing, setIsProcessing] = useState(false);
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [requiresPayment, setRequiresPayment] = useState(false);
+  const [stripeAccount, setStripeAccount] = useState<string | null>(null);
+  const [loadingStripe, setLoadingStripe] = useState(true);
+  const [stripeError, setStripeError] = useState<string | null>(null);
+  const [stripePromise, setStripePromise] = useState<Promise<Stripe | null> | null>(null);
+
+  // Fetch Stripe Connect account ID when dialog opens
+  useEffect(() => {
+    if (open) {
+      const fetchStripeAccount = async () => {
+        try {
+          const slug = window.location.pathname.split('/')[2];
+          console.log('🔍 [STRIPE CONNECT] Fetching account for clinic:', slug);
+          
+          const response = await apiRequest("GET", `/api/organizations/${slug}/stripe-connect`);
+          const data = await response.json();
+          
+          console.log('✅ [STRIPE CONNECT] Account fetched:', { 
+            hasAccount: !!data.stripeConnectAccountId,
+            accountId: data.stripeConnectAccountId?.substring(0, 15) + '...'
+          });
+          
+          if (!data.stripeConnectAccountId) {
+            setStripeError('Stripe payment is not configured for this clinic');
+            setLoadingStripe(false);
+            return;
+          }
+          
+          setStripeAccount(data.stripeConnectAccountId);
+          
+          // Initialize Stripe with Connect account
+          console.log('🔍 [STRIPE] Initializing with Connect account:', data.stripeConnectAccountId.substring(0, 15) + '...');
+          const promise = loadStripe(import.meta.env.VITE_STRIPE_PUBLIC_KEY, {
+            stripeAccount: data.stripeConnectAccountId
+          }).then(stripe => {
+            console.log('✅ [STRIPE] Stripe.js loaded successfully with Connect account:', stripe ? 'SUCCESS' : 'FAILED');
+            return stripe;
+          }).catch(error => {
+            console.error('❌ [STRIPE] Failed to load Stripe.js:', error);
+            setStripeError('Failed to initialize payment system');
+            return null;
+          });
+          
+          setStripePromise(promise);
+        } catch (error: any) {
+          console.error('❌ [STRIPE CONNECT] Failed to fetch account:', error);
+          setStripeError(error.message || 'Failed to connect to payment system');
+        } finally {
+          setLoadingStripe(false);
+        }
+      };
+      
+      fetchStripeAccount();
+    }
+  }, [open]);
 
   // Reset state when dialog closes
   useEffect(() => {
@@ -191,6 +237,10 @@ export function MembershipSubscriptionDialog({
       setClientSecret(null);
       setRequiresPayment(false);
       setIsProcessing(false);
+      setStripeAccount(null);
+      setLoadingStripe(true);
+      setStripeError(null);
+      setStripePromise(null);
     }
   }, [open]);
 
@@ -255,7 +305,26 @@ export function MembershipSubscriptionDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {!clientSecret ? (
+        {loadingStripe ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="text-center space-y-4">
+              <Loader2 className="h-8 w-8 animate-spin mx-auto" />
+              <p className="text-muted-foreground">Initializing payment system...</p>
+            </div>
+          </div>
+        ) : stripeError ? (
+          <div className="py-6">
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{stripeError}</AlertDescription>
+            </Alert>
+            <div className="mt-4 flex justify-end">
+              <Button onClick={onClose} data-testid="button-close">
+                Close
+              </Button>
+            </div>
+          </div>
+        ) : !clientSecret ? (
           <div className="space-y-6">
             {/* Billing Cycle Selection */}
             <Card>
@@ -431,23 +500,26 @@ export function MembershipSubscriptionDialog({
               )}
             </div>
 
-            <Elements 
-              stripe={stripePromise} 
-              options={{ 
-                clientSecret,
-                appearance: {
-                  theme: 'stripe',
-                },
-              }}
-            >
-              <PaymentStep
-                clientSecret={clientSecret}
-                tier={tier}
-                billingCycle={billingCycle}
-                onSuccess={handlePaymentSuccess}
-                onCancel={onClose}
-              />
-            </Elements>
+            {stripePromise && (
+              <Elements 
+                stripe={stripePromise} 
+                options={{ 
+                  clientSecret,
+                  appearance: {
+                    theme: 'stripe',
+                  },
+                }}
+              >
+                <PaymentStep
+                  clientSecret={clientSecret}
+                  tier={tier}
+                  billingCycle={billingCycle}
+                  stripePromise={stripePromise}
+                  onSuccess={handlePaymentSuccess}
+                  onCancel={onClose}
+                />
+              </Elements>
+            )}
           </div>
         )}
       </DialogContent>
