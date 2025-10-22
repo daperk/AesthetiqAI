@@ -38,7 +38,16 @@ Preferred communication style: Simple, everyday language.
 - **Session-based Authentication**: Secure cookie-based sessions with CSRF protection
 - **Role-based Access Control**: Hierarchical permissions based on user roles and organization membership
 - **Multi-tenant Security**: Data isolation ensuring users only access their organization's data
-- **Password Hashing**: bcrypt for secure password storage and verification
+- **Password Hashing**: bcrypt for secure password storage and verification (12 rounds for passwords, 10 rounds for reset tokens)
+- **Password Reset System**: Secure token-based password reset with email verification
+  - Tokens generated using `crypto.randomBytes(32)` for cryptographic randomness
+  - Tokens hashed with bcrypt before database storage (prevents token theft via DB breach)
+  - 24-hour expiration for forgot password flows
+  - 7-day expiration for patient invitation flows
+  - Single-use enforcement (tokens marked as used after successful reset)
+  - Email delivery via centralized SendGrid service with professional branding
+- **Patient Invitation Flow**: Create user account immediately → generate reset token → send "Set Your Password" email
+- **Login Field**: Uses `emailOrUsername` field (Passport Local Strategy configuration) for flexibility
 
 ### AI Integration Strategy
 - **OpenAI GPT Integration**: Client insights, upsell suggestions, churn prediction, and marketing copy generation
@@ -120,3 +129,37 @@ Aesthiq uses Stripe Connect's **Destination Charges** pattern for bookings and *
 - **Google Fonts**: Custom typography with Playfair Display and Inter font families
 - **Lucide Icons**: Consistent iconography throughout the application
 - **Radix UI Primitives**: Accessible component foundations with custom styling
+
+## Recent Changes
+
+### October 2025 - Authentication & Security Enhancements
+
+**Password Reset System**
+- Implemented secure token-based password reset with cryptographic token generation
+- Added database table `password_reset_tokens` with proper UUID foreign keys
+- All reset tokens are hashed with bcrypt before storage (prevents database breach attacks)
+- Token validation uses bcrypt.compare for secure comparison
+- 24-hour expiry for forgot password, 7-day expiry for patient invitations
+- Single-use enforcement with token invalidation after use
+- Professional email templates with luxury branding via SendGrid
+
+**Patient Invitation Improvements**
+- Changed from registration link to immediate account creation
+- Creates user account with cryptographically secure random password
+- Sends "Set Your Password" email with 7-day reset token
+- Patient accounts visible in system immediately after invitation
+- Consistent password reset flow for all user types
+
+**Bug Fixes & Improvements**
+- Fixed OpenAI business insights API (removed unsupported response_format parameter)
+- Fixed forgot password endpoint (removed duplicate sendEmail function)
+- Enhanced Stripe product creation logging for better diagnostics
+- Cleaned up obsolete plaintext token storage methods
+- Verified multi-tenant data isolation for all patient endpoints
+
+**Technical Details**
+- Login uses `emailOrUsername` field (Passport Local Strategy)
+- Password hashing: 12 rounds for passwords, 10 rounds for reset tokens
+- Token generation: `crypto.randomBytes(32).toString('hex')` (64 hex characters)
+- Centralized email service in `server/services/sendgrid.ts`
+- All authentication endpoints tested and verified working
