@@ -16,7 +16,15 @@ if (!import.meta.env.VITE_STRIPE_PUBLIC_KEY) {
   throw new Error('Missing VITE_STRIPE_PUBLIC_KEY environment variable');
 }
 
-const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLIC_KEY);
+console.log('🔍 [STRIPE] Initializing with public key:', import.meta.env.VITE_STRIPE_PUBLIC_KEY.substring(0, 20) + '...');
+
+const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLIC_KEY).then(stripe => {
+  console.log('✅ [STRIPE] Stripe.js loaded successfully:', stripe ? 'SUCCESS' : 'FAILED');
+  return stripe;
+}).catch(error => {
+  console.error('❌ [STRIPE] Failed to load Stripe.js:', error);
+  return null;
+});
 
 interface MembershipTier {
   id: string;
