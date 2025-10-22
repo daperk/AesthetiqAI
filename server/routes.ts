@@ -4761,6 +4761,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.createResetToken(user.id, hashedToken, expiresAt);
       
       const resetLink = `${req.protocol}://${req.get('host')}/reset-password/${rawToken}`;
+      const loginLink = `${req.protocol}://${req.get('host')}/c/${organization.slug}/login`;
       
       const locations = await storage.getLocationsByOrganization(organizationId);
       const primaryLocation = locations[0];
@@ -4825,6 +4826,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
               <p style="color: #666666; font-size: 14px; line-height: 1.6; margin: 25px 0 0 0;">
                 <strong>This link will expire in 7 days.</strong>
               </p>
+              
+              <div style="background-color: #f0f8ff; border: 1px solid #B8860B; border-radius: 6px; padding: 15px; margin: 20px 0;">
+                <p style="color: #666666; font-size: 14px; line-height: 1.6; margin: 0 0 10px 0;">
+                  <strong>Your Sign-In Portal:</strong>
+                </p>
+                <p style="margin: 0;">
+                  <a href="${loginLink}" style="color: #B8860B; text-decoration: none; font-weight: 600; word-break: break-all;">
+                    ${loginLink}
+                  </a>
+                </p>
+                <p style="color: #999999; font-size: 12px; margin: 10px 0 0 0;">
+                  After setting your password, use this link to sign in to your patient portal.
+                </p>
+              </div>
             </div>
             
             <!-- Contact Information -->
@@ -4875,6 +4890,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         `- Special member-only offers\n` +
         `- Priority access to new services\n\n` +
         `This link will expire in 7 days.\n\n` +
+        `Your Sign-In Portal:\n` +
+        `${loginLink}\n` +
+        `(After setting your password, use this link to sign in to your patient portal)\n\n` +
         `Contact Information:\n` +
         `${primaryLocation ? primaryLocation.name : organization.name}\n` +
         `${primaryLocation?.phone || organization.phone || 'Contact us for more info'}\n` +
