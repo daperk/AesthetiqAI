@@ -2788,16 +2788,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log(`🔍 [MEMBERSHIP UPGRADE] Checking customer - User: ${req.user!.email}, existing customer ID: ${stripeCustomerId}`);
         
         if (!stripeCustomerId) {
-          console.log(`🔍 [MEMBERSHIP UPGRADE] Creating new customer for org: ${organization?.name} with Connect ID: ${organization?.stripeConnectAccountId}`);
+          console.log(`🔍 [MEMBERSHIP UPGRADE] Creating new customer on platform account (matching booking flow)`);
           
+          // Create customer on PLATFORM account to match frontend publishable key (same as booking)
           const customer = await stripeService.createCustomer(
             req.user!.email,
             `${req.user!.firstName || ''} ${req.user!.lastName || ''}`,
             client.organizationId,
-            organization?.stripeConnectAccountId || undefined
+            undefined // No Connect account - use platform account like booking does
           );
           stripeCustomerId = customer.id;
-          console.log(`✅ [MEMBERSHIP UPGRADE] Customer created: ${customer.id} on account: ${organization?.stripeConnectAccountId || 'platform'}`);
+          console.log(`✅ [MEMBERSHIP UPGRADE] Customer created: ${customer.id} on platform account`);
           
           // Update user with Stripe customer ID
           await storage.updateUser(req.user!.id, { stripeCustomerId });
@@ -2806,12 +2807,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           await storage.updateClient(client.id, { stripeCustomerId });
         }
 
-        // Create Stripe subscription
+        // Create Stripe subscription on PLATFORM account (same as booking payment flow)
         const subscriptionResult = await stripeService.createSubscription(
           stripeCustomerId,
           priceId,
           undefined,
-          organization?.stripeConnectAccountId || undefined
+          undefined // No Connect account - use platform account to match frontend key
         );
 
         // Create inactive membership record until payment confirmed
