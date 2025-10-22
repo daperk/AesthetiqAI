@@ -19,7 +19,7 @@ import {
   type CampaignRecipient, type InsertCampaignRecipient, type PasswordResetToken, type InsertPasswordResetToken
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, desc, asc, gte, lte, like, count, sql } from "drizzle-orm";
+import { eq, and, desc, asc, gte, lte, like, count, sql, or, inArray } from "drizzle-orm";
 
 export interface IStorage {
   // Users
@@ -120,12 +120,23 @@ export interface IStorage {
   updateService(id: string, updates: Partial<InsertService>): Promise<Service>;
 
   // Appointments
-  getAppointmentsByOrganization(organizationId: string, startDate?: Date, endDate?: Date): Promise<Appointment[]>;
+  getAppointmentsByOrganization(
+    organizationId: string, 
+    options?: {
+      startDate?: Date;
+      endDate?: Date;
+      searchTerm?: string;
+      statusFilter?: string[];
+      includeArchived?: boolean;
+    }
+  ): Promise<any[]>;
   getAppointmentsByClient(clientId: string): Promise<Appointment[]>;
   getAppointmentsByStaff(staffId: string, organizationId: string, date?: Date): Promise<Appointment[]>;
   getAppointment(id: string): Promise<Appointment | undefined>;
   createAppointment(appointment: InsertAppointment): Promise<Appointment>;
   updateAppointment(id: string, updates: Partial<InsertAppointment>): Promise<Appointment>;
+  archiveAppointment(id: string): Promise<void>;
+  unarchiveAppointment(id: string): Promise<void>;
 
   // Membership Tiers
   getMembershipTiersByOrganization(organizationId: string): Promise<MembershipTier[]>;
@@ -748,9 +759,26 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Appointments
-  async getAppointmentsByOrganization(organizationId: string, startDate?: Date, endDate?: Date): Promise<Appointment[]> {
+  async getAppointmentsByOrganization(
+    organizationId: string, 
+    options?: {
+      startDate?: Date;
+      endDate?: Date;
+      searchTerm?: string;
+      statusFilter?: string[];
+      includeArchived?: boolean;
+    }
+  ): Promise<any[]> {
+    const { startDate, endDate, searchTerm, statusFilter, includeArchived = false } = options || {};
+    
     let conditions = [eq(appointments.organizationId, organizationId)];
     
+    // Filter by archived status
+    if (!includeArchived) {
+      conditions.push(eq(appointments.archived, false));
+    }
+    
+    // Filter by date range
     if (startDate) {
       conditions.push(gte(appointments.startTime, startDate));
     }
@@ -759,9 +787,59 @@ export class DatabaseStorage implements IStorage {
       conditions.push(lte(appointments.startTime, endDate));
     }
     
-    return await db.select().from(appointments)
+    // Filter by status
+    if (statusFilter && statusFilter.length > 0) {
+      conditions.push(inArray(appointments.status, statusFilter as any));
+    }
+    
+    // Get appointments with joined data for enrichment
+    const results = await db
+      .select({
+        id: appointments.id,
+        organizationId: appointments.organizationId,
+        locationId: appointments.locationId,
+        clientId: appointments.clientId,
+        staffId: appointments.staffId,
+        serviceId: appointments.serviceId,
+        startTime: appointments.startTime,
+        endTime: appointments.endTime,
+        status: appointments.status,
+        notes: appointments.notes,
+        privateNotes: appointments.privateNotes,
+        totalAmount: appointments.totalAmount,
+        depositPaid: appointments.depositPaid,
+        remindersSent: appointments.remindersSent,
+        archived: appointments.archived,
+        createdAt: appointments.createdAt,
+        clientName: sql<string>`CONCAT(${clients.firstName}, ' ', ${clients.lastName})`,
+        staffName: sql<string>`CONCAT(${users.firstName}, ' ', ${users.lastName})`,
+        serviceName: services.name,
+      })
+      .from(appointments)
+      .leftJoin(clients, eq(appointments.clientId, clients.id))
+      .leftJoin(staff, eq(appointments.staffId, staff.id))
+      .leftJoin(users, eq(staff.userId, users.id))
+      .leftJoin(services, eq(appointments.serviceId, services.id))
       .where(and(...conditions))
       .orderBy(asc(appointments.startTime));
+    
+    // Apply search filter if provided (client-side filtering after JOIN)
+    if (searchTerm && searchTerm.trim()) {
+      const term = searchTerm.toLowerCase();
+      return results.filter(apt => {
+        const clientName = apt.clientName?.toLowerCase() || '';
+        const staffName = apt.staffName?.toLowerCase() || '';
+        const serviceName = apt.serviceName?.toLowerCase() || '';
+        const notes = apt.notes?.toLowerCase() || '';
+        
+        return clientName.includes(term) || 
+               staffName.includes(term) || 
+               serviceName.includes(term) || 
+               notes.includes(term);
+      });
+    }
+    
+    return results;
   }
 
   async getAppointmentsByClient(clientId: string): Promise<Appointment[]> {
@@ -804,6 +882,14 @@ export class DatabaseStorage implements IStorage {
   async updateAppointment(id: string, updates: Partial<InsertAppointment>): Promise<Appointment> {
     const [appointment] = await db.update(appointments).set(updates).where(eq(appointments.id, id)).returning();
     return appointment;
+  }
+
+  async archiveAppointment(id: string): Promise<void> {
+    await db.update(appointments).set({ archived: true }).where(eq(appointments.id, id));
+  }
+
+  async unarchiveAppointment(id: string): Promise<void> {
+    await db.update(appointments).set({ archived: false }).where(eq(appointments.id, id));
   }
 
   // Memberships

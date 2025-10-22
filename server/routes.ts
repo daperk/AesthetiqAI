@@ -2118,6 +2118,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       let organizationId = req.query.organizationId as string;
       
+      // Parse filter parameters
+      const searchTerm = req.query.search as string | undefined;
+      const statusParam = req.query.status as string | undefined;
+      const statusFilter = statusParam ? statusParam.split(',') : undefined;
+      const includeArchived = req.query.includeArchived === 'true';
+      
       // Normalize date range to start/end of day
       let startDate: Date | undefined;
       let endDate: Date | undefined;
@@ -2144,36 +2150,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
         organizationId = userOrgId;
       }
 
-      const appointments = await storage.getAppointmentsByOrganization(organizationId, startDate, endDate);
+      // Use new storage method with filters
+      const appointments = await storage.getAppointmentsByOrganization(organizationId, {
+        startDate,
+        endDate,
+        searchTerm,
+        statusFilter,
+        includeArchived
+      });
       
-      // Enrich appointments with client, service, staff, and location data
+      // Get location data for enrichment (already have client/staff/service names from JOIN)
       const enrichedAppointments = await Promise.all(
         appointments.map(async (apt) => {
-          const [client, service, staff, location] = await Promise.all([
-            apt.clientId ? storage.getClient(apt.clientId) : null,
-            apt.serviceId ? storage.getService(apt.serviceId) : null,
-            apt.staffId ? storage.getStaff(apt.staffId) : null,
-            apt.locationId ? storage.getLocation(apt.locationId) : null,
-          ]);
-          
-          // Get staff user name if staff exists
-          let staffName = null;
-          if (staff) {
-            if (staff.title) {
-              staffName = staff.title;
-            } else if (staff.userId) {
-              const staffUser = await storage.getUser(staff.userId);
-              staffName = staffUser ? `${staffUser.firstName || ''} ${staffUser.lastName || ''}`.trim() : null;
-            }
-          }
+          const location = apt.locationId ? await storage.getLocation(apt.locationId) : null;
           
           return {
             ...apt,
             startTime: toUTCISOString(apt.startTime),
             endTime: toUTCISOString(apt.endTime),
-            clientName: client ? `${client.firstName} ${client.lastName}` : null,
-            serviceName: service ? service.name : null,
-            staffName,
             locationName: location ? location.name : null,
             locationTimezone: location ? location.timezone : null,
           };
@@ -2478,6 +2472,58 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Process cancellation error:", error);
       res.status(500).json({ message: "Failed to process cancellation request" });
+    }
+  });
+
+  // Archive appointment
+  app.patch("/api/appointments/:id/archive", requireAuth, requireRole("clinic_admin", "staff"), async (req, res) => {
+    try {
+      const appointmentId = req.params.id;
+      const appointment = await storage.getAppointment(appointmentId);
+      
+      if (!appointment) {
+        return res.status(404).json({ message: "Appointment not found" });
+      }
+
+      // Validate organization access
+      const userOrgId = await getUserOrganizationId(req.user!);
+      if (appointment.organizationId !== userOrgId && req.user!.role !== "super_admin") {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      await storage.archiveAppointment(appointmentId);
+      await auditLog(req, "archive", "appointment", appointmentId, { archived: true });
+      
+      res.json({ message: "Appointment archived successfully" });
+    } catch (error) {
+      console.error("Archive appointment error:", error);
+      res.status(500).json({ message: "Failed to archive appointment" });
+    }
+  });
+
+  // Unarchive appointment
+  app.patch("/api/appointments/:id/unarchive", requireAuth, requireRole("clinic_admin", "staff"), async (req, res) => {
+    try {
+      const appointmentId = req.params.id;
+      const appointment = await storage.getAppointment(appointmentId);
+      
+      if (!appointment) {
+        return res.status(404).json({ message: "Appointment not found" });
+      }
+
+      // Validate organization access
+      const userOrgId = await getUserOrganizationId(req.user!);
+      if (appointment.organizationId !== userOrgId && req.user!.role !== "super_admin") {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      await storage.unarchiveAppointment(appointmentId);
+      await auditLog(req, "unarchive", "appointment", appointmentId, { archived: false });
+      
+      res.json({ message: "Appointment unarchived successfully" });
+    } catch (error) {
+      console.error("Unarchive appointment error:", error);
+      res.status(500).json({ message: "Failed to unarchive appointment" });
     }
   });
 

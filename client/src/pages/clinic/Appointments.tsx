@@ -9,6 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Calendar } from "@/components/ui/calendar";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import LoadingSpinner from "@/components/ui/loading-spinner";
 import ClinicNav from "@/components/ClinicNav";
 import { useAuth } from "@/hooks/useAuth";
@@ -19,14 +21,15 @@ import { useToast } from "@/hooks/use-toast";
 import { 
   Calendar as CalendarIcon, Clock, User, MapPin, Plus, Search,
   Filter, MoreHorizontal, CheckCircle, XCircle, AlertCircle,
-  Edit, Trash2, UserX, CheckCheck
+  Edit, UserX, CheckCheck, Archive, ArchiveRestore, ChevronDown, ChevronRight
 } from "lucide-react";
 import { 
   DropdownMenu, 
   DropdownMenuContent, 
   DropdownMenuItem, 
   DropdownMenuTrigger,
-  DropdownMenuSeparator 
+  DropdownMenuSeparator,
+  DropdownMenuCheckboxItem
 } from "@/components/ui/dropdown-menu";
 import type { Appointment, Client, Staff, Service } from "@/types";
 
@@ -43,6 +46,14 @@ export default function Appointments() {
   const [viewMode, setViewMode] = useState<"day" | "week" | "month">("day");
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string[]>([]);
+  const [includeArchived, setIncludeArchived] = useState(false);
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
+    upcoming: true,
+    completed: false,
+    canceled: false,
+    archived: false
+  });
   
   const [newAppointment, setNewAppointment] = useState({
     clientId: "",
@@ -106,7 +117,7 @@ export default function Appointments() {
   };
 
   const { data: appointments, isLoading: appointmentsLoading } = useQuery<Appointment[]>({
-    queryKey: ["appointments", organization?.id, selectedDate ? getLocalDateString(selectedDate) : viewMode],
+    queryKey: ["appointments", organization?.id, selectedDate ? getLocalDateString(selectedDate) : viewMode, searchTerm, statusFilter, includeArchived],
     queryFn: async () => {
       const { startDate: startDateStr, endDate: endDateStr } = getDateRange();
       
@@ -115,6 +126,17 @@ export default function Appointments() {
         startDate: startDateStr,
         endDate: endDateStr
       });
+
+      if (searchTerm) {
+        params.append('search', searchTerm);
+      }
+      if (statusFilter.length > 0) {
+        params.append('status', statusFilter.join(','));
+      }
+      if (includeArchived) {
+        params.append('includeArchived', 'true');
+      }
+
       const response = await fetch(`/api/appointments?${params}`, {
         credentials: 'include'
       });
@@ -123,9 +145,7 @@ export default function Appointments() {
         throw new Error('Failed to fetch appointments');
       }
       
-      const data = await response.json();
-      // Filter to only show non-canceled appointments
-      return data.filter((apt: any) => apt.status !== 'canceled');
+      return response.json();
     },
     enabled: !!organization?.id,
     staleTime: 30000,
@@ -221,22 +241,44 @@ export default function Appointments() {
     },
   });
 
-  // Delete appointment mutation
-  const deleteAppointmentMutation = useMutation({
+  // Archive appointment mutation
+  const archiveAppointmentMutation = useMutation({
     mutationFn: async (appointmentId: string) => {
-      const response = await apiRequest("DELETE", `/api/appointments/${appointmentId}`, {});
+      const response = await apiRequest("PATCH", `/api/appointments/${appointmentId}/archive`, {});
       return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["appointments", organization?.id] });
       toast({
-        title: "Appointment deleted",
-        description: "The appointment has been permanently deleted.",
+        title: "Appointment archived",
+        description: "The appointment has been archived.",
       });
     },
     onError: () => {
       toast({
-        title: "Failed to delete appointment",
+        title: "Failed to archive appointment",
+        description: "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Unarchive appointment mutation
+  const unarchiveAppointmentMutation = useMutation({
+    mutationFn: async (appointmentId: string) => {
+      const response = await apiRequest("PATCH", `/api/appointments/${appointmentId}/unarchive`, {});
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["appointments", organization?.id] });
+      toast({
+        title: "Appointment unarchived",
+        description: "The appointment has been restored.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Failed to unarchive appointment",
         description: "Please try again.",
         variant: "destructive",
       });
@@ -294,12 +336,150 @@ export default function Appointments() {
     }
   };
 
-  const filteredAppointments = appointments?.filter(appointment => {
-    if (!searchTerm) return true;
-    // This would normally search through client names, services, etc.
-    return appointment.notes?.toLowerCase().includes(searchTerm.toLowerCase());
-  }) || [];
+  // Group appointments by category
+  const groupedAppointments = {
+    upcoming: appointments?.filter(apt => 
+      !apt.archived && ['pending', 'scheduled', 'confirmed', 'in_progress'].includes(apt.status || '')
+    ) || [],
+    completed: appointments?.filter(apt => 
+      !apt.archived && apt.status === 'completed'
+    ) || [],
+    canceled: appointments?.filter(apt => 
+      !apt.archived && apt.status === 'canceled'
+    ) || [],
+    archived: appointments?.filter(apt => apt.archived) || []
+  };
 
+  const totalAppointments = Object.values(groupedAppointments).reduce((sum, group) => sum + group.length, 0);
+
+  const toggleGroup = (group: string) => {
+    setOpenGroups(prev => ({ ...prev, [group]: !prev[group] }));
+  };
+
+  // Render appointment card
+  const renderAppointmentCard = (appointment: Appointment) => (
+    <div 
+      key={appointment.id}
+      className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors"
+      data-testid={`appointment-item-${appointment.id}`}
+    >
+      <div className="flex items-center space-x-4">
+        <div className="text-center min-w-[100px]">
+          <div className="text-xs text-muted-foreground mb-1">
+            {new Date(appointment.startTime!).toLocaleDateString('en-US', {
+              month: 'short',
+              day: 'numeric'
+            })}
+          </div>
+          <div className="text-sm font-medium text-foreground">
+            {new Date(appointment.startTime!).toLocaleTimeString('en-US', {
+              hour: 'numeric',
+              minute: '2-digit',
+              hour12: true
+            })}
+          </div>
+          <div className="text-xs text-muted-foreground">
+            {Math.round((new Date(appointment.endTime!).getTime() - new Date(appointment.startTime!).getTime()) / (1000 * 60))} min
+          </div>
+        </div>
+        <div className="flex-1">
+          <div className="font-medium text-foreground">{appointment.serviceName || 'Service'}</div>
+          <div className="text-sm text-muted-foreground">{appointment.clientName || 'Client'}</div>
+          <div className="text-xs text-muted-foreground">{appointment.staffName || 'Staff'}</div>
+        </div>
+      </div>
+      
+      <div className="flex items-center space-x-3">
+        <Badge className={getStatusColor(appointment.status || "scheduled")}>
+          <div className="flex items-center space-x-1">
+            {getStatusIcon(appointment.status || "scheduled")}
+            <span className="capitalize">{appointment.status?.replace('_', ' ') || "scheduled"}</span>
+          </div>
+        </Badge>
+        
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="sm" data-testid={`button-appointment-menu-${appointment.id}`}>
+              <MoreHorizontal className="w-4 h-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem 
+              onClick={() => {
+                toast({
+                  title: "Edit appointment",
+                  description: "Edit functionality coming soon!",
+                });
+              }}
+              data-testid={`menu-edit-${appointment.id}`}
+            >
+              <Edit className="w-4 h-4 mr-2" />
+              Edit
+            </DropdownMenuItem>
+            
+            {appointment.status !== 'completed' && !appointment.archived && (
+              <DropdownMenuItem 
+                onClick={() => updateAppointmentStatusMutation.mutate({ 
+                  appointmentId: appointment.id!, 
+                  status: 'completed' 
+                })}
+                data-testid={`menu-complete-${appointment.id}`}
+              >
+                <CheckCheck className="w-4 h-4 mr-2" />
+                Mark as Complete
+              </DropdownMenuItem>
+            )}
+            
+            {appointment.status !== 'no_show' && !appointment.archived && (
+              <DropdownMenuItem 
+                onClick={() => updateAppointmentStatusMutation.mutate({ 
+                  appointmentId: appointment.id!, 
+                  status: 'no_show' 
+                })}
+                data-testid={`menu-noshow-${appointment.id}`}
+              >
+                <UserX className="w-4 h-4 mr-2" />
+                Mark as No-Show
+              </DropdownMenuItem>
+            )}
+            
+            {appointment.status !== 'canceled' && !appointment.archived && (
+              <DropdownMenuItem 
+                onClick={() => updateAppointmentStatusMutation.mutate({ 
+                  appointmentId: appointment.id!, 
+                  status: 'canceled' 
+                })}
+                data-testid={`menu-cancel-${appointment.id}`}
+              >
+                <XCircle className="w-4 h-4 mr-2" />
+                Cancel
+              </DropdownMenuItem>
+            )}
+            
+            <DropdownMenuSeparator />
+            
+            {!appointment.archived ? (
+              <DropdownMenuItem 
+                onClick={() => archiveAppointmentMutation.mutate(appointment.id!)}
+                data-testid={`menu-archive-${appointment.id}`}
+              >
+                <Archive className="w-4 h-4 mr-2" />
+                Archive
+              </DropdownMenuItem>
+            ) : (
+              <DropdownMenuItem 
+                onClick={() => unarchiveAppointmentMutation.mutate(appointment.id!)}
+                data-testid={`menu-unarchive-${appointment.id}`}
+              >
+                <ArchiveRestore className="w-4 h-4 mr-2" />
+                Unarchive
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </div>
+  );
 
   // Show loading while checking payment status or loading appointments
   if (appointmentsLoading || paymentLoading) {
@@ -480,21 +660,124 @@ export default function Appointments() {
         {/* Filters */}
         <Card className="mb-6">
           <CardContent className="p-4">
-            <div className="flex items-center space-x-4">
-              <div className="relative flex-1">
+            <div className="flex flex-col md:flex-row items-start md:items-center gap-4">
+              <div className="relative flex-1 w-full">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
                 <Input
-                  placeholder="Search appointments..."
+                  placeholder="Search by client, provider, service, or notes..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-10"
                   data-testid="input-search-appointments"
                 />
               </div>
-              <Button variant="outline" size="sm" data-testid="button-filter">
-                <Filter className="w-4 h-4 mr-2" />
-                Filter
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" data-testid="filter-status">
+                    <Filter className="w-4 h-4 mr-2" />
+                    Status {statusFilter.length > 0 && `(${statusFilter.length})`}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuCheckboxItem
+                    checked={statusFilter.includes('scheduled')}
+                    onCheckedChange={(checked) => {
+                      setStatusFilter(prev => 
+                        checked ? [...prev, 'scheduled'] : prev.filter(s => s !== 'scheduled')
+                      );
+                    }}
+                    data-testid="checkbox-filter-scheduled"
+                  >
+                    Scheduled
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem
+                    checked={statusFilter.includes('confirmed')}
+                    onCheckedChange={(checked) => {
+                      setStatusFilter(prev => 
+                        checked ? [...prev, 'confirmed'] : prev.filter(s => s !== 'confirmed')
+                      );
+                    }}
+                    data-testid="checkbox-filter-confirmed"
+                  >
+                    Confirmed
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem
+                    checked={statusFilter.includes('in_progress')}
+                    onCheckedChange={(checked) => {
+                      setStatusFilter(prev => 
+                        checked ? [...prev, 'in_progress'] : prev.filter(s => s !== 'in_progress')
+                      );
+                    }}
+                    data-testid="checkbox-filter-in-progress"
+                  >
+                    In Progress
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem
+                    checked={statusFilter.includes('completed')}
+                    onCheckedChange={(checked) => {
+                      setStatusFilter(prev => 
+                        checked ? [...prev, 'completed'] : prev.filter(s => s !== 'completed')
+                      );
+                    }}
+                    data-testid="checkbox-filter-completed"
+                  >
+                    Completed
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem
+                    checked={statusFilter.includes('canceled')}
+                    onCheckedChange={(checked) => {
+                      setStatusFilter(prev => 
+                        checked ? [...prev, 'canceled'] : prev.filter(s => s !== 'canceled')
+                      );
+                    }}
+                    data-testid="checkbox-filter-canceled"
+                  >
+                    Canceled
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem
+                    checked={statusFilter.includes('no_show')}
+                    onCheckedChange={(checked) => {
+                      setStatusFilter(prev => 
+                        checked ? [...prev, 'no_show'] : prev.filter(s => s !== 'no_show')
+                      );
+                    }}
+                    data-testid="checkbox-filter-no-show"
+                  >
+                    No Show
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => setStatusFilter([])} data-testid="button-clear-status-filter">
+                    Clear Filter
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <div className="flex items-center space-x-2">
+                <Checkbox 
+                  id="include-archived" 
+                  checked={includeArchived}
+                  onCheckedChange={(checked) => setIncludeArchived(checked as boolean)}
+                  data-testid="checkbox-include-archived"
+                />
+                <Label htmlFor="include-archived" className="text-sm cursor-pointer">
+                  Show archived
+                </Label>
+              </div>
+              
+              {/* Clear Filters Button */}
+              {(searchTerm || statusFilter.length > 0 || includeArchived) && (
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={() => {
+                    setSearchTerm("");
+                    setStatusFilter([]);
+                    setIncludeArchived(false);
+                  }}
+                  data-testid="button-clear-filters"
+                >
+                  Clear Filters
+                </Button>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -568,12 +851,12 @@ export default function Appointments() {
                     )}
                   </div>
                   <Badge variant="secondary">
-                    {filteredAppointments.length} appointments
+                    {totalAppointments} appointments
                   </Badge>
                 </div>
               </CardHeader>
               <CardContent>
-                {filteredAppointments.length === 0 ? (
+                {totalAppointments === 0 ? (
                   <div className="text-center py-8">
                     <CalendarIcon className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
                     <p className="text-muted-foreground" data-testid="text-no-appointments">
@@ -584,138 +867,78 @@ export default function Appointments() {
                     </Button>
                   </div>
                 ) : (
-                  <div className="space-y-4">
-                    {filteredAppointments.map((appointment) => {
-                      return (
-                        <div 
-                          key={appointment.id}
-                          className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors"
-                          data-testid={`appointment-item-${appointment.id}`}
-                        >
-                          <div className="flex items-center space-x-4">
-                            <div className="text-center min-w-[100px]">
-                              <div className="text-xs text-muted-foreground mb-1">
-                                {(() => {
-                                  const dateObj = new Date(appointment.startTime);
-                                  const timezone = (appointment as any).locationTimezone || 'America/New_York';
-                                  return dateObj.toLocaleDateString('en-US', { 
-                                    timeZone: timezone,
-                                    month: 'short',
-                                    day: 'numeric'
-                                  });
-                                })()}
-                              </div>
-                              <div className="text-sm font-medium text-foreground">
-                                {(() => {
-                                  const dateObj = new Date(appointment.startTime);
-                                  const timezone = (appointment as any).locationTimezone || 'America/New_York';
-                                  return dateObj.toLocaleTimeString('en-US', {
-                                    timeZone: timezone,
-                                    hour: 'numeric',
-                                    minute: '2-digit',
-                                    hour12: true
-                                  });
-                                })()}
-                              </div>
-                              <div className="text-xs text-muted-foreground">
-                                {Math.round((new Date(appointment.endTime).getTime() - new Date(appointment.startTime).getTime()) / (1000 * 60))} min
-                              </div>
-                            </div>
-                            <div className="flex-1">
-                              <div className="font-medium text-foreground">{(appointment as any).serviceName || 'Service'}</div>
-                              <div className="text-sm text-muted-foreground">{(appointment as any).clientName || 'Client'}</div>
-                              <div className="text-xs text-muted-foreground">{(appointment as any).staffName || 'Staff'}</div>
-                            </div>
-                          </div>
-                        
-                        <div className="flex items-center space-x-3">
-                          <Badge className={getStatusColor(appointment.status || "scheduled")}>
-                            <div className="flex items-center space-x-1">
-                              {getStatusIcon(appointment.status || "scheduled")}
-                              <span className="capitalize">{appointment.status || "scheduled"}</span>
-                            </div>
-                          </Badge>
-                          
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="sm" data-testid={`button-appointment-menu-${appointment.id}`}>
-                                <MoreHorizontal className="w-4 h-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem 
-                                onClick={() => {
-                                  // TODO: Implement edit functionality
-                                  toast({
-                                    title: "Edit appointment",
-                                    description: "Edit functionality coming soon!",
-                                  });
-                                }}
-                                data-testid={`menu-edit-${appointment.id}`}
-                              >
-                                <Edit className="w-4 h-4 mr-2" />
-                                Edit
-                              </DropdownMenuItem>
-                              
-                              {appointment.status !== 'completed' && (
-                                <DropdownMenuItem 
-                                  onClick={() => updateAppointmentStatusMutation.mutate({ 
-                                    appointmentId: appointment.id, 
-                                    status: 'completed' 
-                                  })}
-                                  data-testid={`menu-complete-${appointment.id}`}
-                                >
-                                  <CheckCheck className="w-4 h-4 mr-2" />
-                                  Mark as Complete
-                                </DropdownMenuItem>
-                              )}
-                              
-                              {appointment.status !== 'no_show' && (
-                                <DropdownMenuItem 
-                                  onClick={() => updateAppointmentStatusMutation.mutate({ 
-                                    appointmentId: appointment.id, 
-                                    status: 'no_show' 
-                                  })}
-                                  data-testid={`menu-noshow-${appointment.id}`}
-                                >
-                                  <UserX className="w-4 h-4 mr-2" />
-                                  Mark as No-Show
-                                </DropdownMenuItem>
-                              )}
-                              
-                              {appointment.status !== 'canceled' && (
-                                <DropdownMenuItem 
-                                  onClick={() => updateAppointmentStatusMutation.mutate({ 
-                                    appointmentId: appointment.id, 
-                                    status: 'canceled' 
-                                  })}
-                                  data-testid={`menu-cancel-${appointment.id}`}
-                                >
-                                  <XCircle className="w-4 h-4 mr-2" />
-                                  Cancel
-                                </DropdownMenuItem>
-                              )}
-                              
-                              <DropdownMenuSeparator />
-                              
-                              <DropdownMenuItem 
-                                onClick={() => {
-                                  if (confirm('Are you sure you want to delete this appointment? This action cannot be undone.')) {
-                                    deleteAppointmentMutation.mutate(appointment.id);
-                                  }
-                                }}
-                                className="text-destructive focus:text-destructive"
-                                data-testid={`menu-delete-${appointment.id}`}
-                              >
-                                <Trash2 className="w-4 h-4 mr-2" />
-                                Delete
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                  <div className="space-y-6">
+                    {/* Upcoming Appointments */}
+                    {groupedAppointments.upcoming.length > 0 && (
+                      <Collapsible open={openGroups.upcoming} onOpenChange={() => toggleGroup('upcoming')}>
+                        <div className="flex items-center justify-between mb-2">
+                          <CollapsibleTrigger asChild>
+                            <Button variant="ghost" className="flex items-center space-x-2 p-0 h-auto hover:bg-transparent" data-testid="button-toggle-upcoming">
+                              {openGroups.upcoming ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                              <h3 className="text-lg font-semibold">Upcoming</h3>
+                              <Badge variant="secondary" data-testid="badge-upcoming-count">{groupedAppointments.upcoming.length}</Badge>
+                            </Button>
+                          </CollapsibleTrigger>
                         </div>
-                      </div>
-                      );
-                    })}
+                        <CollapsibleContent className="space-y-3">
+                          {groupedAppointments.upcoming.map(renderAppointmentCard)}
+                        </CollapsibleContent>
+                      </Collapsible>
+                    )}
+
+                    {/* Completed Appointments */}
+                    {groupedAppointments.completed.length > 0 && (
+                      <Collapsible open={openGroups.completed} onOpenChange={() => toggleGroup('completed')}>
+                        <div className="flex items-center justify-between mb-2">
+                          <CollapsibleTrigger asChild>
+                            <Button variant="ghost" className="flex items-center space-x-2 p-0 h-auto hover:bg-transparent" data-testid="button-toggle-completed">
+                              {openGroups.completed ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                              <h3 className="text-lg font-semibold">Completed</h3>
+                              <Badge variant="secondary" data-testid="badge-completed-count">{groupedAppointments.completed.length}</Badge>
+                            </Button>
+                          </CollapsibleTrigger>
+                        </div>
+                        <CollapsibleContent className="space-y-3">
+                          {groupedAppointments.completed.map(renderAppointmentCard)}
+                        </CollapsibleContent>
+                      </Collapsible>
+                    )}
+
+                    {/* Canceled Appointments */}
+                    {groupedAppointments.canceled.length > 0 && (
+                      <Collapsible open={openGroups.canceled} onOpenChange={() => toggleGroup('canceled')}>
+                        <div className="flex items-center justify-between mb-2">
+                          <CollapsibleTrigger asChild>
+                            <Button variant="ghost" className="flex items-center space-x-2 p-0 h-auto hover:bg-transparent" data-testid="button-toggle-canceled">
+                              {openGroups.canceled ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                              <h3 className="text-lg font-semibold">Canceled</h3>
+                              <Badge variant="secondary" data-testid="badge-canceled-count">{groupedAppointments.canceled.length}</Badge>
+                            </Button>
+                          </CollapsibleTrigger>
+                        </div>
+                        <CollapsibleContent className="space-y-3">
+                          {groupedAppointments.canceled.map(renderAppointmentCard)}
+                        </CollapsibleContent>
+                      </Collapsible>
+                    )}
+
+                    {/* Archived Appointments */}
+                    {groupedAppointments.archived.length > 0 && (
+                      <Collapsible open={openGroups.archived} onOpenChange={() => toggleGroup('archived')}>
+                        <div className="flex items-center justify-between mb-2">
+                          <CollapsibleTrigger asChild>
+                            <Button variant="ghost" className="flex items-center space-x-2 p-0 h-auto hover:bg-transparent" data-testid="button-toggle-archived">
+                              {openGroups.archived ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                              <h3 className="text-lg font-semibold">Archived</h3>
+                              <Badge variant="secondary" data-testid="badge-archived-count">{groupedAppointments.archived.length}</Badge>
+                            </Button>
+                          </CollapsibleTrigger>
+                        </div>
+                        <CollapsibleContent className="space-y-3">
+                          {groupedAppointments.archived.map(renderAppointmentCard)}
+                        </CollapsibleContent>
+                      </Collapsible>
+                    )}
                   </div>
                 )}
               </CardContent>

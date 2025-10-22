@@ -24,10 +24,12 @@ import type { BaseAppointment } from "@shared/schema";
 
 // Enriched appointment type with additional display fields
 export interface Appointment extends BaseAppointment {
+  clientName?: string;
   serviceName?: string;
   staffName?: string;
   locationName?: string;
   timezone?: string;
+  archived?: boolean;
 }
 
 // Additional frontend-specific types
