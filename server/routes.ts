@@ -4294,6 +4294,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const updates = insertMembershipTierSchema.partial().parse(req.body);
+      
+      // Get organization for Stripe Connect account
+      const organization = await storage.getOrganization(orgId);
+      const stripeConnectAccountId = organization?.stripeConnectAccountId;
+      
+      // Check if prices changed - if so, create new Stripe price objects
+      const priceChanged = (updates.monthlyPrice && updates.monthlyPrice !== existingTier.monthlyPrice) ||
+                          (updates.yearlyPrice && updates.yearlyPrice !== existingTier.yearlyPrice);
+      
+      if (priceChanged && stripeConnectAccountId) {
+        console.log(`🔄 [STRIPE] Price changed for tier ${existingTier.name}, creating new Stripe prices`);
+        
+        try {
+          // Create new Stripe product for updated tier
+          const product = await stripeService.createProduct({
+            name: `${updates.name || existingTier.name} Membership`,
+            description: updates.description || existingTier.description || `${updates.name || existingTier.name} membership tier`,
+            connectAccountId: stripeConnectAccountId
+          });
+
+          // Create new monthly price if monthlyPrice provided
+          if (updates.monthlyPrice) {
+            updates.stripePriceIdMonthly = await stripeService.createPrice({
+              productId: product.id,
+              amount: Math.round(parseFloat(updates.monthlyPrice.toString()) * 100),
+              interval: 'month',
+              connectAccountId: stripeConnectAccountId
+            });
+            console.log(`✅ [STRIPE] Created new monthly price: ${updates.stripePriceIdMonthly}`);
+          }
+
+          // Create new yearly price if yearlyPrice provided
+          if (updates.yearlyPrice) {
+            updates.stripePriceIdYearly = await stripeService.createPrice({
+              productId: product.id,
+              amount: Math.round(parseFloat(updates.yearlyPrice.toString()) * 100),
+              interval: 'year',
+              connectAccountId: stripeConnectAccountId
+            });
+            console.log(`✅ [STRIPE] Created new yearly price: ${updates.stripePriceIdYearly}`);
+          }
+        } catch (stripeError) {
+          console.error('❌ [STRIPE] Failed to create new prices on Connect account:', stripeError);
+          // Continue with database update even if Stripe fails
+        }
+      }
+      
       const updatedTier = await storage.updateMembershipTier(id, updates);
       
       res.json(updatedTier);
