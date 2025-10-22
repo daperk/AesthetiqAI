@@ -4040,7 +4040,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               : '⚠️ Clinic does not have Stripe Connect configured'
         },
         invitation: {
-          link: invitationLink,
+          link: resetLink,
           sentTo: email
         },
         emailStatus: {
