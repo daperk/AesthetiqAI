@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,8 @@ import LoadingSpinner from "@/components/ui/loading-spinner";
 import Navigation from "@/components/Navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { useState, useEffect } from "react";
+import { MembershipSubscriptionDialog } from "@/components/MembershipSubscriptionDialog";
+import { CancelMembershipDialog } from "@/components/CancelMembershipDialog";
 import { 
   Calendar, Crown, Gift, Wallet, Clock, Star, MessageCircle,
   CalendarPlus, Settings, Bell, CreditCard, Send
@@ -20,9 +22,13 @@ import type { Appointment, Membership, Reward, Client, ChatMessage } from "@/typ
 export default function PatientDashboard() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
   const [chatMessage, setChatMessage] = useState("");
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [selectedTier, setSelectedTier] = useState<any>(null);
+  const [showSubscriptionDialog, setShowSubscriptionDialog] = useState(false);
+  const [showCancelDialog, setShowCancelDialog] = useState(false);
 
   const { data: client, isLoading: clientLoading } = useQuery<Client>({
     queryKey: ["/api/clients/me"],
@@ -134,6 +140,23 @@ export default function PatientDashboard() {
     }
   };
 
+  const handleOpenSubscriptionDialog = (tier: any) => {
+    setSelectedTier(tier);
+    setShowSubscriptionDialog(true);
+  };
+
+  const handleSubscriptionSuccess = () => {
+    // Refresh membership data
+    queryClient.invalidateQueries({ queryKey: ["/api/memberships/my-membership"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/clients/me"] });
+  };
+
+  const handleCancelSuccess = () => {
+    // Refresh membership data
+    queryClient.invalidateQueries({ queryKey: ["/api/memberships/my-membership"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/clients/me"] });
+  };
+
   if (clientLoading || appointmentsLoading || membershipLoading || rewardsLoading || walletLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -196,8 +219,9 @@ export default function PatientDashboard() {
                     variant="secondary"
                     className="bg-white text-primary hover:bg-white/90 font-medium"
                     onClick={() => {
-                      const membershipTab = document.querySelector('[value="membership"]') as HTMLButtonElement;
-                      if (membershipTab) membershipTab.click();
+                      if (membershipTiers && membershipTiers.length > 0) {
+                        handleOpenSubscriptionDialog(membershipTiers[0]);
+                      }
                     }}
                     data-testid="button-join-membership"
                   >
@@ -548,7 +572,7 @@ export default function PatientDashboard() {
                         </div>
                         <Crown className="w-10 h-10" />
                       </div>
-                      <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div className="grid grid-cols-2 gap-4 text-sm mb-4">
                         <div>
                           <div className="text-primary-foreground/80">Monthly Credits</div>
                           <div className="font-semibold text-lg">
@@ -560,6 +584,15 @@ export default function PatientDashboard() {
                           <div className="font-semibold text-lg">{membership.discount || 20}% off</div>
                         </div>
                       </div>
+                      <Button 
+                        variant="secondary"
+                        size="sm"
+                        className="w-full bg-white/10 hover:bg-white/20 text-white border-white/20"
+                        onClick={() => setShowCancelDialog(true)}
+                        data-testid="button-cancel-membership"
+                      >
+                        Cancel Membership
+                      </Button>
                     </div>
                   </CardContent>
                 </Card>
@@ -629,7 +662,7 @@ export default function PatientDashboard() {
                                 className="w-full"
                                 variant={isActive ? "outline" : "default"}
                                 disabled={isActive}
-                                onClick={() => setLocation("/patient/membership")}
+                                onClick={() => handleOpenSubscriptionDialog(tier)}
                                 data-testid={`button-select-tier-${tier.id}`}
                               >
                                 {isActive ? 'Current Plan' : membership ? 'Switch Plan' : 'Join Now'}
@@ -707,6 +740,22 @@ export default function PatientDashboard() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Membership Subscription Dialog */}
+      <MembershipSubscriptionDialog
+        open={showSubscriptionDialog}
+        onClose={() => setShowSubscriptionDialog(false)}
+        tier={selectedTier}
+        onSuccess={handleSubscriptionSuccess}
+      />
+
+      {/* Cancel Membership Dialog */}
+      <CancelMembershipDialog
+        open={showCancelDialog}
+        onClose={() => setShowCancelDialog(false)}
+        membership={membership}
+        onSuccess={handleCancelSuccess}
+      />
     </div>
   );
 }
