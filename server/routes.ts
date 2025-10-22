@@ -13,6 +13,20 @@ import { stripe } from "./services/stripe";
 import { sendEmail, getEmailServiceStatus } from "./services/sendgrid";
 import { notificationService } from "./services/notifications";
 
+// Helper to safely convert timestamp to UTC ISO string
+// Handles both Date objects and string timestamps from database
+function toUTCISOString(timestamp: Date | string): string {
+  if (timestamp instanceof Date) {
+    return timestamp.toISOString();
+  }
+  // If string already has timezone info (Z or +/-), don't add Z
+  if (timestamp.includes('Z') || timestamp.match(/[+-]\d{2}:\d{2}$/)) {
+    return new Date(timestamp).toISOString();
+  }
+  // Otherwise, append Z to indicate UTC (for timestamp without time zone from DB)
+  return new Date(timestamp + 'Z').toISOString();
+}
+
 // Helper function to calculate reward points based on membership tier and spend
 async function calculateRewardPoints(clientId: string, organizationId: string, amountSpent: number): Promise<number> {
   try {
@@ -338,12 +352,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
           
           // Convert timestamps to UTC ISO strings to ensure proper timezone handling
-          const startTimeUTC = apt.startTime instanceof Date 
-            ? apt.startTime.toISOString() 
-            : new Date(apt.startTime + 'Z').toISOString();
-          const endTimeUTC = apt.endTime instanceof Date 
-            ? apt.endTime.toISOString() 
-            : new Date(apt.endTime + 'Z').toISOString();
+          const startTimeUTC = toUTCISOString(apt.startTime);
+          const endTimeUTC = toUTCISOString(apt.endTime);
           
           return {
             ...apt,
@@ -2159,6 +2169,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           
           return {
             ...apt,
+            startTime: toUTCISOString(apt.startTime),
+            endTime: toUTCISOString(apt.endTime),
             clientName: client ? `${client.firstName} ${client.lastName}` : null,
             serviceName: service ? service.name : null,
             staffName,
@@ -5346,6 +5358,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           
           return {
             ...apt,
+            startTime: toUTCISOString(apt.startTime),
+            endTime: toUTCISOString(apt.endTime),
             clientName: client ? `${client.firstName} ${client.lastName}` : null,
             serviceName: service ? service.name : null,
             staffName,
