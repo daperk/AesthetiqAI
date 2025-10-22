@@ -46,12 +46,19 @@ export default function Appointments() {
     notes: "",
   });
 
+  // Fetch all upcoming appointments (next 30 days)
+  const endDate = new Date();
+  endDate.setDate(endDate.getDate() + 30);
+
   const { data: appointments, isLoading: appointmentsLoading } = useQuery<Appointment[]>({
-    queryKey: ["appointments", organization?.id, selectedDate.toISOString().split('T')[0]],
+    queryKey: ["appointments", organization?.id, endDate.toISOString().split('T')[0]],
     queryFn: async () => {
-      const dateStr = selectedDate.toISOString().split('T')[0];
-      const url = `/api/appointments?organizationId=${organization?.id}&startDate=${dateStr}&endDate=${dateStr}`;
-      const response = await fetch(url, {
+      const params = new URLSearchParams({
+        organizationId: organization?.id || '',
+        startDate: new Date().toISOString().split('T')[0],
+        endDate: endDate.toISOString().split('T')[0]
+      });
+      const response = await fetch(`/api/appointments?${params}`, {
         credentials: 'include'
       });
       
@@ -59,7 +66,9 @@ export default function Appointments() {
         throw new Error('Failed to fetch appointments');
       }
       
-      return response.json();
+      const data = await response.json();
+      // Filter to only show non-cancelled appointments
+      return data.filter((apt: any) => apt.status !== 'cancelled');
     },
     enabled: !!organization?.id,
     staleTime: 30000,
@@ -428,7 +437,7 @@ export default function Appointments() {
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <CardTitle data-testid="text-appointments-list-title">
-                    Appointments for {selectedDate.toLocaleDateString()}
+                    All Upcoming Appointments
                   </CardTitle>
                   <Badge variant="secondary">
                     {filteredAppointments.length} appointments
@@ -456,17 +465,28 @@ export default function Appointments() {
                           data-testid={`appointment-item-${appointment.id}`}
                         >
                           <div className="flex items-center space-x-4">
-                            <div className="text-center">
+                            <div className="text-center min-w-[100px]">
+                              <div className="text-xs text-muted-foreground mb-1">
+                                {(() => {
+                                  const dateObj = new Date(appointment.startTime);
+                                  const timezone = (appointment as any).locationTimezone || 'America/New_York';
+                                  return dateObj.toLocaleDateString('en-US', { 
+                                    timeZone: timezone,
+                                    month: 'short',
+                                    day: 'numeric'
+                                  });
+                                })()}
+                              </div>
                               <div className="text-sm font-medium text-foreground">
                                 {(() => {
-                                  // Parse timestamp in clinic's timezone (stored as UTC components representing local time)
                                   const dateObj = new Date(appointment.startTime);
-                                  const hours = dateObj.getUTCHours();
-                                  const minutes = dateObj.getUTCMinutes();
-                                  const period = hours >= 12 ? 'PM' : 'AM';
-                                  const displayHours = hours % 12 || 12;
-                                  const displayMinutes = minutes.toString().padStart(2, '0');
-                                  return `${displayHours}:${displayMinutes} ${period}`;
+                                  const timezone = (appointment as any).locationTimezone || 'America/New_York';
+                                  return dateObj.toLocaleTimeString('en-US', {
+                                    timeZone: timezone,
+                                    hour: 'numeric',
+                                    minute: '2-digit',
+                                    hour12: true
+                                  });
                                 })()}
                               </div>
                               <div className="text-xs text-muted-foreground">

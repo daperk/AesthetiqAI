@@ -52,6 +52,27 @@ export default function ClinicDashboard() {
     staleTime: 60000, // 1 minute
   });
 
+  // Fetch today's appointments
+  const { data: todaysAppointments, isLoading: todaysLoading } = useQuery<Appointment[]>({
+    queryKey: [`/api/appointments`, organization?.id, 'today'],
+    queryFn: async () => {
+      const todayStr = new Date().toISOString().split('T')[0];
+      const params = new URLSearchParams({
+        organizationId: organization?.id || '',
+        startDate: todayStr,
+        endDate: todayStr
+      });
+      const response = await fetch(`/api/appointments?${params}`, {
+        credentials: 'include'
+      });
+      if (!response.ok) throw new Error('Failed to fetch appointments');
+      const data = await response.json();
+      return data.filter((apt: any) => apt.status !== 'cancelled');
+    },
+    enabled: !!organization?.id,
+    staleTime: 30000,
+  });
+
   // Fetch upcoming appointments (next 14 days)
   const endDate = new Date();
   endDate.setDate(endDate.getDate() + 14);
@@ -114,7 +135,7 @@ export default function ClinicDashboard() {
     setupStatus.maxLocations > 0 && 
     (locations?.length ?? 0) < setupStatus.maxLocations;
 
-  if (statsLoading || appointmentsLoading || insightsLoading || activitiesLoading || staffLoading) {
+  if (statsLoading || appointmentsLoading || todaysLoading || insightsLoading || activitiesLoading || staffLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <LoadingSpinner size="lg" />
@@ -278,14 +299,67 @@ export default function ClinicDashboard() {
                 </Card>
               </div>
 
+              {/* Today's Appointments - Small Overview */}
+              <Card className="mb-6">
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <CardTitle data-testid="text-today-schedule-title">Today's Appointments</CardTitle>
+                    <Button size="sm" onClick={() => setLocation("/clinic/appointments")} data-testid="button-view-all-appointments">
+                      View All
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {!todaysAppointments || todaysAppointments.length === 0 ? (
+                      <div className="text-center py-6">
+                        <Calendar className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
+                        <p className="text-muted-foreground text-sm" data-testid="text-no-today-appointments">
+                          No appointments scheduled for today
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {todaysAppointments
+                          .sort((a: any, b: any) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
+                          .map((appointment: any) => {
+                            const dateObj = new Date(appointment.startTime);
+                            const timezone = appointment.locationTimezone || 'America/New_York';
+                            
+                            const timeStr = dateObj.toLocaleTimeString('en-US', {
+                              timeZone: timezone,
+                              hour: 'numeric',
+                              minute: '2-digit',
+                              hour12: true
+                            });
+                            
+                            return (
+                              <div key={appointment.id} className="flex items-center space-x-3 p-3 bg-muted/30 rounded-lg" data-testid={`today-appointment-${appointment.id}`}>
+                                <div className="text-center min-w-[60px]">
+                                  <div className="text-sm font-medium text-foreground">{timeStr}</div>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="font-medium text-foreground text-sm truncate">{appointment.serviceName || 'Service'}</div>
+                                  <div className="text-xs text-muted-foreground truncate">{appointment.clientName || 'Client'}</div>
+                                </div>
+                              </div>
+                            );
+                          })
+                        }
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
               {/* Main Content Area */}
               <div className="grid lg:grid-cols-3 gap-8">
-                {/* Upcoming Appointments */}
+                {/* All Upcoming Appointments */}
                 <div className="lg:col-span-2">
                   <Card>
                     <CardHeader>
                       <div className="flex items-center justify-between">
-                        <CardTitle data-testid="text-upcoming-schedule-title">Upcoming Appointments</CardTitle>
+                        <CardTitle data-testid="text-upcoming-schedule-title">All Upcoming Appointments</CardTitle>
                         <Button size="sm" data-testid="button-new-appointment">
                           <Plus className="w-4 h-4 mr-2" />
                           New Appointment
@@ -575,10 +649,10 @@ export default function ClinicDashboard() {
                     <CardContent>
                       <div className="space-y-2">
                         {/* Dynamic Quick Actions Based on Real Data */}
-                        {(!upcomingAppointments || upcomingAppointments.length === 0) && (
-                          <Button variant="outline" className="w-full justify-start" data-testid="button-schedule-appointments">
+                        {(!todaysAppointments || todaysAppointments.length === 0) && (
+                          <Button variant="outline" className="w-full justify-start" onClick={() => setLocation("/clinic/appointments")} data-testid="button-schedule-appointments">
                             <CalendarPlus className="w-4 h-4 mr-2" />
-                            Schedule First Appointment
+                            Schedule Today's Appointments
                           </Button>
                         )}
                         
