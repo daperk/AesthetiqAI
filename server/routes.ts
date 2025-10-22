@@ -3137,9 +3137,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Membership Tiers API (authenticated)
   app.get("/api/membership-tiers", requireAuth, async (req, res) => {
     try {
-      console.log('🔍 [GET /api/membership-tiers] Request received');
+      console.log('🔍 [GET /api/membership-tiers] Request received for user:', req.user!.email, 'role:', req.user!.role);
       const orgId = await getUserOrganizationId(req.user!);
+      console.log('🔍 [GET /api/membership-tiers] Organization ID:', orgId);
       if (!orgId) {
+        // For patient role, try getting client directly as fallback
+        if (req.user!.role === 'patient') {
+          const client = await storage.getClientByUser(req.user!.id);
+          console.log('🔍 [GET /api/membership-tiers] Fallback client lookup:', client?.id, 'orgId:', client?.organizationId);
+          if (client?.organizationId) {
+            const tiers = await storage.getMembershipTiersByOrganization(client.organizationId);
+            console.log('🔍 [GET /api/membership-tiers] Found tiers via fallback:', tiers.length);
+            return res.json(tiers);
+          }
+        }
         return res.status(400).json({ message: "User organization not found" });
       }
 
