@@ -185,10 +185,11 @@ export function MembershipSubscriptionDialog({
     if (open) {
       const fetchStripeAccount = async () => {
         try {
-          const slug = window.location.pathname.split('/')[2];
-          console.log('🔍 [STRIPE CONNECT] Fetching account for clinic:', slug);
+          // FIX: Use new endpoint that gets organization from logged-in user
+          // This avoids issues with URL-based slug extraction for /patient routes
+          console.log('🔍 [STRIPE CONNECT] Fetching account for logged-in patient');
           
-          const response = await apiRequest("GET", `/api/organizations/${slug}/stripe-connect`);
+          const response = await apiRequest("GET", `/api/organizations/my/stripe-connect`);
           const data = await response.json();
           
           console.log('✅ [STRIPE CONNECT] Account fetched:', { 

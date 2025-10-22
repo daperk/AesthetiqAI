@@ -444,12 +444,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get Stripe Connect account ID for payment frontend integration
+  // Get Stripe Connect account ID for payment frontend integration (by slug)
   app.get("/api/organizations/:slug/stripe-connect", async (req, res) => {
     try {
       const { slug } = req.params;
       const organization = await storage.getOrganizationBySlug(slug);
       
+      if (!organization || !organization.isActive) {
+        return res.status(404).json({ message: "Clinic not found" });
+      }
+
+      // Return Connect account ID for frontend Stripe initialization
+      res.json({
+        stripeConnectAccountId: organization.stripeConnectAccountId || null,
+        hasStripeConnected: !!organization.stripeConnectAccountId
+      });
+    } catch (error) {
+      console.error("Stripe Connect lookup error:", error);
+      res.status(500).json({ message: "Failed to lookup payment configuration" });
+    }
+  });
+
+  // FIX: Get Stripe Connect account for logged-in patient (no slug needed)
+  app.get("/api/organizations/my/stripe-connect", requireAuth, async (req, res) => {
+    try {
+      // Get patient's client record to find their organization
+      const client = await storage.getClientByUser(req.user!.id);
+      if (!client) {
+        return res.status(404).json({ message: "Client record not found" });
+      }
+
+      const organization = await storage.getOrganization(client.organizationId);
       if (!organization || !organization.isActive) {
         return res.status(404).json({ message: "Clinic not found" });
       }
@@ -517,18 +542,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
           password: hashedPassword
         });
 
-        // Create client record to link patient to organization with primary location
-        console.log(`Creating client record for user ${user.id} with organization ${organization.id} and location ${primaryLocationId}`);
-        const client = await storage.createClient({
-          userId: user.id,
-          organizationId: organization.id,
-          primaryLocationId: primaryLocationId,
-          firstName: user.firstName || "",
-          lastName: user.lastName || "",
-          email: user.email,
-          phone: user.phone
-        });
-        console.log(`Client created successfully:`, client.id);
+        // FIX: Check if client already exists (from invitation) before creating new one
+        console.log(`Checking for existing client with email ${user.email} in organization ${organization.id}`);
+        const existingClient = await storage.getClientByEmail(user.email);
+        
+        let client;
+        if (existingClient && existingClient.organizationId === organization.id && !existingClient.userId) {
+          // Client was invited but hasn't registered yet - link the new user to existing client
+          console.log(`Found existing invited client ${existingClient.id} - linking to new user ${user.id}`);
+          client = await storage.updateClient(existingClient.id, {
+            userId: user.id,
+            status: 'active'
+          });
+          console.log(`Client ${client.id} linked successfully to user ${user.id}`);
+        } else {
+          // No existing client or client already has a user - create new client record
+          console.log(`Creating new client record for user ${user.id} with organization ${organization.id} and location ${primaryLocationId}`);
+          client = await storage.createClient({
+            userId: user.id,
+            organizationId: organization.id,
+            primaryLocationId: primaryLocationId,
+            firstName: user.firstName || "",
+            lastName: user.lastName || "",
+            email: user.email,
+            phone: user.phone
+          });
+          console.log(`Client created successfully:`, client.id);
+        }
 
         // Create client-location association
         if (primaryLocationId) {
