@@ -232,8 +232,8 @@ export default function PatientDashboard() {
           </div>
         </div>
 
-        {/* Membership CTA Banner - Only show if no active membership */}
-        {(!membership || membership.status !== 'active') && (
+        {/* Membership CTA Banner - Only show if no membership at all */}
+        {!membership && (
           <Card className="bg-gradient-to-r from-primary to-accent text-white mb-6 border-0">
             <CardContent className="p-4">
               <div className="flex items-center justify-between gap-4">
@@ -342,9 +342,27 @@ export default function PatientDashboard() {
               <div className="text-2xl font-bold text-primary mb-1" data-testid="text-membership-tier">
                 {membership?.tierName || "No Membership"}
               </div>
+              {membership && (
+                <Badge 
+                  className={
+                    membership.status === 'active' 
+                      ? 'bg-green-100 text-green-800 mb-2' 
+                      : membership.status === 'suspended' 
+                      ? 'bg-yellow-100 text-yellow-800 mb-2'
+                      : 'bg-gray-100 text-gray-800 mb-2'
+                  }
+                  data-testid="badge-membership-status"
+                >
+                  {membership.status === 'active' ? 'Active' : 
+                   membership.status === 'suspended' ? 'Pending Payment' : 
+                   membership.status}
+                </Badge>
+              )}
               <div className="text-sm text-muted-foreground">Membership Tier</div>
               <div className="text-xs text-muted-foreground mt-1">
-                {membership ? "20% off services" : "Join to save"}
+                {membership?.status === 'active' ? "20% off services" : 
+                 membership?.status === 'suspended' ? "Payment processing..." : 
+                 "Join to save"}
               </div>
             </CardContent>
           </Card>

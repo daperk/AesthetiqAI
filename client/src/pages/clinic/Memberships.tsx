@@ -53,6 +53,7 @@ export default function Memberships() {
   
   const [activeTab, setActiveTab] = useState("tiers");
   const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
   const [isCreateTierDialogOpen, setIsCreateTierDialogOpen] = useState(false);
   const [isEditTierDialogOpen, setIsEditTierDialogOpen] = useState(false);
   const [editingTier, setEditingTier] = useState<MembershipTier | null>(null);
@@ -174,18 +175,29 @@ export default function Memberships() {
     setNewTier(prev => ({ ...prev, [name]: value }));
   };
 
-  const filteredMemberships = memberships?.filter(membership => {
-    if (!searchTerm) return true;
-    return membership.tierName.toLowerCase().includes(searchTerm.toLowerCase());
-  }) || [];
+  const filteredMemberships = memberships
+    ?.filter(membership => {
+      if (searchTerm && !membership.tierName.toLowerCase().includes(searchTerm.toLowerCase())) {
+        return false;
+      }
+      
+      if (statusFilter === "all") return true;
+      if (statusFilter === "active") return membership.status === "active";
+      if (statusFilter === "pending") return membership.status === "suspended";
+      if (statusFilter === "inactive") return membership.status !== "active" && membership.status !== "suspended";
+      
+      return true;
+    })
+    .sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime()) || [];
 
   const getMembershipStats = () => {
     const totalMembers = memberships?.length || 0;
     const activeMembers = memberships?.filter(m => m.status === "active").length || 0;
+    const pendingMembers = memberships?.filter(m => m.status === "suspended").length || 0;
     const totalMRR = memberships?.reduce((sum, m) => 
       m.status === "active" ? sum + parseFloat(m.monthlyFee.toString()) : sum, 0) || 0;
     
-    return { totalMembers, activeMembers, totalMRR };
+    return { totalMembers, activeMembers, pendingMembers, totalMRR };
   };
 
   // Show loading while checking payment status or loading data
@@ -228,7 +240,7 @@ export default function Memberships() {
               <div className="text-2xl font-bold text-foreground" data-testid="text-total-members">
                 {stats.totalMembers}
               </div>
-              <div className="text-sm text-muted-foreground">{stats.activeMembers} active</div>
+              <div className="text-sm text-muted-foreground">{stats.activeMembers} active • {stats.pendingMembers} pending</div>
             </CardContent>
           </Card>
 
@@ -276,7 +288,7 @@ export default function Memberships() {
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <TabsList>
             <TabsTrigger value="tiers" data-testid="tab-membership-tiers">Membership Tiers</TabsTrigger>
-            <TabsTrigger value="members" data-testid="tab-active-members">Active Members</TabsTrigger>
+            <TabsTrigger value="members" data-testid="tab-active-members">Members</TabsTrigger>
             <TabsTrigger value="analytics" data-testid="tab-membership-analytics">Analytics</TabsTrigger>
           </TabsList>
 
@@ -556,8 +568,8 @@ export default function Memberships() {
           <TabsContent value="members">
             <Card>
               <CardHeader>
-                <div className="flex items-center justify-between">
-                  <CardTitle data-testid="text-active-members-title">Active Members</CardTitle>
+                <div className="flex items-center justify-between mb-4">
+                  <CardTitle data-testid="text-active-members-title">All Members</CardTitle>
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
                     <Input
@@ -569,13 +581,33 @@ export default function Memberships() {
                     />
                   </div>
                 </div>
+                <Tabs value={statusFilter} onValueChange={setStatusFilter} className="w-full">
+                  <TabsList className="grid w-full grid-cols-4">
+                    <TabsTrigger value="all" data-testid="filter-all">
+                      All ({memberships?.length || 0})
+                    </TabsTrigger>
+                    <TabsTrigger value="active" data-testid="filter-active">
+                      Active ({memberships?.filter(m => m.status === "active").length || 0})
+                    </TabsTrigger>
+                    <TabsTrigger value="pending" data-testid="filter-pending">
+                      Pending ({memberships?.filter(m => m.status === "suspended").length || 0})
+                    </TabsTrigger>
+                    <TabsTrigger value="inactive" data-testid="filter-inactive">
+                      Inactive ({memberships?.filter(m => m.status !== "active" && m.status !== "suspended").length || 0})
+                    </TabsTrigger>
+                  </TabsList>
+                </Tabs>
               </CardHeader>
               <CardContent>
                 {filteredMemberships.length === 0 ? (
                   <div className="text-center py-8">
                     <Crown className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
                     <p className="text-muted-foreground" data-testid="text-no-members">
-                      {searchTerm ? "No members match your search" : "No active members found"}
+                      {searchTerm 
+                        ? "No members match your search" 
+                        : statusFilter === "all" 
+                        ? "No members found" 
+                        : `No ${statusFilter} members found`}
                     </p>
                   </div>
                 ) : (
@@ -606,12 +638,21 @@ export default function Memberships() {
                             </div>
                           </div>
                           
-                          <Badge className={
-                            membership.status === "active" ? "bg-green-100 text-green-800" :
-                            membership.status === "expired" ? "bg-red-100 text-red-800" :
-                            "bg-yellow-100 text-yellow-800"
-                          }>
-                            {membership.status}
+                          <Badge 
+                            className={
+                              membership.status === "active" 
+                                ? "bg-green-100 text-green-800" 
+                                : membership.status === "suspended"
+                                ? "bg-yellow-100 text-yellow-800"
+                                : "bg-gray-100 text-gray-800"
+                            }
+                            data-testid={`badge-status-${membership.id}`}
+                          >
+                            {membership.status === "active" 
+                              ? "Active" 
+                              : membership.status === "suspended"
+                              ? "Pending Payment"
+                              : "Inactive"}
                           </Badge>
                           
                           <Button variant="ghost" size="sm" data-testid={`button-member-menu-${membership.id}`}>

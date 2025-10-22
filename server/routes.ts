@@ -3424,9 +3424,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const memberships = await storage.getMembershipsByClient(client.id);
-      // Return the active membership or null
-      const activeMembership = memberships.find(m => m.status === 'active') || null;
-      res.json({ membership: activeMembership });
+      // Return the most recent membership (active, suspended, or pending)
+      // Prioritize active, but show suspended if no active membership exists
+      const currentMembership = memberships.find(m => m.status === 'active') 
+        || memberships.find(m => m.status === 'suspended')
+        || memberships[0]
+        || null;
+      res.json({ membership: currentMembership });
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch membership" });
     }
