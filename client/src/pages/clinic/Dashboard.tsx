@@ -46,6 +46,14 @@ export default function ClinicDashboard() {
     staleTime: 5 * 60000, // 5 minutes
   });
 
+  // Helper to get date string without UTC conversion (preserves local date)
+  const getLocalDateString = (date: Date): string => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   const { data: stats, isLoading: statsLoading } = useQuery<DashboardStats>({
     queryKey: [`/api/analytics/dashboard/${organization?.id}`],
     enabled: !!organization?.id,
@@ -56,7 +64,8 @@ export default function ClinicDashboard() {
   const { data: todaysAppointments, isLoading: todaysLoading } = useQuery<Appointment[]>({
     queryKey: [`/api/appointments`, organization?.id, 'today'],
     queryFn: async () => {
-      const todayStr = new Date().toISOString().split('T')[0];
+      const today = new Date();
+      const todayStr = getLocalDateString(today);
       const params = new URLSearchParams({
         organizationId: organization?.id || '',
         startDate: todayStr,
@@ -78,12 +87,13 @@ export default function ClinicDashboard() {
   endDate.setDate(endDate.getDate() + 14);
   
   const { data: upcomingAppointments, isLoading: appointmentsLoading } = useQuery<Appointment[]>({
-    queryKey: [`/api/appointments`, organization?.id, endDate.toISOString().split('T')[0]],
+    queryKey: [`/api/appointments`, organization?.id, getLocalDateString(endDate)],
     queryFn: async () => {
+      const today = new Date();
       const params = new URLSearchParams({
         organizationId: organization?.id || '',
-        startDate: new Date().toISOString().split('T')[0],
-        endDate: endDate.toISOString().split('T')[0]
+        startDate: getLocalDateString(today),
+        endDate: getLocalDateString(endDate)
       });
       const response = await fetch(`/api/appointments?${params}`, {
         credentials: 'include'
@@ -299,117 +309,67 @@ export default function ClinicDashboard() {
                 </Card>
               </div>
 
-              {/* Today's Appointments - Small Overview */}
-              <Card className="mb-6">
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <CardTitle data-testid="text-today-schedule-title">Today's Appointments</CardTitle>
-                    <Button size="sm" onClick={() => setLocation("/clinic/appointments")} data-testid="button-view-all-appointments">
-                      View All
-                    </Button>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    {!todaysAppointments || todaysAppointments.length === 0 ? (
-                      <div className="text-center py-6">
-                        <Calendar className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
-                        <p className="text-muted-foreground text-sm" data-testid="text-no-today-appointments">
-                          No appointments scheduled for today
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
-                        {todaysAppointments
-                          .sort((a: any, b: any) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
-                          .map((appointment: any) => {
-                            const dateObj = new Date(appointment.startTime);
-                            const timezone = appointment.locationTimezone || 'America/New_York';
-                            
-                            const timeStr = dateObj.toLocaleTimeString('en-US', {
-                              timeZone: timezone,
-                              hour: 'numeric',
-                              minute: '2-digit',
-                              hour12: true
-                            });
-                            
-                            return (
-                              <div key={appointment.id} className="flex items-center space-x-3 p-3 bg-muted/30 rounded-lg" data-testid={`today-appointment-${appointment.id}`}>
-                                <div className="text-center min-w-[60px]">
-                                  <div className="text-sm font-medium text-foreground">{timeStr}</div>
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <div className="font-medium text-foreground text-sm truncate">{appointment.serviceName || 'Service'}</div>
-                                  <div className="text-xs text-muted-foreground truncate">{appointment.clientName || 'Client'}</div>
-                                </div>
-                              </div>
-                            );
-                          })
-                        }
-                      </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-
               {/* Main Content Area */}
               <div className="grid lg:grid-cols-3 gap-8">
-                {/* All Upcoming Appointments */}
+                {/* Appointments - Combined Today & Upcoming */}
                 <div className="lg:col-span-2">
                   <Card>
                     <CardHeader>
                       <div className="flex items-center justify-between">
-                        <CardTitle data-testid="text-upcoming-schedule-title">All Upcoming Appointments</CardTitle>
-                        <Button size="sm" data-testid="button-new-appointment">
+                        <CardTitle data-testid="text-appointments-title">Appointments</CardTitle>
+                        <Button size="sm" onClick={() => setLocation("/clinic/appointments")} data-testid="button-new-appointment">
                           <Plus className="w-4 h-4 mr-2" />
                           New Appointment
                         </Button>
                       </div>
                     </CardHeader>
                     <CardContent>
-                      <div className="space-y-4">
-                        {!upcomingAppointments || upcomingAppointments.length === 0 ? (
-                          <div className="text-center py-8">
-                            <Calendar className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-                            <p className="text-muted-foreground" data-testid="text-no-appointments">
-                              No upcoming appointments
-                            </p>
-                          </div>
-                        ) : (
-                          upcomingAppointments
-                            .sort((a: any, b: any) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
-                            .slice(0, 10) // Show first 10
-                            .map((appointment: any) => {
-                              // API now returns UTC ISO strings (e.g., "2025-10-25T16:00:00.000Z")
-                              const dateObj = new Date(appointment.startTime);
-                              const timezone = appointment.locationTimezone || 'America/New_York';
-                              
-                              // Format date and time in clinic's timezone
-                              const dateStr = dateObj.toLocaleDateString('en-US', { 
-                                timeZone: timezone,
-                                month: 'short',
-                                day: 'numeric'
-                              });
-                              
-                              const timeStr = dateObj.toLocaleTimeString('en-US', {
-                                timeZone: timezone,
-                                hour: 'numeric',
-                                minute: '2-digit',
-                                hour12: true
-                              });
-                              
-                              return (
-                                <div key={appointment.id} className="flex items-center space-x-4 p-4 bg-muted/30 rounded-lg" data-testid={`appointment-item-${appointment.id}`}>
-                                  <div className="text-center min-w-[80px]">
-                                    <div className="text-xs text-muted-foreground mb-1">{dateStr}</div>
-                                    <div className="text-sm font-medium text-foreground">{timeStr}</div>
-                                  </div>
-                                  <div className="flex-1">
-                                    <div className="font-medium text-foreground">{appointment.serviceName || 'Service'}</div>
-                                    <div className="text-sm text-muted-foreground">{appointment.clientName || 'Client'}</div>
-                                  </div>
-                                  <div className="text-sm text-muted-foreground">{appointment.staffName || 'Staff'}</div>
-                                  <div className="flex items-center space-x-2">
+                      <Tabs defaultValue="today" className="w-full">
+                        <TabsList className="grid w-full grid-cols-2 mb-4">
+                          <TabsTrigger value="today" data-testid="tab-today">
+                            Today ({todaysAppointments?.length || 0})
+                          </TabsTrigger>
+                          <TabsTrigger value="upcoming" data-testid="tab-upcoming">
+                            Upcoming ({upcomingAppointments?.filter((apt: any) => {
+                              const aptDate = getLocalDateString(new Date(apt.startTime));
+                              const todayStr = getLocalDateString(new Date());
+                              return aptDate > todayStr;
+                            }).length || 0})
+                          </TabsTrigger>
+                        </TabsList>
+                        
+                        <TabsContent value="today" className="space-y-3">
+                          {!todaysAppointments || todaysAppointments.length === 0 ? (
+                            <div className="text-center py-8">
+                              <Calendar className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                              <p className="text-muted-foreground" data-testid="text-no-today-appointments">
+                                No appointments scheduled for today
+                              </p>
+                            </div>
+                          ) : (
+                            todaysAppointments
+                              .sort((a: any, b: any) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
+                              .map((appointment: any) => {
+                                const dateObj = new Date(appointment.startTime);
+                                const timezone = appointment.locationTimezone || 'America/New_York';
+                                
+                                const timeStr = dateObj.toLocaleTimeString('en-US', {
+                                  timeZone: timezone,
+                                  hour: 'numeric',
+                                  minute: '2-digit',
+                                  hour12: true
+                                });
+                                
+                                return (
+                                  <div key={appointment.id} className="flex items-center space-x-4 p-4 bg-muted/30 rounded-lg" data-testid={`today-appointment-${appointment.id}`}>
+                                    <div className="text-center min-w-[70px]">
+                                      <div className="text-sm font-medium text-foreground">{timeStr}</div>
+                                    </div>
+                                    <div className="flex-1">
+                                      <div className="font-medium text-foreground">{appointment.serviceName || 'Service'}</div>
+                                      <div className="text-sm text-muted-foreground">{appointment.clientName || 'Client'}</div>
+                                    </div>
+                                    <div className="text-sm text-muted-foreground">{appointment.staffName || 'Staff'}</div>
                                     <Badge className={`${
                                       appointment.status === 'confirmed' ? 'bg-green-100 text-green-800' :
                                       appointment.status === 'in_progress' ? 'bg-blue-100 text-blue-800' :
@@ -418,15 +378,75 @@ export default function ClinicDashboard() {
                                     }`}>
                                       {appointment.status || 'Scheduled'}
                                     </Badge>
-                                    <Button variant="ghost" size="sm" data-testid="button-appointment-menu">
-                                      <Bell className="w-4 h-4" />
-                                    </Button>
                                   </div>
-                                </div>
-                              );
-                            })
-                        )}
-                      </div>
+                                );
+                              })
+                          )}
+                        </TabsContent>
+                        
+                        <TabsContent value="upcoming" className="space-y-3">
+                          {!upcomingAppointments || upcomingAppointments.filter((apt: any) => {
+                            const aptDate = getLocalDateString(new Date(apt.startTime));
+                            const todayStr = getLocalDateString(new Date());
+                            return aptDate > todayStr;
+                          }).length === 0 ? (
+                            <div className="text-center py-8">
+                              <Calendar className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                              <p className="text-muted-foreground" data-testid="text-no-upcoming-appointments">
+                                No upcoming appointments
+                              </p>
+                            </div>
+                          ) : (
+                            upcomingAppointments
+                              .filter((apt: any) => {
+                                const aptDate = getLocalDateString(new Date(apt.startTime));
+                                const todayStr = getLocalDateString(new Date());
+                                return aptDate > todayStr;
+                              })
+                              .sort((a: any, b: any) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
+                              .slice(0, 10)
+                              .map((appointment: any) => {
+                                const dateObj = new Date(appointment.startTime);
+                                const timezone = appointment.locationTimezone || 'America/New_York';
+                                
+                                const dateStr = dateObj.toLocaleDateString('en-US', { 
+                                  timeZone: timezone,
+                                  month: 'short',
+                                  day: 'numeric'
+                                });
+                                
+                                const timeStr = dateObj.toLocaleTimeString('en-US', {
+                                  timeZone: timezone,
+                                  hour: 'numeric',
+                                  minute: '2-digit',
+                                  hour12: true
+                                });
+                                
+                                return (
+                                  <div key={appointment.id} className="flex items-center space-x-4 p-4 bg-muted/30 rounded-lg" data-testid={`upcoming-appointment-${appointment.id}`}>
+                                    <div className="text-center min-w-[80px]">
+                                      <div className="text-xs text-muted-foreground mb-1">{dateStr}</div>
+                                      <div className="text-sm font-medium text-foreground">{timeStr}</div>
+                                    </div>
+                                    <div className="flex-1">
+                                      <div className="font-medium text-foreground">{appointment.serviceName || 'Service'}</div>
+                                      <div className="text-sm text-muted-foreground">{appointment.clientName || 'Client'}</div>
+                                    </div>
+                                    <div className="text-sm text-muted-foreground">{appointment.staffName || 'Staff'}</div>
+                                    <Badge className={`${
+                                      appointment.status === 'confirmed' ? 'bg-green-100 text-green-800' :
+                                      appointment.status === 'in_progress' ? 'bg-blue-100 text-blue-800' :
+                                      appointment.status === 'completed' ? 'bg-gray-100 text-gray-800' :
+                                      'bg-yellow-100 text-yellow-800'
+                                    }`}>
+                                      {appointment.status || 'Scheduled'}
+                                    </Badge>
+                                  </div>
+                                );
+                              })
+                          )}
+                        </TabsContent>
+                      </Tabs>
                     </CardContent>
                   </Card>
                 </div>

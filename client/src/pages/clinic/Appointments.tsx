@@ -31,7 +31,7 @@ export default function Appointments() {
   // Enforce payment setup requirement
   const { isLoading: paymentLoading, hasAccess } = usePaymentRequired();
   
-  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined); // undefined = show all upcoming
   const [viewMode, setViewMode] = useState<"day" | "week" | "month">("day");
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -46,17 +46,38 @@ export default function Appointments() {
     notes: "",
   });
 
-  // Fetch all upcoming appointments (next 30 days)
+  // Helper to get date string without UTC conversion (preserves local date)
+  const getLocalDateString = (date: Date): string => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  // Fetch all upcoming appointments (next 30 days) OR specific date
   const endDate = new Date();
   endDate.setDate(endDate.getDate() + 30);
 
   const { data: appointments, isLoading: appointmentsLoading } = useQuery<Appointment[]>({
-    queryKey: ["appointments", organization?.id, endDate.toISOString().split('T')[0]],
+    queryKey: ["appointments", organization?.id, selectedDate ? getLocalDateString(selectedDate) : 'all-upcoming'],
     queryFn: async () => {
+      let startDateStr, endDateStr;
+      
+      if (selectedDate) {
+        // Specific date selected - use local date without UTC conversion
+        startDateStr = getLocalDateString(selectedDate);
+        endDateStr = getLocalDateString(selectedDate);
+      } else {
+        // Show all upcoming (next 30 days) - use local dates
+        const today = new Date();
+        startDateStr = getLocalDateString(today);
+        endDateStr = getLocalDateString(endDate);
+      }
+      
       const params = new URLSearchParams({
         organizationId: organization?.id || '',
-        startDate: new Date().toISOString().split('T')[0],
-        endDate: endDate.toISOString().split('T')[0]
+        startDate: startDateStr,
+        endDate: endDateStr
       });
       const response = await fetch(`/api/appointments?${params}`, {
         credentials: 'include'
@@ -436,9 +457,27 @@ export default function Appointments() {
             <Card>
               <CardHeader>
                 <div className="flex items-center justify-between">
-                  <CardTitle data-testid="text-appointments-list-title">
-                    All Upcoming Appointments
-                  </CardTitle>
+                  <div>
+                    <CardTitle data-testid="text-appointments-list-title">
+                      {!selectedDate 
+                        ? "All Upcoming Appointments"
+                        : selectedDate.toDateString() === new Date().toDateString()
+                        ? "Today's Appointments"
+                        : `Appointments for ${selectedDate.toLocaleDateString()}`
+                      }
+                    </CardTitle>
+                    {selectedDate && (
+                      <Button 
+                        variant="link" 
+                        size="sm" 
+                        className="px-0 h-auto text-xs"
+                        onClick={() => setSelectedDate(undefined)}
+                        data-testid="button-clear-date-filter"
+                      >
+                        View all upcoming appointments
+                      </Button>
+                    )}
+                  </div>
                   <Badge variant="secondary">
                     {filteredAppointments.length} appointments
                   </Badge>
