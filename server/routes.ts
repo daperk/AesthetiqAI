@@ -2087,7 +2087,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const appointments = await storage.getAppointmentsByOrganization(organizationId, startDate, endDate);
-      res.json(appointments);
+      
+      // Enrich appointments with client, service, staff, and location data
+      const enrichedAppointments = await Promise.all(
+        appointments.map(async (apt) => {
+          const [client, service, staff, location] = await Promise.all([
+            apt.clientId ? storage.getClient(apt.clientId) : null,
+            apt.serviceId ? storage.getService(apt.serviceId) : null,
+            apt.staffId ? storage.getStaff(apt.staffId) : null,
+            apt.locationId ? storage.getLocation(apt.locationId) : null,
+          ]);
+          
+          // Get staff user name if staff exists
+          let staffName = null;
+          if (staff) {
+            if (staff.title) {
+              staffName = staff.title;
+            } else if (staff.userId) {
+              const staffUser = await storage.getUser(staff.userId);
+              staffName = staffUser ? `${staffUser.firstName || ''} ${staffUser.lastName || ''}`.trim() : null;
+            }
+          }
+          
+          return {
+            ...apt,
+            clientName: client ? `${client.firstName} ${client.lastName}` : null,
+            serviceName: service ? service.name : null,
+            staffName,
+            locationName: location ? location.name : null,
+            locationTimezone: location ? location.timezone : null,
+          };
+        })
+      );
+      
+      res.json(enrichedAppointments);
     } catch (error) {
       console.error("Get appointments error:", error);
       res.status(500).json({ message: "Failed to fetch appointments" });
@@ -5202,7 +5235,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return aptDate >= today && aptDate < tomorrow;
       });
 
-      res.json(todayAppointments);
+      // Enrich appointments with client, service, staff, and location data
+      const enrichedAppointments = await Promise.all(
+        todayAppointments.map(async (apt) => {
+          const [client, service, staff, location] = await Promise.all([
+            apt.clientId ? storage.getClient(apt.clientId) : null,
+            apt.serviceId ? storage.getService(apt.serviceId) : null,
+            apt.staffId ? storage.getStaff(apt.staffId) : null,
+            apt.locationId ? storage.getLocation(apt.locationId) : null,
+          ]);
+          
+          // Get staff user name if staff exists
+          let staffName = null;
+          if (staff) {
+            if (staff.title) {
+              staffName = staff.title;
+            } else if (staff.userId) {
+              const staffUser = await storage.getUser(staff.userId);
+              staffName = staffUser ? `${staffUser.firstName || ''} ${staffUser.lastName || ''}`.trim() : null;
+            }
+          }
+          
+          return {
+            ...apt,
+            clientName: client ? `${client.firstName} ${client.lastName}` : null,
+            serviceName: service ? service.name : null,
+            staffName,
+            locationName: location ? location.name : null,
+            locationTimezone: location ? location.timezone : null,
+          };
+        })
+      );
+
+      res.json(enrichedAppointments);
     } catch (error) {
       console.error("Error fetching today's appointments:", error);
       res.status(500).json({ message: "Failed to fetch today's appointments" });

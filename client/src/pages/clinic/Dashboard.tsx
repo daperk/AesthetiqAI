@@ -288,10 +288,13 @@ export default function ClinicDashboard() {
                             .sort((a: any, b: any) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
                             .map((appointment: any) => {
                               const startTime = new Date(appointment.startTime);
+                              // Use clinic's timezone if available, otherwise use browser's timezone
+                              const timezone = appointment.locationTimezone || undefined;
                               const timeStr = startTime.toLocaleTimeString('en-US', { 
                                 hour: 'numeric', 
                                 minute: '2-digit',
-                                hour12: true 
+                                hour12: true,
+                                timeZone: timezone
                               }).split(' ');
                               
                               return (
@@ -301,10 +304,10 @@ export default function ClinicDashboard() {
                                     <div className="text-xs text-muted-foreground">{timeStr[1]}</div>
                                   </div>
                                   <div className="flex-1">
-                                    <div className="font-medium text-foreground">Appointment</div>
-                                    <div className="text-sm text-muted-foreground">Client</div>
+                                    <div className="font-medium text-foreground">{appointment.serviceName || 'Service'}</div>
+                                    <div className="text-sm text-muted-foreground">{appointment.clientName || 'Client'}</div>
                                   </div>
-                                  <div className="text-sm text-muted-foreground">Staff</div>
+                                  <div className="text-sm text-muted-foreground">{appointment.staffName || 'Staff'}</div>
                                   <div className="flex items-center space-x-2">
                                     <Badge className={`${
                                       appointment.status === 'confirmed' ? 'bg-green-100 text-green-800' :

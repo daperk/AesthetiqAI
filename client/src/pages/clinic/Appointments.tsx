@@ -448,27 +448,36 @@ export default function Appointments() {
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    {filteredAppointments.map((appointment) => (
-                      <div 
-                        key={appointment.id}
-                        className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors"
-                        data-testid={`appointment-item-${appointment.id}`}
-                      >
-                        <div className="flex items-center space-x-4">
-                          <div className="text-center">
-                            <div className="text-sm font-medium text-foreground">
-                              {new Date(appointment.startTime).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}
+                    {filteredAppointments.map((appointment) => {
+                      // Use clinic's timezone if available, otherwise use browser's timezone
+                      const timezone = (appointment as any).locationTimezone || undefined;
+                      
+                      return (
+                        <div 
+                          key={appointment.id}
+                          className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors"
+                          data-testid={`appointment-item-${appointment.id}`}
+                        >
+                          <div className="flex items-center space-x-4">
+                            <div className="text-center">
+                              <div className="text-sm font-medium text-foreground">
+                                {new Date(appointment.startTime).toLocaleTimeString('en-US', { 
+                                  hour: 'numeric', 
+                                  minute: '2-digit', 
+                                  hour12: true,
+                                  timeZone: timezone
+                                })}
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                {Math.round((new Date(appointment.endTime).getTime() - new Date(appointment.startTime).getTime()) / (1000 * 60))} min
+                              </div>
                             </div>
-                            <div className="text-xs text-muted-foreground">
-                              {Math.round((new Date(appointment.endTime).getTime() - new Date(appointment.startTime).getTime()) / (1000 * 60))} min
+                            <div className="flex-1">
+                              <div className="font-medium text-foreground">{(appointment as any).serviceName || 'Service'}</div>
+                              <div className="text-sm text-muted-foreground">{(appointment as any).clientName || 'Client'}</div>
+                              <div className="text-xs text-muted-foreground">{(appointment as any).staffName || 'Staff'}</div>
                             </div>
                           </div>
-                          <div className="flex-1">
-                            <div className="font-medium text-foreground">Service Name</div>
-                            <div className="text-sm text-muted-foreground">Client Name</div>
-                            <div className="text-xs text-muted-foreground">Provider Name</div>
-                          </div>
-                        </div>
                         
                         <div className="flex items-center space-x-3">
                           <Badge className={getStatusColor(appointment.status || "scheduled")}>
@@ -483,7 +492,8 @@ export default function Appointments() {
                           </Button>
                         </div>
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </CardContent>
