@@ -174,9 +174,20 @@ Aesthiq uses Stripe Connect's **Destination Charges** pattern for bookings and *
 - Frontend components (Dashboard.tsx, Appointments.tsx) properly display: clientName, serviceName, staffName with fallbacks
 - Example: "Jane Doe - Renewal Essentials - Clinic Administrator" instead of "Client - Service Name - Staff"
 
+**Timezone Handling for Appointment Display (October 22, 2025)**
+- Fixed critical bug where appointments displayed wrong times (4 PM instead of 12 PM)
+- Root cause: Database uses `timestamp without time zone`, causing JavaScript to ambiguously interpret timestamps
+- Solution: Created `toUTCISOString()` helper function in `server/routes.ts` to explicitly mark timestamps as UTC
+- Helper safely handles: Date objects, strings with timezone info (Z or +/-), and plain timestamp strings
+- Applied to all appointment endpoints: `/api/appointments/upcoming`, `/api/appointments`, `/api/appointments/:organizationId/today`
+- Now returns timestamps as `2025-10-25T16:00:00.000Z` instead of `2025-10-25 16:00:00`
+- Frontend correctly converts UTC to clinic timezone: 16:00 UTC → 12:00 PM EDT
+- E2E tested: Patient dashboard now displays "October 25, 2025 at 12:00 PM" correctly
+
 **Technical Details**
 - Login uses `emailOrUsername` field (Passport Local Strategy)
 - Password hashing: 12 rounds for passwords, 10 rounds for reset tokens
 - Token generation: `crypto.randomBytes(32).toString('hex')` (64 hex characters)
 - Centralized email service in `server/services/sendgrid.ts`
 - All authentication endpoints tested and verified working
+- Appointment timestamps: Always serialized as UTC ISO strings for consistent timezone handling across all clients
