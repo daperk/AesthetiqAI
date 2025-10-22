@@ -3587,10 +3587,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           commissionPercent // Platform commission percentage
         );
 
-        // Check if payment was successful immediately (for subscriptions with no trial)
-        // If subscription.status is 'active', payment was confirmed, activate immediately
-        const initialStatus = subscriptionResult.status === 'active' ? 'active' : 'suspended';
-        console.log(`🔍 [MEMBERSHIP UPGRADE] Subscription status: ${subscriptionResult.status}, membership status: ${initialStatus}`);
+        // Check if payment was successful immediately
+        // Payment intent status "succeeded" means payment was confirmed, even if subscription is still "incomplete"
+        const paymentSucceeded = subscriptionResult.paymentIntentStatus === 'succeeded';
+        const initialStatus = paymentSucceeded ? 'active' : 'suspended';
+        console.log(`🔍 [MEMBERSHIP UPGRADE] Subscription status: ${subscriptionResult.status}, Payment intent status: ${subscriptionResult.paymentIntentStatus}, membership status: ${initialStatus}`);
 
         // Create membership record
         membership = await storage.createMembership({

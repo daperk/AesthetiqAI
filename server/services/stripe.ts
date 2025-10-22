@@ -32,6 +32,7 @@ export interface SubscriptionResult {
   subscriptionId: string;
   clientSecret?: string;
   status: string;
+  paymentIntentStatus?: string | null;
 }
 
 export interface PaymentIntentResult {
@@ -151,10 +152,14 @@ export async function createSubscription(
       })
     : await stripe.subscriptions.create(subscriptionData);
 
+  const latestInvoice = subscription.latest_invoice as any;
+  const paymentIntent = latestInvoice?.payment_intent;
+
   return {
     subscriptionId: subscription.id,
-    clientSecret: (subscription.latest_invoice as any)?.payment_intent?.client_secret,
-    status: subscription.status
+    clientSecret: paymentIntent?.client_secret,
+    status: subscription.status,
+    paymentIntentStatus: paymentIntent?.status || null
   };
 }
 
