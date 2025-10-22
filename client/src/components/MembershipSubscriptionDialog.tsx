@@ -55,9 +55,10 @@ function PaymentStep({
   const [errorMessage, setErrorMessage] = useState<string>("");
   const [isReady, setIsReady] = useState(false);
 
-  const price = billingCycle === 'yearly' && tier.yearlyPrice 
-    ? tier.yearlyPrice / 12 
-    : tier.monthlyPrice;
+  // Convert prices to numbers in case they come from DB as strings
+  const monthlyPrice = Number(tier.monthlyPrice) || 0;
+  const yearlyPrice = Number(tier.yearlyPrice) || monthlyPrice * 12;
+  const price = billingCycle === 'yearly' ? yearlyPrice / 12 : monthlyPrice;
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -185,9 +186,10 @@ export function MembershipSubscriptionDialog({
 
   if (!tier) return null;
 
-  const monthlyPrice = tier.monthlyPrice;
-  const yearlyPrice = tier.yearlyPrice || tier.monthlyPrice * 12;
-  const yearlySavings = (tier.monthlyPrice * 12) - yearlyPrice;
+  // Convert prices to numbers in case they come from DB as strings
+  const monthlyPrice = Number(tier.monthlyPrice) || 0;
+  const yearlyPrice = Number(tier.yearlyPrice) || monthlyPrice * 12;
+  const yearlySavings = (monthlyPrice * 12) - yearlyPrice;
   const displayPrice = billingCycle === 'yearly' ? yearlyPrice / 12 : monthlyPrice;
 
   const handleSubscribe = async () => {

@@ -40,9 +40,10 @@ export default function PatientDashboard() {
     staleTime: 30000,
   });
 
-  const { data: membership, isLoading: membershipLoading } = useQuery<Membership>({
+  const { data: membership, isLoading: membershipLoading } = useQuery<Membership | null>({
     queryKey: ["/api/memberships/my-membership"],
     staleTime: 60000,
+    select: (data: any) => data.membership,
   });
 
   const { data: rewards, isLoading: rewardsLoading } = useQuery<{ rewards: Reward[], balance: number }>({
