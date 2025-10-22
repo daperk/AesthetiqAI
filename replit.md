@@ -157,6 +157,14 @@ Aesthiq uses Stripe Connect's **Destination Charges** pattern for bookings and *
 - Cleaned up obsolete plaintext token storage methods
 - Verified multi-tenant data isolation for all patient endpoints
 
+**Timezone-Aware Appointment Availability**
+- Fixed same-day appointment filtering to respect clinic's local timezone
+- Converts current UTC time to clinic timezone using `toLocaleString('en-US', { timeZone })`
+- Compares slot hour/minute directly with current hour/minute in clinic's local time
+- Resolves issue where Miami clinic (America/New_York) only showed afternoon slots instead of morning slots
+- Example: At 10:18 AM Miami time, slots now correctly show from 10:30 AM onwards (not 2:30 PM)
+- Note: Edge cases around midnight boundaries and DST transitions documented for future enhancement
+
 **Technical Details**
 - Login uses `emailOrUsername` field (Passport Local Strategy)
 - Password hashing: 12 rounds for passwords, 10 rounds for reset tokens
