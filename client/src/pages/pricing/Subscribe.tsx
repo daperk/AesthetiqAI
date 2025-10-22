@@ -17,10 +17,11 @@ import {
 } from "lucide-react";
 import type { SubscriptionPlan } from "@/types";
 
-// Use test key if environment variable is not set
-const stripeKey = import.meta.env.VITE_STRIPE_PUBLIC_KEY || 'pk_test_51QahdjA0YLTsXoNLrKJYCBKHgRPRQLdXD6J0Qz2g3aPWXW4WlEcLLnP8Srf9A2DrhU9NzF3gM3KZ5yG8bMf8BTWW00TqxPCOzx';
+if (!import.meta.env.VITE_STRIPE_PUBLIC_KEY) {
+  throw new Error('Missing VITE_STRIPE_PUBLIC_KEY environment variable');
+}
 
-const stripePromise = loadStripe(stripeKey);
+const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLIC_KEY);
 
 function CheckoutForm({ selectedPlan, billingCycle }: { selectedPlan: SubscriptionPlan | null, billingCycle: "monthly" | "yearly" }) {
   const stripe = useStripe();

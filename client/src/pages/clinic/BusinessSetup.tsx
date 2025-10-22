@@ -19,9 +19,11 @@ import { z } from "zod";
 import { loadStripe } from '@stripe/stripe-js';
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
 
-// Use test key if environment variable is not set
-const stripeKey = import.meta.env.VITE_STRIPE_PUBLIC_KEY || 'pk_test_51QahdjA0YLTsXoNLrKJYCBKHgRPRQLdXD6J0Qz2g3aPWXW4WlEcLLnP8Srf9A2DrhU9NzF3gM3KZ5yG8bMf8BTWW00TqxPCOzx';
-const stripePromise = loadStripe(stripeKey);
+if (!import.meta.env.VITE_STRIPE_PUBLIC_KEY) {
+  throw new Error('Missing VITE_STRIPE_PUBLIC_KEY environment variable');
+}
+
+const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLIC_KEY);
 
 interface BusinessSetupStatus {
   stripeConnected: boolean;

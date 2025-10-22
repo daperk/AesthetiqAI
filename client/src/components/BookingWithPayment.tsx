@@ -10,13 +10,13 @@ import { apiRequest } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import type { Service, Staff, Location } from "@shared/schema";
 
-// Use test key if environment variable is not set
-const stripeKey = import.meta.env.VITE_STRIPE_PUBLIC_KEY || 'pk_test_51QahdjA0YLTsXoNLrKJYCBKHgRPRQLdXD6J0Qz2g3aPWXW4WlEcLLnP8Srf9A2DrhU9NzF3gM3KZ5yG8bMf8BTWW00TqxPCOzx';
+if (!import.meta.env.VITE_STRIPE_PUBLIC_KEY) {
+  throw new Error('Missing VITE_STRIPE_PUBLIC_KEY environment variable');
+}
 
-console.log('🔍 [STRIPE] Initializing with public key:', stripeKey?.substring(0, 20) + '...');
-console.log('🔍 [STRIPE] VITE_STRIPE_PUBLIC_KEY env var:', import.meta.env.VITE_STRIPE_PUBLIC_KEY ? 'SET' : 'NOT SET');
+console.log('🔍 [STRIPE] Initializing with public key:', import.meta.env.VITE_STRIPE_PUBLIC_KEY.substring(0, 20) + '...');
 
-const stripePromise = loadStripe(stripeKey).then(stripe => {
+const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLIC_KEY).then(stripe => {
   console.log('✅ [STRIPE] Stripe.js loaded successfully:', stripe ? 'SUCCESS' : 'FAILED');
   return stripe;
 }).catch(error => {
