@@ -321,13 +321,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const enrichedAppointments = await Promise.all(
         upcomingAppointments.map(async (apt) => {
           const service = await storage.getService(apt.serviceId);
-          const staff = await storage.getUser(apt.staffId);
+          const staffRecord = await storage.getStaff(apt.staffId);
           const location = await storage.getLocation(apt.locationId);
+          
+          // Get staff name - prefer title, fallback to user's name
+          let staffName = 'Staff member';
+          if (staffRecord) {
+            if (staffRecord.title) {
+              staffName = staffRecord.title;
+            } else {
+              const user = await storage.getUser(staffRecord.userId);
+              if (user) {
+                staffName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'Staff member';
+              }
+            }
+          }
           
           return {
             ...apt,
             serviceName: service?.name || 'Service',
-            staffName: staff?.name || 'Staff member',
+            staffName,
             locationName: location?.name || 'Location',
             timezone: location?.timezone || 'America/New_York'
           };
