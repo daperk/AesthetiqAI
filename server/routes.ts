@@ -3086,18 +3086,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
           commissionPercent // Platform commission percentage
         );
 
-        // Create inactive membership record until payment confirmed
+        // Check if payment was successful immediately (for subscriptions with no trial)
+        // If subscription.status is 'active', payment was confirmed, activate immediately
+        const initialStatus = subscriptionResult.status === 'active' ? 'active' : 'suspended';
+        console.log(`🔍 [MEMBERSHIP UPGRADE] Subscription status: ${subscriptionResult.status}, membership status: ${initialStatus}`);
+
+        // Create membership record
         membership = await storage.createMembership({
           clientId: client.id,
           tierName: tier.name, // Use actual tier name instead of tierId
           startDate: new Date(),
-          status: 'suspended', // Will be activated by webhook
+          status: initialStatus, // Active if payment confirmed, suspended if pending
           organizationId: client.organizationId,
           monthlyFee: billingCycle === 'yearly' ? tier.yearlyPrice || tier.monthlyPrice : tier.monthlyPrice,
           stripeSubscriptionId: subscriptionResult.subscriptionId
         });
 
         await auditLog(req, "upgrade_initiated", "membership", membership.id, { tierId, billingCycle, subscriptionId: subscriptionResult.subscriptionId });
+        
+        // If membership is active immediately (payment confirmed), award signup points
+        if (initialStatus === 'active') {
+          console.log(`🎁 [MEMBERSHIP UPGRADE] Awarding signup points for active membership`);
+          await storage.createReward({
+            clientId: client.id,
+            points: 100,
+            reason: "membership_signup",
+            organizationId: client.organizationId,
+            referenceId: membership.id,
+            referenceType: 'membership'
+          });
+        }
         
         clientSecret = subscriptionResult.clientSecret;
         subscriptionId = subscriptionResult.subscriptionId;
