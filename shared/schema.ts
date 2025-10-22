@@ -13,6 +13,7 @@ export const appointmentStatusEnum = pgEnum("appointment_status", ["pending", "s
 export const paymentStatusEnum = pgEnum("payment_status", ["pending", "completed", "failed", "refunded"]);
 export const membershipStatusEnum = pgEnum("membership_status", ["active", "expired", "canceled", "suspended"]);
 export const planTierEnum = pgEnum("plan_tier", ["starter", "professional", "business", "enterprise", "medical_chain"]);
+export const notificationTypeEnum = pgEnum("notification_type", ["booking", "membership", "reward", "custom", "system"]);
 
 // Core Tables
 export const users = pgTable("users", {
@@ -372,15 +373,15 @@ export const aiInsights = pgTable("ai_insights", {
 
 export const notifications = pgTable("notifications", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: uuid("user_id"),
-  organizationId: uuid("organization_id"),
-  type: text("type").notNull(),
+  userId: uuid("user_id").notNull(),
+  organizationId: uuid("organization_id").notNull(),
+  type: notificationTypeEnum("type").notNull(),
   title: text("title").notNull(),
   message: text("message").notNull(),
   data: jsonb("data"),
-  channels: jsonb("channels"),
+  channels: text("channels").array().notNull().default(sql`ARRAY['in_app']::text[]`),
   isRead: boolean("is_read").default(false),
-  sentAt: timestamp("sent_at"),
+  readAt: timestamp("read_at"),
   createdAt: timestamp("created_at").default(sql`now()`)
 });
 

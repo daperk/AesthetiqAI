@@ -167,9 +167,11 @@ export interface IStorage {
   updateAiInsight(id: string, updates: Partial<InsertAiInsight>): Promise<AiInsight>;
 
   // Notifications
-  getNotificationsByUser(userId: string): Promise<Notification[]>;
+  getNotificationsByUser(userId: string, organizationId: string): Promise<Notification[]>;
+  getUnreadNotificationCount(userId: string, organizationId: string): Promise<number>;
   createNotification(notification: InsertNotification): Promise<Notification>;
-  markNotificationAsRead(id: string): Promise<Notification>;
+  markNotificationAsRead(id: string, organizationId: string): Promise<Notification>;
+  markAllNotificationsAsRead(userId: string, organizationId: string): Promise<void>;
 
   // Usage Logs
   createUsageLog(log: InsertUsageLog): Promise<UsageLog>;
@@ -976,11 +978,25 @@ export class DatabaseStorage implements IStorage {
     return insight;
   }
 
-  // Notifications
-  async getNotificationsByUser(userId: string): Promise<Notification[]> {
+  // Notifications - SECURED with multi-tenant organization filtering
+  async getNotificationsByUser(userId: string, organizationId: string): Promise<Notification[]> {
     return await db.select().from(notifications)
-      .where(eq(notifications.userId, userId))
+      .where(and(
+        eq(notifications.userId, userId),
+        eq(notifications.organizationId, organizationId)
+      ))
       .orderBy(desc(notifications.createdAt));
+  }
+
+  async getUnreadNotificationCount(userId: string, organizationId: string): Promise<number> {
+    const result = await db.select({ count: count() })
+      .from(notifications)
+      .where(and(
+        eq(notifications.userId, userId),
+        eq(notifications.organizationId, organizationId),
+        eq(notifications.isRead, false)
+      ));
+    return Number(result[0]?.count) || 0;
   }
 
   async createNotification(insertNotification: InsertNotification): Promise<Notification> {
@@ -988,12 +1004,25 @@ export class DatabaseStorage implements IStorage {
     return notification;
   }
 
-  async markNotificationAsRead(id: string): Promise<Notification> {
+  async markNotificationAsRead(id: string, organizationId: string): Promise<Notification> {
     const [notification] = await db.update(notifications)
-      .set({ isRead: true })
-      .where(eq(notifications.id, id))
+      .set({ isRead: true, readAt: sql`now()` })
+      .where(and(
+        eq(notifications.id, id),
+        eq(notifications.organizationId, organizationId)
+      ))
       .returning();
     return notification;
+  }
+
+  async markAllNotificationsAsRead(userId: string, organizationId: string): Promise<void> {
+    await db.update(notifications)
+      .set({ isRead: true, readAt: sql`now()` })
+      .where(and(
+        eq(notifications.userId, userId),
+        eq(notifications.organizationId, organizationId),
+        eq(notifications.isRead, false)
+      ));
   }
 
   // Usage Logs

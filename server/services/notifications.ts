@@ -62,6 +62,152 @@ export class NotificationService {
     return this.organizationCache.get(organizationId) || null;
   }
 
+  // Main sendNotification function - simplified multi-channel dispatch
+  async send(params: {
+    userId: string;
+    organizationId: string;
+    type: 'booking' | 'membership' | 'reward' | 'custom' | 'system';
+    title: string;
+    message: string;
+    data?: any;
+    channels?: ('email' | 'sms' | 'in_app')[];
+  }): Promise<{
+    success: boolean;
+    notificationId?: string;
+    emailSent?: boolean;
+    smsSent?: boolean;
+    errors?: string[];
+  }> {
+    const { userId, organizationId, type, title, message, data, channels = ['in_app'] } = params;
+    const errors: string[] = [];
+    let emailSent = false;
+    let smsSent = false;
+
+    console.log(`[NOTIFICATIONS] Sending ${type} notification to user ${userId} via ${channels.join(', ')}`);
+
+    // Get user and organization info
+    const [user, organization] = await Promise.all([
+      storage.getUser(userId),
+      storage.getOrganization(organizationId)
+    ]);
+
+    if (!user) {
+      console.error('[NOTIFICATIONS] User not found:', userId);
+      return { success: false, errors: ['User not found'] };
+    }
+
+    if (!organization) {
+      console.error('[NOTIFICATIONS] Organization not found:', organizationId);
+      return { success: false, errors: ['Organization not found'] };
+    }
+
+    // Get client for contact info
+    const client = await storage.getClientByUser(userId);
+
+    // Send EMAIL if requested
+    if (channels.includes('email') && (user.email || client?.email)) {
+      const recipientEmail = user.email || client?.email;
+      try {
+        console.log(`[NOTIFICATIONS] Sending email to ${recipientEmail}`);
+        const emailResult = await sendgridService.sendEmail({
+          to: recipientEmail!,
+          subject: title,
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+              <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center;">
+                <h1 style="color: white; margin: 0;">${title}</h1>
+              </div>
+              <div style="padding: 30px; background: #f7f7f7;">
+                <p style="font-size: 16px; color: #333; white-space: pre-wrap;">${message}</p>
+                ${data?.actionUrl ? `
+                  <div style="text-align: center; margin-top: 30px;">
+                    <a href="${data.actionUrl}" style="background: #667eea; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block;">
+                      ${data.actionText || 'View Details'}
+                    </a>
+                  </div>
+                ` : ''}
+              </div>
+              <div style="padding: 20px; background: #333; color: #999; text-align: center; font-size: 12px;">
+                <p style="margin: 5px 0;">${organization.name}</p>
+                ${organization.phone ? `<p style="margin: 5px 0;">${organization.phone}</p>` : ''}
+                ${organization.email ? `<p style="margin: 5px 0;">${organization.email}</p>` : ''}
+              </div>
+            </div>
+          `,
+          categories: [type]
+        });
+        
+        emailSent = emailResult.success;
+        if (!emailResult.success) {
+          errors.push(`Email failed: ${emailResult.error}`);
+        }
+      } catch (error) {
+        console.error('[NOTIFICATIONS] Email error:', error);
+        errors.push(`Email error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+    }
+
+    // Send SMS if requested
+    if (channels.includes('sms') && (user.phone || client?.phone)) {
+      const recipientPhone = user.phone || client?.phone;
+      try {
+        console.log(`[NOTIFICATIONS] Sending SMS to ${recipientPhone}`);
+        
+        // SMS character limit handling - keep it concise
+        let smsMessage = `${title}\n\n${message}`;
+        if (smsMessage.length > 160) {
+          // Truncate message to fit SMS limit
+          smsMessage = message.substring(0, 140) + '...';
+        }
+        
+        const smsResult = await twilioService.sendSMS({
+          to: recipientPhone!,
+          message: smsMessage
+        });
+        
+        smsSent = smsResult.success;
+        if (!smsResult.success) {
+          errors.push(`SMS failed: ${smsResult.error}`);
+        }
+      } catch (error) {
+        console.error('[NOTIFICATIONS] SMS error:', error);
+        errors.push(`SMS error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+    }
+
+    // Always create in-app notification record
+    try {
+      const notification = await storage.createNotification({
+        userId,
+        organizationId,
+        type,
+        title,
+        message,
+        data: data || {},
+        channels,
+        isRead: false
+      });
+
+      console.log(`✅ [NOTIFICATIONS] In-app notification created: ${notification.id}`);
+      
+      return {
+        success: true,
+        notificationId: notification.id,
+        emailSent,
+        smsSent,
+        errors: errors.length > 0 ? errors : undefined
+      };
+    } catch (error) {
+      console.error('[NOTIFICATIONS] Failed to create in-app notification:', error);
+      return {
+        success: false,
+        emailSent,
+        smsSent,
+        errors: [...errors, `Database error: ${error instanceof Error ? error.message : 'Unknown error'}`]
+      };
+    }
+  }
+
   // Create default templates for an organization (with idempotency)
   async createDefaultTemplates(organizationId: string): Promise<void> {
     console.log(`[NOTIFICATIONS] Initializing default templates for organization ${organizationId}`);

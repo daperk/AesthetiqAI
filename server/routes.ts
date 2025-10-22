@@ -11,6 +11,7 @@ import { pool } from "./db";
 import * as stripeService from "./services/stripe";
 import { stripe } from "./services/stripe";
 import { sendEmail, getEmailServiceStatus } from "./services/sendgrid";
+import { notificationService } from "./services/notifications";
 
 // Helper function to calculate reward points based on membership tier and spend
 async function calculateRewardPoints(clientId: string, organizationId: string, amountSpent: number): Promise<number> {
@@ -935,6 +936,79 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/auth/me", requireAuth, (req, res) => {
     res.json({ user: { ...req.user, password: undefined } });
+  });
+
+  // Notification endpoints - SECURED with multi-tenant organization scoping
+  app.get("/api/notifications", requireAuth, async (req, res) => {
+    try {
+      // SECURITY: Get user's organization for tenant isolation
+      const orgId = await getUserOrganizationId(req.user!);
+      if (!orgId) {
+        return res.status(403).json({ message: "No organization access" });
+      }
+
+      const notifications = await storage.getNotificationsByUser(req.user!.id, orgId);
+      res.json(notifications);
+    } catch (error) {
+      console.error("Fetch notifications error:", error);
+      res.status(500).json({ message: "Failed to fetch notifications" });
+    }
+  });
+
+  app.get("/api/notifications/unread-count", requireAuth, async (req, res) => {
+    try {
+      // SECURITY: Get user's organization for tenant isolation
+      const orgId = await getUserOrganizationId(req.user!);
+      if (!orgId) {
+        return res.status(403).json({ message: "No organization access" });
+      }
+
+      const count = await storage.getUnreadNotificationCount(req.user!.id, orgId);
+      res.json({ count });
+    } catch (error) {
+      console.error("Fetch unread count error:", error);
+      res.status(500).json({ message: "Failed to fetch unread count" });
+    }
+  });
+
+  app.patch("/api/notifications/:id/read", requireAuth, async (req, res) => {
+    try {
+      // SECURITY: Get user's organization for tenant isolation
+      const orgId = await getUserOrganizationId(req.user!);
+      if (!orgId) {
+        return res.status(403).json({ message: "No organization access" });
+      }
+
+      // SECURITY: Verify notification belongs to current user AND organization
+      const notifications = await storage.getNotificationsByUser(req.user!.id, orgId);
+      const notification = notifications.find(n => n.id === req.params.id);
+      
+      if (!notification) {
+        return res.status(404).json({ message: "Notification not found or access denied" });
+      }
+
+      const updated = await storage.markNotificationAsRead(req.params.id, orgId);
+      res.json(updated);
+    } catch (error) {
+      console.error("Mark notification as read error:", error);
+      res.status(500).json({ message: "Failed to mark notification as read" });
+    }
+  });
+
+  app.patch("/api/notifications/mark-all-read", requireAuth, async (req, res) => {
+    try {
+      // SECURITY: Get user's organization for tenant isolation
+      const orgId = await getUserOrganizationId(req.user!);
+      if (!orgId) {
+        return res.status(403).json({ message: "No organization access" });
+      }
+
+      await storage.markAllNotificationsAsRead(req.user!.id, orgId);
+      res.json({ message: "All notifications marked as read" });
+    } catch (error) {
+      console.error("Mark all as read error:", error);
+      res.status(500).json({ message: "Failed to mark all as read" });
+    }
   });
 
   // Public signup info endpoint - checks if slug is location or organization
@@ -2046,6 +2120,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const appointment = await storage.createAppointment(appointmentData);
       
       await auditLog(req, "create", "appointment", appointment.id, appointmentData);
+      
+      // Send notification to client about appointment booking
+      try {
+        const client = await storage.getClient(appointment.clientId);
+        const service = await storage.getService(appointment.serviceId);
+        
+        if (client?.userId && service) {
+          const appointmentDate = new Date(appointment.startTime).toLocaleDateString('en-US', { 
+            weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' 
+          });
+          const appointmentTime = new Date(appointment.startTime).toLocaleTimeString('en-US', { 
+            hour: 'numeric', minute: '2-digit' 
+          });
+          
+          await notificationService.send({
+            userId: client.userId,
+            organizationId: appointment.organizationId,
+            type: 'booking',
+            title: 'Appointment Confirmed',
+            message: `Your ${service.name} appointment has been confirmed for ${appointmentDate} at ${appointmentTime}.`,
+            data: {
+              appointmentId: appointment.id,
+              serviceId: service.id,
+              serviceName: service.name,
+              startTime: appointment.startTime,
+              actionUrl: `/appointments`,
+              actionText: 'View Appointment'
+            },
+            channels: ['in_app', 'email']
+          });
+        }
+      } catch (notifError) {
+        console.error('Failed to send appointment notification:', notifError);
+        // Don't fail the request if notification fails
+      }
+      
       res.json(appointment);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -2127,6 +2237,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
           depositRetained: retainDeposit,
           depositAmount: appointment.depositPaid
         });
+        
+        // Send cancellation notification to client
+        try {
+          const client = await storage.getClient(appointment.clientId);
+          const service = await storage.getService(appointment.serviceId);
+          
+          if (client?.userId && service) {
+            const appointmentDate = new Date(appointment.startTime).toLocaleDateString('en-US', { 
+              weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' 
+            });
+            const appointmentTime = new Date(appointment.startTime).toLocaleTimeString('en-US', { 
+              hour: 'numeric', minute: '2-digit' 
+            });
+            
+            await notificationService.send({
+              userId: client.userId,
+              organizationId: appointment.organizationId,
+              type: 'booking',
+              title: 'Appointment Canceled',
+              message: `Your ${service.name} appointment scheduled for ${appointmentDate} at ${appointmentTime} has been canceled${retainDeposit ? '. Deposit has been retained.' : ' and you will receive a full refund.'}.`,
+              data: {
+                appointmentId: appointment.id,
+                serviceId: service.id,
+                serviceName: service.name,
+                depositRetained: retainDeposit,
+                depositAmount: appointment.depositPaid
+              },
+              channels: ['in_app', 'email']
+            });
+          }
+        } catch (notifError) {
+          console.error('Failed to send cancellation notification:', notifError);
+        }
         
         res.json({ 
           message: `Appointment cancelled ${retainDeposit ? 'with deposit retained' : 'with full refund'}`,
@@ -3031,6 +3174,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
           organizationId: client.organizationId
         });
         
+        // Send membership activation notification
+        try {
+          await notificationService.send({
+            userId: req.user!.id,
+            organizationId: client.organizationId,
+            type: 'membership',
+            title: 'Membership Activated',
+            message: `Welcome to ${tier.name} membership! You've earned 100 bonus points. Enjoy exclusive benefits and rewards.`,
+            data: {
+              membershipId: membership.id,
+              tierName: tier.name,
+              bonusPoints: 100,
+              actionUrl: '/rewards',
+              actionText: 'View Rewards'
+            },
+            channels: ['in_app', 'email']
+          });
+        } catch (notifError) {
+          console.error('Failed to send membership notification:', notifError);
+        }
+        
       } else {
         // Full Stripe integration flow
         // Get organization to access Stripe Connect account
@@ -3115,6 +3279,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
             referenceId: membership.id,
             referenceType: 'membership'
           });
+          
+          // Send membership activation notification
+          try {
+            await notificationService.send({
+              userId: req.user!.id,
+              organizationId: client.organizationId,
+              type: 'membership',
+              title: 'Membership Activated',
+              message: `Welcome to ${tier.name} membership! You've earned 100 bonus points. Enjoy exclusive benefits and rewards.`,
+              data: {
+                membershipId: membership.id,
+                tierName: tier.name,
+                bonusPoints: 100,
+                actionUrl: '/rewards',
+                actionText: 'View Rewards'
+              },
+              channels: ['in_app', 'email']
+            });
+          } catch (notifError) {
+            console.error('Failed to send membership notification:', notifError);
+          }
         }
         
         clientSecret = subscriptionResult.clientSecret;
@@ -3225,6 +3410,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
         discountValue: rewardOption.discountValue 
       });
       
+      // Send notification for reward redemption
+      try {
+        const newBalance = await storage.getClientRewardBalance(client.id);
+        
+        await notificationService.send({
+          userId: req.user!.id,
+          organizationId: client.organizationId,
+          type: 'reward',
+          title: 'Reward Redeemed',
+          message: `You've successfully redeemed ${pointsCost} points for ${rewardOption.name}. Discount value: ${rewardOption.discountValue}.`,
+          data: {
+            rewardId: reward.id,
+            optionId: rewardOption.id,
+            optionName: rewardOption.name,
+            pointsRedeemed: pointsCost,
+            discountValue: rewardOption.discountValue,
+            newBalance: newBalance,
+            actionUrl: '/rewards',
+            actionText: 'View Rewards'
+          },
+          channels: ['in_app', 'email']
+        });
+      } catch (notifError) {
+        console.error('Failed to send redemption notification:', notifError);
+      }
+      
       res.json({ 
         message: "Points redeemed successfully", 
         reward,
@@ -3242,6 +3453,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const reward = await storage.createReward(rewardData);
       
       await auditLog(req, "create", "reward", reward.id, rewardData);
+      
+      // Send notification for points awarded (only if points are positive)
+      if (reward.points > 0) {
+        try {
+          const client = await storage.getClient(reward.clientId);
+          if (client?.userId) {
+            const balance = await storage.getClientRewardBalance(client.id);
+            
+            await notificationService.send({
+              userId: client.userId,
+              organizationId: reward.organizationId,
+              type: 'reward',
+              title: 'Points Awarded',
+              message: `You've earned ${reward.points} points! ${reward.reason || 'Thank you for your loyalty.'}`,
+              data: {
+                rewardId: reward.id,
+                points: reward.points,
+                newBalance: balance,
+                reason: reward.reason,
+                actionUrl: '/rewards',
+                actionText: 'View Rewards'
+              },
+              channels: ['in_app', 'email']
+            });
+          }
+        } catch (notifError) {
+          console.error('Failed to send reward notification:', notifError);
+        }
+      }
+      
       res.json(reward);
     } catch (error) {
       if (error instanceof z.ZodError) {
