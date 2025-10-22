@@ -134,7 +134,7 @@ export interface IStorage {
   getAppointmentsByStaff(staffId: string, organizationId: string, date?: Date): Promise<Appointment[]>;
   getAppointment(id: string): Promise<Appointment | undefined>;
   createAppointment(appointment: InsertAppointment): Promise<Appointment>;
-  updateAppointment(id: string, updates: Partial<InsertAppointment>): Promise<Appointment>;
+  updateAppointment(id: string, organizationId: string, updates: Partial<InsertAppointment>): Promise<any>;
   archiveAppointment(id: string): Promise<void>;
   unarchiveAppointment(id: string): Promise<void>;
 
@@ -879,9 +879,52 @@ export class DatabaseStorage implements IStorage {
     return appointment;
   }
 
-  async updateAppointment(id: string, updates: Partial<InsertAppointment>): Promise<Appointment> {
-    const [appointment] = await db.update(appointments).set(updates).where(eq(appointments.id, id)).returning();
-    return appointment;
+  async updateAppointment(id: string, organizationId: string, updates: Partial<InsertAppointment>): Promise<any> {
+    // Update the appointment where id matches AND organizationId matches (security)
+    const [appointment] = await db
+      .update(appointments)
+      .set(updates)
+      .where(and(
+        eq(appointments.id, id),
+        eq(appointments.organizationId, organizationId)
+      ))
+      .returning();
+    
+    if (!appointment) {
+      throw new Error('Appointment not found or access denied');
+    }
+    
+    // Return enriched data with client/staff/service names
+    const [enrichedAppointment] = await db
+      .select({
+        id: appointments.id,
+        organizationId: appointments.organizationId,
+        locationId: appointments.locationId,
+        clientId: appointments.clientId,
+        staffId: appointments.staffId,
+        serviceId: appointments.serviceId,
+        startTime: appointments.startTime,
+        endTime: appointments.endTime,
+        status: appointments.status,
+        notes: appointments.notes,
+        privateNotes: appointments.privateNotes,
+        totalAmount: appointments.totalAmount,
+        depositPaid: appointments.depositPaid,
+        remindersSent: appointments.remindersSent,
+        archived: appointments.archived,
+        createdAt: appointments.createdAt,
+        clientName: sql<string>`CONCAT(${clients.firstName}, ' ', ${clients.lastName})`,
+        staffName: sql<string>`CONCAT(${users.firstName}, ' ', ${users.lastName})`,
+        serviceName: services.name,
+      })
+      .from(appointments)
+      .leftJoin(clients, eq(appointments.clientId, clients.id))
+      .leftJoin(staff, eq(appointments.staffId, staff.id))
+      .leftJoin(users, eq(staff.userId, users.id))
+      .leftJoin(services, eq(appointments.serviceId, services.id))
+      .where(eq(appointments.id, id));
+    
+    return enrichedAppointment;
   }
 
   async archiveAppointment(id: string): Promise<void> {

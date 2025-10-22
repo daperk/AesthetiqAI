@@ -5,16 +5,59 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import LoadingSpinner from "@/components/ui/loading-spinner";
 import Navigation from "@/components/Navigation";
-import { Calendar, CalendarPlus, Clock, User } from "lucide-react";
-import type { Appointment } from "@/types";
+import AppointmentDetailsDialog from "@/components/AppointmentDetailsDialog";
+import { Calendar, CalendarPlus, Clock, User, MapPin, Phone } from "lucide-react";
+import type { Appointment, Client } from "@/types";
+import { useState } from "react";
+
+const formatTimeInTimezone = (dateString: string, timezone: string = 'America/New_York') => {
+  const date = new Date(dateString);
+  return date.toLocaleTimeString('en-US', { 
+    timeZone: timezone,
+    hour: 'numeric', 
+    minute: '2-digit', 
+    hour12: true 
+  });
+};
+
+const formatDateInTimezone = (dateString: string, timezone: string = 'America/New_York', options: Intl.DateTimeFormatOptions = {}) => {
+  const date = new Date(dateString);
+  return date.toLocaleDateString('en-US', { 
+    timeZone: timezone,
+    ...options
+  });
+};
 
 export default function PatientAppointments() {
   const [, setLocation] = useLocation();
+  const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
+  const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
 
-  const { data: appointments, isLoading } = useQuery<Appointment[]>({
+  const { data: client, isLoading: clientLoading } = useQuery<Client>({
+    queryKey: ["/api/clients/me"],
+    staleTime: 5 * 60000,
+  });
+
+  const { data: appointments, isLoading: appointmentsLoading } = useQuery<Appointment[]>({
     queryKey: ["/api/appointments/upcoming"],
     staleTime: 30000,
   });
+
+  const { data: organization } = useQuery<any>({
+    queryKey: ["/api/organizations", client?.organizationId],
+    queryFn: async () => {
+      if (!client?.organizationId) return null;
+      const response = await fetch(`/api/organizations/${client.organizationId}`, {
+        credentials: "include"
+      });
+      if (!response.ok) throw new Error("Failed to fetch organization");
+      return response.json();
+    },
+    enabled: !!client?.organizationId,
+    staleTime: 5 * 60000,
+  });
+
+  const isLoading = clientLoading || appointmentsLoading;
 
   if (isLoading) {
     return (
@@ -86,7 +129,7 @@ export default function PatientAppointments() {
                             <div className="flex items-center space-x-2 text-foreground">
                               <Calendar className="w-5 h-5 text-primary" />
                               <span className="font-medium">
-                                {new Date(appointment.startTime).toLocaleDateString('en-US', {
+                                {formatDateInTimezone(appointment.startTime, appointment.timezone || 'America/New_York', {
                                   weekday: 'long',
                                   year: 'numeric',
                                   month: 'long',
@@ -97,11 +140,7 @@ export default function PatientAppointments() {
                             <div className="flex items-center space-x-2 text-muted-foreground">
                               <Clock className="w-5 h-5" />
                               <span>
-                                {new Date(appointment.startTime).toLocaleTimeString([], { 
-                                  hour: 'numeric', 
-                                  minute: '2-digit',
-                                  hour12: true 
-                                })}
+                                {formatTimeInTimezone(appointment.startTime, appointment.timezone || 'America/New_York')}
                               </span>
                             </div>
                           </div>
@@ -109,12 +148,18 @@ export default function PatientAppointments() {
                           {/* Service Info */}
                           <div className="space-y-1">
                             <h3 className="text-lg font-semibold text-foreground" data-testid={`text-service-${appointment.id}`}>
-                              Service Name
+                              {appointment.serviceName || 'Service'}
                             </h3>
                             <div className="flex items-center space-x-2 text-sm text-muted-foreground">
                               <User className="w-4 h-4" />
-                              <span>Provider Name</span>
+                              <span>{appointment.staffName || 'Provider'}</span>
                             </div>
+                            {appointment.locationName && (
+                              <div className="flex items-center space-x-2 text-sm text-muted-foreground">
+                                <MapPin className="w-4 h-4" />
+                                <span>{appointment.locationName}</span>
+                              </div>
+                            )}
                           </div>
 
                           {/* Notes */}
@@ -143,24 +188,25 @@ export default function PatientAppointments() {
                         <Button 
                           variant="outline" 
                           size="sm"
-                          data-testid={`button-reschedule-${appointment.id}`}
-                        >
-                          Reschedule
-                        </Button>
-                        <Button 
-                          variant="outline" 
-                          size="sm"
-                          data-testid={`button-cancel-${appointment.id}`}
-                        >
-                          Cancel
-                        </Button>
-                        <Button 
-                          variant="ghost" 
-                          size="sm"
+                          onClick={() => {
+                            setSelectedAppointment(appointment);
+                            setDetailsDialogOpen(true);
+                          }}
                           data-testid={`button-view-details-${appointment.id}`}
                         >
                           View Details
                         </Button>
+                        {organization?.phone && (
+                          <Button 
+                            variant="default" 
+                            size="sm"
+                            onClick={() => window.location.href = `tel:${organization.phone}`}
+                            data-testid={`button-call-clinic-${appointment.id}`}
+                          >
+                            <Phone className="w-4 h-4 mr-2" />
+                            Call to Request Changes
+                          </Button>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -185,6 +231,12 @@ export default function PatientAppointments() {
           </Card>
         </div>
       </div>
+
+      <AppointmentDetailsDialog 
+        appointment={selectedAppointment}
+        open={detailsDialogOpen}
+        onOpenChange={setDetailsDialogOpen}
+      />
     </div>
   );
 }

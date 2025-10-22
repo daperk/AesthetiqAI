@@ -2257,6 +2257,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.patch("/api/appointments/:id", requireAuth, requireRole("clinic_admin", "staff"), async (req, res) => {
     try {
       const appointmentId = req.params.id;
+      
+      // Validate appointment ID format (UUID)
+      if (!appointmentId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(appointmentId)) {
+        return res.status(400).json({ message: "Invalid appointment ID format" });
+      }
+      
       const appointment = await storage.getAppointment(appointmentId);
       
       if (!appointment) {
@@ -2265,16 +2271,104 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Validate organization access
       const userOrgId = await getUserOrganizationId(req.user!);
+      if (!userOrgId) {
+        return res.status(400).json({ message: "User organization not found" });
+      }
+      
       if (appointment.organizationId !== userOrgId && req.user!.role !== "super_admin") {
-        return res.status(403).json({ message: "Access denied" });
+        return res.status(403).json({ message: "Access denied - appointment belongs to different organization" });
       }
 
-      const updatedAppointment = await storage.updateAppointment(appointmentId, req.body);
-      await auditLog(req, "update", "appointment", appointmentId, req.body);
+      // Validate request body fields
+      const updateSchema = z.object({
+        clientId: z.string().uuid().optional(),
+        serviceId: z.string().uuid().optional(),
+        staffId: z.string().uuid().optional(),
+        locationId: z.string().uuid().optional(),
+        startTime: z.string().datetime().or(z.date()).optional(),
+        endTime: z.string().datetime().or(z.date()).optional(),
+        status: z.enum(["pending", "scheduled", "confirmed", "in_progress", "completed", "canceled", "no_show", "cancellation_requested"]).optional(),
+        notes: z.string().optional(),
+        privateNotes: z.string().optional(),
+        totalAmount: z.string().optional(),
+        depositPaid: z.string().optional(),
+      });
+
+      const validationResult = updateSchema.safeParse(req.body);
+      if (!validationResult.success) {
+        return res.status(400).json({ 
+          message: "Invalid update data", 
+          errors: validationResult.error.errors 
+        });
+      }
+
+      const updates = validationResult.data;
+
+      // Validate foreign keys exist and belong to organization
+      if (updates.clientId) {
+        const client = await storage.getClient(updates.clientId);
+        if (!client) {
+          return res.status(400).json({ message: "Client not found" });
+        }
+        if (client.organizationId !== userOrgId) {
+          return res.status(400).json({ message: "Client does not belong to your organization" });
+        }
+      }
+
+      if (updates.serviceId) {
+        const service = await storage.getService(updates.serviceId);
+        if (!service) {
+          return res.status(400).json({ message: "Service not found" });
+        }
+        if (service.organizationId !== userOrgId) {
+          return res.status(400).json({ message: "Service does not belong to your organization" });
+        }
+      }
+
+      if (updates.staffId) {
+        const staffMember = await storage.getStaff(updates.staffId);
+        if (!staffMember) {
+          return res.status(400).json({ message: "Staff member not found" });
+        }
+        if (staffMember.organizationId !== userOrgId) {
+          return res.status(400).json({ message: "Staff member does not belong to your organization" });
+        }
+      }
+
+      if (updates.locationId) {
+        const location = await storage.getLocation(updates.locationId);
+        if (!location) {
+          return res.status(400).json({ message: "Location not found" });
+        }
+        if (location.organizationId !== userOrgId) {
+          return res.status(400).json({ message: "Location does not belong to your organization" });
+        }
+      }
+
+      // Validate date/time fields and convert to Date objects
+      const processedUpdates: any = { ...updates };
+      if (updates.startTime) {
+        processedUpdates.startTime = new Date(updates.startTime);
+      }
+      if (updates.endTime) {
+        processedUpdates.endTime = new Date(updates.endTime);
+      }
+      
+      if (processedUpdates.startTime && processedUpdates.endTime) {
+        if (processedUpdates.startTime >= processedUpdates.endTime) {
+          return res.status(400).json({ message: "End time must be after start time" });
+        }
+      }
+
+      const updatedAppointment = await storage.updateAppointment(appointmentId, userOrgId, processedUpdates);
+      await auditLog(req, "update", "appointment", appointmentId, updates);
       
       res.json(updatedAppointment);
     } catch (error) {
       console.error("Update appointment error:", error);
+      if (error instanceof Error && error.message === 'Appointment not found or access denied') {
+        return res.status(404).json({ message: "Appointment not found" });
+      }
       res.status(500).json({ message: "Failed to update appointment" });
     }
   });
@@ -2301,7 +2395,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(403).json({ message: "Can only cancel your own appointments" });
         }
         // For patients, mark as cancellation requested
-        await storage.updateAppointment(appointmentId, { 
+        await storage.updateAppointment(appointmentId, appointment.organizationId, { 
           status: "cancellation_requested" as any,
           notes: `${appointment.notes || ''}\nPatient requested cancellation on ${new Date().toLocaleDateString()}`
         });
@@ -2319,7 +2413,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Check if deposit should be retained (default: no refund for late cancellations)
         const retainDeposit = req.query.retainDeposit !== 'false';
         
-        await storage.updateAppointment(appointmentId, { status: "canceled" });
+        await storage.updateAppointment(appointmentId, appointment.organizationId, { status: "canceled" });
         await auditLog(req, "cancel", "appointment", appointmentId, { 
           status: "canceled",
           depositRetained: retainDeposit,
@@ -2395,7 +2489,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (approved) {
         // Approve cancellation
-        await storage.updateAppointment(appointmentId, { 
+        await storage.updateAppointment(appointmentId, appointment.organizationId, { 
           status: "canceled",
           privateNotes: `${appointment.privateNotes || ''}\nCancellation approved by ${req.user!.email} on ${new Date().toLocaleDateString()}.${retainDeposit ? ' Deposit retained.' : ' Full refund issued.'} Reason: ${reason || 'N/A'}`
         });
@@ -2454,7 +2548,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       } else {
         // Deny cancellation - appointment remains scheduled
-        await storage.updateAppointment(appointmentId, { 
+        await storage.updateAppointment(appointmentId, appointment.organizationId, { 
           status: "scheduled",
           privateNotes: `${appointment.privateNotes || ''}\nCancellation denied by ${req.user!.email} on ${new Date().toLocaleDateString()}. Reason: ${reason || 'N/A'}`
         });
@@ -2952,7 +3046,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const paymentAmount = paymentIntent.amount / 100; // Convert cents to dollars
 
       // Update appointment to scheduled (confirmed) and record deposit/payment
-      await storage.updateAppointment(appointmentId, {
+      await storage.updateAppointment(appointmentId, appointment.organizationId, {
         status: "scheduled",
         depositPaid: paymentAmount.toString() // Record the amount paid
       });
@@ -3039,7 +3133,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (remainingBalance <= 0) {
         // Just update the total if no additional payment needed
-        await storage.updateAppointment(appointmentId, { 
+        await storage.updateAppointment(appointmentId, appointment.organizationId, { 
           totalAmount: finalTotal.toString(),
           status: "completed" 
         });
@@ -3073,7 +3167,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       );
 
       // Update appointment with final total
-      await storage.updateAppointment(appointmentId, { 
+      await storage.updateAppointment(appointmentId, appointment.organizationId, { 
         totalAmount: finalTotal.toString() 
       });
 

@@ -13,9 +13,10 @@ import { useAuth } from "@/hooks/useAuth";
 import { useState, useEffect } from "react";
 import { MembershipSubscriptionDialog } from "@/components/MembershipSubscriptionDialog";
 import { CancelMembershipDialog } from "@/components/CancelMembershipDialog";
+import AppointmentDetailsDialog from "@/components/AppointmentDetailsDialog";
 import { 
   Calendar, Crown, Gift, Wallet, Clock, Star, MessageCircle,
-  CalendarPlus, Settings, Bell, CreditCard, Send
+  CalendarPlus, Settings, Bell, CreditCard, Send, Phone
 } from "lucide-react";
 import type { Appointment, Membership, Reward, Client, ChatMessage } from "@/types";
 
@@ -48,6 +49,8 @@ export default function PatientDashboard() {
   const [selectedTier, setSelectedTier] = useState<any>(null);
   const [showSubscriptionDialog, setShowSubscriptionDialog] = useState(false);
   const [showCancelDialog, setShowCancelDialog] = useState(false);
+  const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
+  const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
 
   const { data: client, isLoading: clientLoading } = useQuery<Client>({
     queryKey: ["/api/clients/me"],
@@ -84,6 +87,21 @@ export default function PatientDashboard() {
 
   const { data: membershipTiers } = useQuery<any[]>({
     queryKey: ["/api/membership-tiers"],
+    staleTime: 5 * 60000,
+  });
+
+  // Fetch organization data for phone number using client's organizationId
+  const { data: organization } = useQuery<any>({
+    queryKey: ["/api/organizations", client?.organizationId],
+    queryFn: async () => {
+      if (!client?.organizationId) return null;
+      const response = await fetch(`/api/organizations/${client.organizationId}`, {
+        credentials: "include"
+      });
+      if (!response.ok) throw new Error("Failed to fetch organization");
+      return response.json();
+    },
+    enabled: !!client?.organizationId,
     staleTime: 5 * 60000,
   });
 
@@ -260,22 +278,39 @@ export default function PatientDashboard() {
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="text-xl font-semibold mb-2" data-testid="text-next-appointment-title">
-                    Your next appointment is {formatDateInTimezone(nextAppointment.startTime, nextAppointment.timezone, { 
+                    Your next appointment is on {formatDateInTimezone(nextAppointment.startTime, nextAppointment.timezone, { 
+                      weekday: 'long',
                       month: 'long', 
-                      day: 'numeric',
-                      year: 'numeric'
+                      day: 'numeric'
                     })} at {formatTimeInTimezone(nextAppointment.startTime, nextAppointment.timezone)}
                   </h2>
                   <p className="text-primary-foreground/90 mb-4">
                     {nextAppointment.serviceName || 'Appointment'} {nextAppointment.staffName ? `with ${nextAppointment.staffName}` : ''}
                   </p>
                   <div className="flex items-center space-x-4">
-                    <Button variant="secondary" size="sm" data-testid="button-view-appointment">
+                    <Button 
+                      variant="secondary" 
+                      size="sm" 
+                      onClick={() => {
+                        setSelectedAppointment(nextAppointment);
+                        setDetailsDialogOpen(true);
+                      }}
+                      data-testid="button-view-details"
+                    >
                       View Details
                     </Button>
-                    <Button variant="outline" size="sm" className="border-white text-white hover:bg-white hover:text-primary" data-testid="button-reschedule">
-                      Reschedule
-                    </Button>
+                    {organization?.phone && (
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="border-white text-white hover:bg-white hover:text-primary" 
+                        onClick={() => window.location.href = `tel:${organization.phone}`}
+                        data-testid="button-call-clinic"
+                      >
+                        <Phone className="w-4 h-4 mr-2" />
+                        Call Clinic
+                      </Button>
+                    )}
                   </div>
                 </div>
                 <Calendar className="w-16 h-16 text-primary-foreground/60" />
@@ -771,6 +806,13 @@ export default function PatientDashboard() {
         onClose={() => setShowCancelDialog(false)}
         membership={membership}
         onSuccess={handleCancelSuccess}
+      />
+
+      {/* Appointment Details Dialog */}
+      <AppointmentDetailsDialog 
+        appointment={selectedAppointment}
+        open={detailsDialogOpen}
+        onOpenChange={setDetailsDialogOpen}
       />
     </div>
   );

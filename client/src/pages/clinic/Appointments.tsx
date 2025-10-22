@@ -13,6 +13,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import LoadingSpinner from "@/components/ui/loading-spinner";
 import ClinicNav from "@/components/ClinicNav";
+import EditAppointmentDialog from "@/components/EditAppointmentDialog";
 import { useAuth } from "@/hooks/useAuth";
 import { useOrganization } from "@/hooks/useOrganization";
 import { usePaymentRequired } from "@/hooks/usePaymentRequired";
@@ -48,6 +49,8 @@ export default function Appointments() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [includeArchived, setIncludeArchived] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [appointmentToEdit, setAppointmentToEdit] = useState<Appointment | null>(null);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
     upcoming: true,
     completed: false,
@@ -406,10 +409,8 @@ export default function Appointments() {
           <DropdownMenuContent align="end">
             <DropdownMenuItem 
               onClick={() => {
-                toast({
-                  title: "Edit appointment",
-                  description: "Edit functionality coming soon!",
-                });
+                setAppointmentToEdit(appointment);
+                setEditDialogOpen(true);
               }}
               data-testid={`menu-edit-${appointment.id}`}
             >
@@ -946,6 +947,19 @@ export default function Appointments() {
           </div>
         </div>
       </div>
+
+      <EditAppointmentDialog 
+        appointment={appointmentToEdit}
+        open={editDialogOpen}
+        onOpenChange={setEditDialogOpen}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ["/api/appointments"] });
+          toast({
+            title: "Success",
+            description: "Appointment updated successfully",
+          });
+        }}
+      />
     </div>
   );
 }
