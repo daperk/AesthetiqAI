@@ -216,6 +216,7 @@ export const appointments = pgTable("appointments", {
   totalAmount: decimal("total_amount", { precision: 10, scale: 2 }),
   depositPaid: decimal("deposit_paid", { precision: 10, scale: 2 }).default("0"),
   remindersSent: integer("reminders_sent").default(0),
+  archived: boolean("archived").default(false),
   createdAt: timestamp("created_at").default(sql`now()`)
 });
 
