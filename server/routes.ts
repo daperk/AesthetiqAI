@@ -554,6 +554,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.log(`Client created successfully:`, client.id);
         }
 
+        // Create Stripe customer on clinic's Connect account
+        if (organization.stripeConnectAccountId && stripe && !client.stripeCustomerId) {
+          try {
+            console.log(`🔄 Creating Stripe customer for ${user.email} on Connect account ${organization.stripeConnectAccountId}`);
+            const stripeCustomer = await stripeService.createCustomer(
+              user.email,
+              `${user.firstName || ''} ${user.lastName || ''}`.trim(),
+              organization.id,
+              organization.stripeConnectAccountId
+            );
+            
+            // Update client with Stripe customer ID
+            await storage.updateClient(client.id, {
+              stripeCustomerId: stripeCustomer.id
+            });
+            
+            console.log(`✅ Stripe customer created: ${stripeCustomer.id} for client ${client.id}`);
+          } catch (stripeError) {
+            console.error("⚠️ Failed to create Stripe customer during registration:", stripeError);
+            // Don't fail registration if Stripe fails - user can still use the system
+          }
+        }
+
         // Create client-location association
         if (primaryLocationId) {
           await storage.createClientLocation({
