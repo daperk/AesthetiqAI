@@ -177,8 +177,8 @@ export default function Memberships() {
         name: formData.get("tierName"),
         monthlyPrice: formData.get("monthlyPrice"),
         yearlyPrice: formData.get("yearlyPrice") || null,
-        discountPercentage: formData.get("discountPercentage"),
-        monthlyCredits: formData.get("monthlyCredits"),
+        discountPercentage: formData.get("discountPercentage") || null,
+        monthlyCredits: formData.get("monthlyCredits") || null,
         benefits: formData.get("benefits") ? (formData.get("benefits") as string).split(',').map(b => b.trim()) : []
       });
       return response.json();
