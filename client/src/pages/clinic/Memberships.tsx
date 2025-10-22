@@ -78,7 +78,7 @@ export default function Memberships() {
   });
 
   const { data: memberships, isLoading: membershipsLoading } = useQuery<Membership[]>({
-    queryKey: ["/api/memberships", organization?.id],
+    queryKey: ["/api/memberships"],
     enabled: !!organization?.id,
     staleTime: 30000,
   });
