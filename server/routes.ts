@@ -4208,11 +4208,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "User organization not found" });
       }
 
-      // Validate request body using Zod schema
-      const tierData = insertMembershipTierSchema.parse({
+      // Convert numeric values to strings for decimal fields (if they exist)
+      const processedBody = {
         ...req.body,
-        organizationId: orgId
-      });
+        organizationId: orgId,
+        // Convert numbers to strings for decimal fields
+        discountPercentage: req.body.discountPercentage != null ? String(req.body.discountPercentage) : undefined,
+        monthlyCredits: req.body.monthlyCredits != null ? String(req.body.monthlyCredits) : undefined
+      };
+
+      // Validate request body using Zod schema
+      const tierData = insertMembershipTierSchema.parse(processedBody);
 
       // Get organization and Stripe Connect account
       const organization = await storage.getOrganization(orgId);
